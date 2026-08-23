@@ -78,24 +78,21 @@ graph TD
 
 ### 2. Dev Containers & GitHub Codespaces 🐳
 Folio includes a pre-configured [`.devcontainer`](file:///.devcontainer/devcontainer.json) for 1-click cloud or container development with **Python 3.13**, **Node 23**, **SQLite**, and **Litestream**:
+- **PyCharm Pro / IntelliJ**: Open with **Dev Containers** via JetBrains Gateway or from `.devcontainer/devcontainer.json`.
 - **GitHub Codespaces**: Open this repo in Codespaces $\to$ starts in seconds with all dependencies and ports forwarded.
-- **PyCharm Pro / IntelliJ**: Open with **Dev Containers** via JetBrains Gateway.
 - **VS Code**: Press `F1` $\to$ *Dev Containers: Reopen in Container*.
 
-### 2. Backend Setup
+### 3. Running with Docker Compose 🐳
+Run the full stack (FastAPI + Vite + SQLite + Litestream) with a single command:
+
 ```bash
-# Navigate to backend and create virtual environment
+docker compose -f infra/docker-compose.yml up --build
+```
+
+### 4. Running Backend Directly
+```bash
 cd backend
-python -m venv .venv
-
-# Activate venv (Windows PowerShell)
-.\.venv\Scripts\Activate.ps1
-# (macOS/Linux: source .venv/bin/activate)
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Run FastAPI backend server
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -103,9 +100,8 @@ The API docs will be available at:
 - **Interactive Swagger UI**: `http://localhost:8000/api/docs`
 - **ReDoc**: `http://localhost:8000/api/redoc`
 
-### 3. Frontend Setup
+### 5. Running Frontend Directly
 ```bash
-# Navigate to frontend and start Vite dev server
 cd frontend
 npm install
 npm run dev
@@ -118,20 +114,11 @@ Open `http://localhost:5173` in your browser.
 ## 💻 PyCharm / JetBrains IDE Setup
 
 Pre-configured run configurations are included in `.idea/runConfigurations/`:
+- **docker-compose up**: Starts the full stack inside Docker with `--build`.
 - **Full Stack (Backend + Frontend)**: Launches both the FastAPI server and Vite dev server concurrently.
 - **FastAPI Backend**: Runs `uvicorn app.main:app --reload --port 8000` with hot-reload.
 - **Vite Frontend (Dev)**: Runs `npm run dev`.
 - **Pytest (Backend)**: Runs the Pytest test suite with graphical test tree.
-
----
-
-## 🐳 Docker Compose Setup
-
-Run the full stack (FastAPI + Vite + SQLite + Litestream) with a single command:
-
-```bash
-docker compose -f infra/docker-compose.yml up --build
-```
 
 ---
 
@@ -141,7 +128,7 @@ Run the Pytest suite (covering ingestion, loan math, rule matching, and budgetin
 
 ```bash
 cd backend
-.\.venv\Scripts\pytest.exe
+pytest
 ```
 
 ---
