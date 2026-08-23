@@ -2,11 +2,11 @@ version: '3.8'
 name: folio
 
 services:
-  backend:
+  folio:
     build:
-      context: ../backend
+      context: ..
       dockerfile: Dockerfile
-    container_name: folio-backend
+    container_name: folio-app
     ports:
       - "8000:8000"
     volumes:
@@ -17,19 +17,4 @@ services:
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ca-central-1}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-    restart: unless-stopped
-
-  frontend:
-    image: node:23-alpine
-    container_name: folio-frontend
-    working_dir: /app
-    volumes:
-      - ../frontend:/app
-    ports:
-      - "5173:5173"
-    environment:
-      - BACKEND_URL=http://backend:8000
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
-    depends_on:
-      - backend
     restart: unless-stopped
