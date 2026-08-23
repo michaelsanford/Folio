@@ -107,27 +107,27 @@ pytest
 
 ---
 
-## AWS Deployment (App Runner + S3)
+## Automated AWS Cloud Deployment (CloudFormation + App Runner)
 
-To deploy Folio to AWS with minimal moving parts:
+Folio includes Infrastructure-as-Code in `infra/cloudformation.yml` and automated deployment scripts that provision the S3 replication vault, ECR repository, IAM roles, and AWS App Runner service in `ca-central-1`.
 
-1. **Create an S3 Bucket**: Create a private S3 bucket in `ca-central-1` (e.g. `folio-storage-vault`).
-2. **Build and Push Container Image**:
-   ```bash
-   docker build -t folio:latest .
-   ```
-3. **Deploy to AWS App Runner**:
-   - Point App Runner to your container image in Amazon ECR.
-   - Set environment variables in the App Runner configuration:
-     ```env
-     SQLITE_DB_PATH=/app/data/folio.db
-     S3_BUCKET_NAME=folio-storage-vault
-     AWS_DEFAULT_REGION=ca-central-1
-     AWS_ACCESS_KEY_ID=your-key-id
-     AWS_SECRET_ACCESS_KEY=your-secret-key
-     ```
-   - Port: `8000`
-   - App Runner automatically manages HTTPS certificates, custom domains, and scales CPU to zero during idle periods.
+### 1-Command Deployment (PowerShell / Windows)
+```powershell
+.\infra\deploy.ps1 -Region ca-central-1 -StackName folio-prod
+```
+
+### 1-Command Deployment (Bash / Linux / macOS)
+```bash
+./infra/deploy.sh ca-central-1 folio-prod
+```
+
+### What the Automation Does:
+1. Provisions the private S3 Litestream Vault (`folio-vault-<account-id>-ca-central-1`) with 30-day WAL lifecycle retention.
+2. Creates the Amazon ECR container repository with image retention policies.
+3. Configures fine-grained IAM Instance Roles (App Runner assumes IAM credentials directly, eliminating hardcoded secrets).
+4. Builds the unified multi-stage container and pushes it to ECR.
+5. Deploys the AWS App Runner service with health checks on `/api/health`, automated HTTPS, and auto-pause when idle.
+6. Returns the live public HTTPS URL.
 
 ---
 
