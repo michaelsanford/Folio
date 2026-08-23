@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: folio-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../backend/data:/app/data
+    environment:
+      - SQLITE_DB_PATH=/app/data/folio.db
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME:-folio-storage-vault}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    restart: unless-stopped
+
+  frontend:
+    image: node:22-alpine
+    container_name: folio-frontend
+    working_dir: /app
+    volumes:
+      - ../frontend:/app
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - backend
+    restart: unless-stopped
