@@ -10,15 +10,6 @@ import {
   ArrowDownRight,
 } from "lucide-react";
 import ReactECharts from "echarts-for-react";
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-} from "recharts";
 import type { Account, DashboardAnalyticsResponse } from "../../types";
 
 interface DashboardViewProps {
@@ -76,6 +67,70 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         itemStyle: {
           borderWidth: 0,
           borderRadius: 3,
+        },
+      },
+    ],
+  };
+
+  // ECharts Net Worth Area Options
+  const netWorthOptions = {
+    backgroundColor: "transparent",
+    tooltip: {
+      trigger: "axis",
+      backgroundColor: "#0f172a",
+      borderColor: "#334155",
+      textStyle: { color: "#f8fafc", fontSize: 12 },
+      formatter: (params: any[]) => {
+        const item = params[0];
+        if (!item) return "";
+        return `<div class="font-medium text-slate-300">${item.name}</div><div class="text-indigo-400 mt-1 font-bold">Net Worth: $${Number(item.value).toLocaleString()}</div>`;
+      },
+    },
+    grid: {
+      left: "2%",
+      right: "3%",
+      bottom: "3%",
+      top: "10%",
+      containLabel: true,
+    },
+    xAxis: {
+      type: "category",
+      data: net_worth_history.map((h) => h.date),
+      axisLine: { lineStyle: { color: "#334155" } },
+      axisLabel: { color: "#64748b", fontSize: 11 },
+      boundaryGap: false,
+    },
+    yAxis: {
+      type: "value",
+      axisLine: { show: false },
+      splitLine: { lineStyle: { color: "#334155", opacity: 0.3 } },
+      axisLabel: {
+        color: "#64748b",
+        fontSize: 11,
+        formatter: (val: number) => `$${Math.round(val / 1000)}k`,
+      },
+    },
+    series: [
+      {
+        name: "Net Worth",
+        type: "line",
+        smooth: true,
+        showSymbol: false,
+        data: net_worth_history.map((h) => h.net_worth),
+        itemStyle: { color: "#6366f1" },
+        lineStyle: { width: 2.5, color: "#6366f1" },
+        areaStyle: {
+          color: {
+            type: "linear",
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: "rgba(99, 102, 241, 0.4)" },
+              { offset: 1, color: "rgba(99, 102, 241, 0.0)" },
+            ],
+          },
         },
       },
     ],
@@ -219,9 +274,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                   <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
                     <div
-                      className="h-full rounded-full transition-all duration-300"
+                      className="h-full rounded-full transition-all duration-500"
                       style={{
-                        width: `${cat.percentage}%`,
+                        width: `${Math.min(cat.percentage, 100)}%`,
                         backgroundColor: cat.category_color,
                       }}
                     ></div>
@@ -229,8 +284,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               ))
             ) : (
-              <div className="text-center py-10 text-slate-500 text-xs">
-                No expense transactions logged yet.
+              <div className="h-full flex items-center justify-center text-slate-500 text-xs">
+                No expense transactions this month.
               </div>
             )}
           </div>
@@ -245,36 +300,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <p className="text-xs text-slate-400 mb-4">Historical trajectory of assets vs liabilities</p>
 
           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={net_worth_history}>
-                <defs>
-                  <linearGradient id="colorNetWorth" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
-                <XAxis dataKey="date" stroke="#64748b" fontSize={11} />
-                <YAxis stroke="#64748b" fontSize={11} tickFormatter={(val) => `$${val / 1000}k`} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#0f172a",
-                    borderColor: "#334155",
-                    borderRadius: "0.5rem",
-                    fontSize: "12px",
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="net_worth"
-                  name="Net Worth"
-                  stroke="#6366f1"
-                  strokeWidth={2.5}
-                  fillOpacity={1}
-                  fill="url(#colorNetWorth)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            <ReactECharts
+              option={netWorthOptions}
+              style={{ height: "100%", width: "100%" }}
+              opts={{ renderer: "svg" }}
+            />
           </div>
         </div>
 
