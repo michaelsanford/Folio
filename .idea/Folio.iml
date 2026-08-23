@@ -3,8 +3,11 @@
   <component name="NewModuleRootManager">
     <content url="file://$PROJECT_DIR$">
       <sourceFolder url="file://$PROJECT_DIR$/backend" isTestSource="false" />
+      <sourceFolder url="file://$PROJECT_DIR$/backend/tests" isTestSource="true" />
+      <sourceFolder url="file://$PROJECT_DIR$/frontend/src" isTestSource="false" />
       <excludeFolder url="file://$PROJECT_DIR$/backend/.venv" />
-      <excludeFolder url="file://$PROJECT_DIR$/backend/venv" />
+      <excludeFolder url="file://$PROJECT_DIR$/backend/.pytest_cache" />
+      <excludeFolder url="file://$PROJECT_DIR$/backend/data" />
       <excludeFolder url="file://$PROJECT_DIR$/frontend/dist" />
       <excludeFolder url="file://$PROJECT_DIR$/frontend/node_modules" />
     </content>
