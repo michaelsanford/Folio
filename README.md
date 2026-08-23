@@ -80,11 +80,11 @@ graph TD
 ```bash
 # Navigate to backend and create virtual environment
 cd backend
-python -m venv venv
+python -m venv .venv
 
 # Activate venv (Windows PowerShell)
-.\venv\Scripts\Activate.ps1
-# (macOS/Linux: source venv/bin/activate)
+.\.venv\Scripts\Activate.ps1
+# (macOS/Linux: source .venv/bin/activate)
 
 # Install dependencies
 pip install -r requirements.txt
@@ -109,6 +109,16 @@ Open `http://localhost:5173` in your browser.
 
 ---
 
+## 💻 PyCharm / JetBrains IDE Setup
+
+Pre-configured run configurations are included in `.idea/runConfigurations/`:
+- **Full Stack (Backend + Frontend)**: Launches both the FastAPI server and Vite dev server concurrently.
+- **FastAPI Backend**: Runs `uvicorn app.main:app --reload --port 8000` with hot-reload.
+- **Vite Frontend (Dev)**: Runs `npm run dev`.
+- **Pytest (Backend)**: Runs the Pytest test suite with graphical test tree.
+
+---
+
 ## 🐳 Docker Compose Setup
 
 Run the full stack (FastAPI + Vite + SQLite + Litestream) with a single command:
@@ -125,7 +135,7 @@ Run the Pytest suite (covering ingestion, loan math, rule matching, and budgetin
 
 ```bash
 cd backend
-.\venv\Scripts\pytest.exe
+.\.venv\Scripts\pytest.exe
 ```
 
 ---
@@ -138,7 +148,7 @@ To enable real-time database replication to AWS S3:
 2. Set your environment variables in `.env` or AWS ECS/AppRunner task definition:
    ```env
    S3_BUCKET_NAME=folio-storage-vault
-   AWS_DEFAULT_REGION=us-east-1
+   AWS_DEFAULT_REGION=ca-central-1
    AWS_ACCESS_KEY_ID=your-key-id
    AWS_SECRET_ACCESS_KEY=your-secret-key
    ```

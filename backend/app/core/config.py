@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     
     # AWS Litestream / S3 Backup configs
     S3_BUCKET_NAME: str = os.getenv("S3_BUCKET_NAME", "folio-storage-vault")
-    AWS_REGION: str = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+    AWS_REGION: str = os.getenv("AWS_DEFAULT_REGION", "ca-central-1")
     
     # CORS
     CORS_ORIGINS: list[str] = [
