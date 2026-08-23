@@ -222,8 +222,8 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       {/* Top Filter Bar */}
       <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
         {/* Search & Selectors */}
-        <div className="flex flex-wrap items-center gap-3 flex-1">
-          <div className="relative min-w-[240px] flex-1 max-w-md">
+        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 flex-1 w-full">
+          <div className="relative w-full sm:flex-1 sm:min-w-[180px]">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -234,44 +234,46 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
             />
           </div>
 
-          <select
-            value={selectedAccountId}
-            onChange={(e) => {
-              setSelectedAccountId(e.target.value);
-              setPage(1);
-            }}
-            className="px-3.5 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs font-medium text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-          >
-            <option value="">All Accounts</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <select
+              value={selectedAccountId}
+              onChange={(e) => {
+                setSelectedAccountId(e.target.value);
+                setPage(1);
+              }}
+              className="flex-1 sm:flex-none px-3 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs font-medium text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            >
+              <option value="">All Accounts</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={selectedCategoryId}
-            onChange={(e) => {
-              setSelectedCategoryId(e.target.value);
-              setPage(1);
-            }}
-            className="px-3.5 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs font-medium text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-          >
-            <option value="">All Categories</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+            <select
+              value={selectedCategoryId}
+              onChange={(e) => {
+                setSelectedCategoryId(e.target.value);
+                setPage(1);
+              }}
+              className="flex-1 sm:flex-none px-3 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs font-medium text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            >
+              <option value="">All Categories</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center justify-end gap-3 shrink-0 w-full sm:w-auto">
           <button
             onClick={() => setIsNewTxnOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-500/20 transition-all"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-500/20 transition-all"
           >
             <Plus className="w-4 h-4" /> Add Transaction
           </button>
@@ -280,7 +282,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
       {/* Batch Action Toolbar */}
       {selectedTxnIds.size > 0 && (
-        <div className="p-4 rounded-xl bg-indigo-950/40 border border-indigo-500/40 shadow-lg flex flex-wrap items-center justify-between gap-3 animate-in fade-in">
+        <div className="p-4 rounded-xl bg-indigo-950/40 border border-indigo-500/40 shadow-lg flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 animate-in fade-in">
           <div className="flex items-center gap-2 text-xs text-indigo-200">
             <span className="font-bold text-white px-2 py-0.5 rounded bg-indigo-600">
               {selectedTxnIds.size}
@@ -288,7 +290,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
             <span>transactions selected</span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
             <select
               value={batchCategory}
               onChange={(e) => setBatchCategory(e.target.value)}
@@ -304,10 +306,10 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
             <input
               type="text"
-              placeholder="Override Payee Name (Optional)"
+              placeholder="Override Payee"
               value={batchPayee}
               onChange={(e) => setBatchPayee(e.target.value)}
-              className="px-3 py-1.5 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg text-xs placeholder:text-slate-500"
+              className="px-3 py-1.5 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg text-xs placeholder:text-slate-500 flex-1 sm:flex-none min-w-[120px]"
             />
 
             <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
@@ -320,26 +322,128 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Save as Rule
             </label>
 
-            <button
-              onClick={handleExecuteBatchCategorize}
-              disabled={!batchCategory}
-              className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold"
-            >
-              Apply Batch
-            </button>
-            <button
-              onClick={() => setSelectedTxnIds(new Set())}
-              className="px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200"
-            >
-              Clear
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExecuteBatchCategorize}
+                disabled={!batchCategory}
+                className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold"
+              >
+                Apply Batch
+              </button>
+              <button
+                onClick={() => setSelectedTxnIds(new Set())}
+                className="px-2.5 py-1.5 text-xs text-slate-400 hover:text-slate-200"
+              >
+                Clear
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* High-density Transactions Table */}
+      {/* Transactions Container */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden shadow-xl">
-        <div className="overflow-x-auto">
+        {/* Mobile Feed View (< md screen) */}
+        <div className="block md:hidden divide-y divide-slate-800/60 font-medium">
+          {isLoading ? (
+            <div className="p-8 text-center text-slate-400">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500 mx-auto mb-2"></div>
+              Loading ledger...
+            </div>
+          ) : transactions.length === 0 ? (
+            <div className="p-8 text-center text-slate-500 text-xs">
+              No transactions found matching criteria.
+            </div>
+          ) : (
+            transactions.map((txn) => {
+              const isChecked = selectedTxnIds.has(txn.id);
+              const isSplit = txn.splits && txn.splits.length > 1;
+              const matchedAccount = accounts.find((a) => a.id === txn.account_id);
+
+              return (
+                <div
+                  key={txn.id}
+                  className={`p-3.5 flex items-start gap-3 transition-colors ${
+                    isChecked ? "bg-slate-800/40" : "hover:bg-slate-800/20"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => handleToggleSelectRow(txn.id)}
+                    className="mt-1 rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500 shrink-0"
+                  />
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-slate-100 truncate">
+                          {txn.normalized_payee || txn.raw_payee}
+                        </div>
+                        {txn.normalized_payee && txn.normalized_payee !== txn.raw_payee && (
+                          <div className="text-[10px] text-slate-500 font-mono truncate">
+                            {txn.raw_payee}
+                          </div>
+                        )}
+                      </div>
+                      <div
+                        className={`font-mono font-bold text-xs shrink-0 ${
+                          txn.amount >= 0 ? "text-emerald-400" : "text-slate-100"
+                        }`}
+                      >
+                        {txn.amount >= 0 ? "+" : ""}${Math.abs(txn.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2 text-[10px]">
+                      <span className="text-slate-400 font-mono">
+                        {txn.transaction_date?.split("T")[0]}
+                      </span>
+                      <span className="text-slate-600">•</span>
+                      <span className="font-semibold text-slate-300 truncate max-w-[100px]">
+                        {matchedAccount?.name || "Account"}
+                      </span>
+                      <span className="text-slate-600">•</span>
+
+                      {isSplit ? (
+                        <button
+                          onClick={() => handleOpenSplitModal(txn)}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30"
+                        >
+                          <Layers className="w-2.5 h-2.5" /> Split ({txn.splits.length})
+                        </button>
+                      ) : (
+                        <select
+                          value={txn.splits?.[0]?.category_id || ""}
+                          onChange={(e) => handleInlineCategoryChange(txn, e.target.value)}
+                          className="bg-slate-800 border border-slate-700/80 text-slate-200 text-[10px] rounded px-1.5 py-0.5 focus:ring-1 focus:ring-indigo-500 focus:outline-none max-w-[120px] truncate"
+                        >
+                          <option value="">Uncategorized</option>
+                          {categories.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      <button
+                        onClick={() => handleOpenSplitModal(txn)}
+                        title="Split transaction"
+                        className="ml-auto p-1 text-slate-400 hover:text-indigo-400"
+                      >
+                        <Split className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop High-density Transactions Table (>= md screen) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-900/90 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
               <tr>
