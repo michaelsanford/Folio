@@ -108,30 +108,30 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
             <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
               <span className="text-xs text-slate-400 font-medium uppercase">Current Balance</span>
               <div className="mt-2 text-xl sm:text-2xl font-bold text-slate-100">
-                ${scheduleData.current_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                ${(scheduleData.current_balance ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
               </div>
               <div className="text-[11px] text-slate-400 mt-1">
-                Orig. Principal: ${scheduleData.original_principal.toLocaleString()}
+                Orig. Principal: ${(scheduleData.original_principal ?? 0).toLocaleString()}
               </div>
             </div>
 
             <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
               <span className="text-xs text-slate-400 font-medium uppercase">Interest Rate (APR)</span>
               <div className="mt-2 text-xl sm:text-2xl font-bold text-amber-400">
-                {scheduleData.interest_rate}%
+                {scheduleData.interest_rate ?? 0}%
               </div>
               <div className="text-[11px] text-slate-400 mt-1">
-                Total Interest: ${scheduleData.total_interest_remaining.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                Total Interest: ${(scheduleData.total_interest ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}
               </div>
             </div>
 
             <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
               <span className="text-xs text-slate-400 font-medium uppercase">Monthly Payment</span>
               <div className="mt-2 text-xl sm:text-2xl font-bold text-emerald-400">
-                ${scheduleData.monthly_payment.toFixed(2)}
+                ${(scheduleData.monthly_payment ?? 0).toFixed(2)}
               </div>
               <div className="text-[11px] text-slate-400 mt-1">
-                {scheduleData.escrow_payment > 0
+                {(scheduleData.escrow_payment ?? 0) > 0
                   ? `Incl. $${scheduleData.escrow_payment.toFixed(0)} escrow/taxes`
                   : "Principal + Interest"}
               </div>
@@ -140,10 +140,10 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
             <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
               <span className="text-xs text-slate-400 font-medium uppercase">Projected Payoff</span>
               <div className="mt-2 text-xl sm:text-2xl font-bold text-indigo-400">
-                {scheduleData.projected_payoff_date}
+                {scheduleData.payoff_date || "-"}
               </div>
               <div className="text-[11px] text-slate-400 mt-1">
-                {scheduleData.remaining_months} payments remaining
+                {scheduleData.loan_term_months || scheduleData.schedule?.length || 0} total payments
               </div>
             </div>
           </div>
