@@ -1,10 +1,13 @@
 [run]
-source = app
+source = 
+    app
+    P:/github.com/michaelsanford/Folio/backend/app
 branch = True
 omit =
     tests/*
     .venv/*
     venv/*
+    */site-packages/*
 
 [report]
 show_missing = True
