@@ -24,12 +24,17 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
-    let errorDetail = "An unexpected error occurred";
+    let errorDetail = `HTTP ${res.status} ${res.statusText}`;
     try {
-      const errJson = await res.json();
-      errorDetail = errJson.detail || JSON.stringify(errJson);
+      const text = await res.text();
+      try {
+        const errJson = JSON.parse(text);
+        errorDetail = errJson.detail || JSON.stringify(errJson);
+      } catch {
+        errorDetail = text || errorDetail;
+      }
     } catch {
-      errorDetail = await res.text();
+      // Keep default status message
     }
     throw new Error(errorDetail);
   }
