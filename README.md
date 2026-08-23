@@ -73,8 +73,14 @@ graph TD
 ## 🚀 Quick Start (Local Development)
 
 ### 1. Prerequisites
-- **Python 3.12+**
-- **Node.js 20+** and **npm**
+- **Python 3.13+**
+- **Node.js 23+** and **npm** (or Node 22 LTS)
+
+### 2. Dev Containers & GitHub Codespaces 🐳
+Folio includes a pre-configured [`.devcontainer`](file:///.devcontainer/devcontainer.json) for 1-click cloud or container development with **Python 3.13**, **Node 23**, **SQLite**, and **Litestream**:
+- **GitHub Codespaces**: Open this repo in Codespaces $\to$ starts in seconds with all dependencies and ports forwarded.
+- **PyCharm Pro / IntelliJ**: Open with **Dev Containers** via JetBrains Gateway.
+- **VS Code**: Press `F1` $\to$ *Dev Containers: Reopen in Container*.
 
 ### 2. Backend Setup
 ```bash

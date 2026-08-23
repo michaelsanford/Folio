@@ -1,0 +1,48 @@
+{
+  "name": "Folio Full-Stack DevContainer (Python 3.13 + Node 23)",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "23",
+      "nodeGypDependencies": true
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "forwardPorts": [8000, 5173],
+  "portsAttributes": {
+    "8000": {
+      "label": "FastAPI Backend",
+      "onAutoForward": "notify"
+    },
+    "5173": {
+      "label": "Vite Frontend",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "pip install -r backend/requirements.txt && cd frontend && npm install",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.testing.pytestArgs": ["backend/tests"],
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "bradlc.vscode-tailwindcss",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
+    },
+    "jetbrains": {
+      "backend": "PyCharm"
+    }
+  },
+  "remoteUser": "vscode"
+}
