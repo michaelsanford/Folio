@@ -20,7 +20,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: node:22-alpine
+    image: node:23-alpine
     container_name: folio-frontend
     working_dir: /app
     volumes:
