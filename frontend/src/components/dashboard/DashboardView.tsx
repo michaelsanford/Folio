@@ -84,21 +84,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Top Banner KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Net Worth */}
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg relative overflow-hidden">
+        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg relative overflow-hidden">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
               Net Worth
             </span>
             <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
-              <DollarSign className="w-5 h-5" />
+              <DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
-          <div className="mt-3 text-2xl font-bold text-slate-100">
+          <div className="mt-2 sm:mt-3 text-xl sm:text-2xl font-bold text-slate-100">
             ${analytics.current_net_worth.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-          <div className="mt-1.5 flex items-center text-xs text-slate-400 gap-2">
+          <div className="mt-1.5 flex flex-wrap items-center text-xs text-slate-400 gap-1.5 sm:gap-2">
             <span className="text-emerald-400 font-medium">Assets: ${analytics.total_assets.toLocaleString()}</span>
             <span>•</span>
             <span className="text-rose-400 font-medium">Debt: ${analytics.total_liabilities.toLocaleString()}</span>
@@ -106,48 +106,48 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Monthly Income */}
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
               Monthly Income
             </span>
             <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
-              <ArrowUpRight className="w-5 h-5" />
+              <ArrowUpRight className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
-          <div className="mt-3 text-2xl font-bold text-emerald-400">
+          <div className="mt-2 sm:mt-3 text-xl sm:text-2xl font-bold text-emerald-400">
             +${monthly_cash_flow.total_income.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           <div className="mt-1.5 text-xs text-slate-400">Current calendar month</div>
         </div>
 
         {/* Monthly Expenses */}
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
               Monthly Expenses
             </span>
             <div className="p-2 rounded-xl bg-rose-500/10 text-rose-400">
-              <ArrowDownRight className="w-5 h-5" />
+              <ArrowDownRight className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
-          <div className="mt-3 text-2xl font-bold text-rose-400">
+          <div className="mt-2 sm:mt-3 text-xl sm:text-2xl font-bold text-rose-400">
             -${monthly_cash_flow.total_expenses.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           <div className="mt-1.5 text-xs text-slate-400">Fixed + Variable Outflows</div>
         </div>
 
         {/* Net Savings & Rate */}
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
               Net Savings
             </span>
             <div className="p-2 rounded-xl bg-violet-500/10 text-violet-400">
-              <PiggyBank className="w-5 h-5" />
+              <PiggyBank className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
-          <div className="mt-3 text-2xl font-bold text-violet-300">
+          <div className="mt-2 sm:mt-3 text-xl sm:text-2xl font-bold text-violet-300">
             ${monthly_cash_flow.net_savings.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           <div className="mt-1.5 flex items-center gap-1.5 text-xs">
@@ -162,10 +162,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Sankey Flow & Net Worth Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Cash Flow Sankey Diagram (2 cols) */}
-        <div className="lg:col-span-2 p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-xl">
+        <div className="lg:col-span-2 p-4 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-xl">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-base font-semibold text-slate-200">Cash Flow Stream (Sankey)</h2>
+              <h2 className="text-sm sm:text-base font-semibold text-slate-200">Cash Flow Stream (Sankey)</h2>
               <p className="text-xs text-slate-400 mt-0.5">
                 Visual flow of income into category expenditures and net savings
               </p>

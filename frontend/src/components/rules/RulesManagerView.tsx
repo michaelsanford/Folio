@@ -102,9 +102,9 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({ categories }
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
         <div>
-          <h1 className="text-xl font-bold text-slate-100">Auto-Categorization Rules</h1>
+          <h1 className="text-lg sm:text-xl font-bold text-slate-100">Auto-Categorization Rules</h1>
           <p className="text-xs text-slate-400 mt-1">
             Deterministic matching rules executed during statement ingestion and batch imports.
           </p>
@@ -112,14 +112,14 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({ categories }
 
         <button
           onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-500/20"
+          className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-500/20 w-full sm:w-auto"
         >
           <Plus className="w-4 h-4" /> Create New Rule
         </button>
       </div>
 
       {/* Live Matcher Sandbox */}
-      <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-xl space-y-4">
+      <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-xl space-y-4">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
           <Sparkles className="w-4 h-4 text-amber-400" />
           <span>Interactive Rule Testing Sandbox</span>
@@ -128,28 +128,30 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({ categories }
           Type a raw bank statement string below to test if your active rules match and what category/payee will be assigned.
         </p>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5">
           <input
             type="text"
             placeholder="e.g. SQ *BLUE BOTTLE COFFEE #12"
             value={testPayee}
             onChange={(e) => setTestPayee(e.target.value)}
-            className="flex-1 min-w-[280px] px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-slate-200"
+            className="flex-1 w-full sm:w-auto sm:min-w-[220px] px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-slate-200"
           />
-          <input
-            type="number"
-            step="0.01"
-            placeholder="Amount"
-            value={testAmount}
-            onChange={(e) => setTestAmount(parseFloat(e.target.value) || 0)}
-            className="w-28 px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-slate-200 font-mono"
-          />
-          <button
-            onClick={handleTestMatch}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30 rounded-xl text-xs font-semibold"
-          >
-            <Play className="w-3.5 h-3.5" /> Test Match
-          </button>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              step="0.01"
+              placeholder="Amount"
+              value={testAmount}
+              onChange={(e) => setTestAmount(parseFloat(e.target.value) || 0)}
+              className="w-24 sm:w-28 px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-slate-200 font-mono"
+            />
+            <button
+              onClick={handleTestMatch}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30 rounded-xl text-xs font-semibold"
+            >
+              <Play className="w-3.5 h-3.5" /> Test Match
+            </button>
+          </div>
         </div>
 
         {testResult && (
@@ -161,7 +163,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({ categories }
             }`}
           >
             {testResult.matched ? (
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
                 <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
                 <div>
                   <div className="font-bold">Match Found!</div>
@@ -182,9 +184,60 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({ categories }
         )}
       </div>
 
-      {/* Rules Table */}
+      {/* Rules Container */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden shadow-xl">
-        <div className="overflow-x-auto">
+        {/* Mobile Rules Feed (< md) */}
+        <div className="block md:hidden divide-y divide-slate-800/60 font-medium">
+          {isLoading ? (
+            <div className="p-8 text-center text-slate-400 text-xs">Loading rules...</div>
+          ) : rules.length === 0 ? (
+            <div className="p-8 text-center text-slate-500 text-xs">No categorization rules created yet.</div>
+          ) : (
+            rules.map((rule) => {
+              const cat = categories.find((c) => c.id === rule.category_id);
+              return (
+                <div key={rule.id} className="p-3.5 space-y-2 hover:bg-slate-800/30">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[10px] text-slate-400">#{rule.priority}</span>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-semibold bg-slate-800 text-slate-300">
+                        {rule.pattern_type}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteRule(rule.id)}
+                      className="p-1 text-slate-400 hover:text-rose-400"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="font-mono text-xs text-indigo-300 font-bold break-all">
+                    {rule.pattern}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-1 border-t border-slate-800/40">
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: cat?.color || "#6366f1" }}
+                      ></span>
+                      <span className="text-slate-200 text-[11px]">{cat?.name || "Unknown"}</span>
+                    </div>
+                    {rule.normalized_payee_override && (
+                      <span className="text-[11px] text-slate-400">
+                        $\to$ <b className="text-slate-200">{rule.normalized_payee_override}</b>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop Rules Table (>= md) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-900 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
               <tr>

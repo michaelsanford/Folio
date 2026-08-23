@@ -71,9 +71,9 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header & Loan Account Tabs */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
         <div>
-          <h1 className="text-xl font-bold text-slate-100">Loan & Mortgage Amortization</h1>
+          <h1 className="text-lg sm:text-xl font-bold text-slate-100">Loan & Mortgage Amortization</h1>
           <p className="text-xs text-slate-400 mt-1">
             Track principal reduction, interest amortization, escrow splits, and payoff projections.
           </p>
@@ -84,7 +84,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
             <button
               key={loan.id}
               onClick={() => setSelectedLoanId(loan.id)}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+              className={`px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs font-semibold transition-all ${
                 selectedLoanId === loan.id
                   ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20"
                   : "bg-slate-800/80 text-slate-400 hover:text-slate-200"
@@ -105,9 +105,9 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
         <>
           {/* Key Loan Metrics */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
               <span className="text-xs text-slate-400 font-medium uppercase">Current Balance</span>
-              <div className="mt-2 text-2xl font-bold text-slate-100">
+              <div className="mt-2 text-xl sm:text-2xl font-bold text-slate-100">
                 ${scheduleData.current_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
               </div>
               <div className="text-[11px] text-slate-400 mt-1">
@@ -115,42 +115,42 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
               </div>
             </div>
 
-            <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
               <span className="text-xs text-slate-400 font-medium uppercase">Interest Rate (APR)</span>
-              <div className="mt-2 text-2xl font-bold text-amber-400">
+              <div className="mt-2 text-xl sm:text-2xl font-bold text-amber-400">
                 {scheduleData.interest_rate}%
               </div>
               <div className="text-[11px] text-slate-400 mt-1">
-                Term: {scheduleData.loan_term_months} Months ({Math.round(scheduleData.loan_term_months / 12)} Years)
+                Total Interest: ${scheduleData.total_interest_remaining.toLocaleString("en-US", { maximumFractionDigits: 0 })}
               </div>
             </div>
 
-            <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
-              <span className="text-xs text-slate-400 font-medium uppercase">Monthly Payment (P&I)</span>
-              <div className="mt-2 text-2xl font-bold text-indigo-400">
-                ${scheduleData.monthly_payment.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-              </div>
-              {scheduleData.escrow_payment > 0 && (
-                <div className="text-[11px] text-slate-400 mt-1">
-                  + ${scheduleData.escrow_payment} Escrow (Taxes & Ins.)
-                </div>
-              )}
-            </div>
-
-            <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
-              <span className="text-xs text-slate-400 font-medium uppercase">Estimated Payoff</span>
-              <div className="mt-2 text-2xl font-bold text-emerald-400">
-                {scheduleData.payoff_date}
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+              <span className="text-xs text-slate-400 font-medium uppercase">Monthly Payment</span>
+              <div className="mt-2 text-xl sm:text-2xl font-bold text-emerald-400">
+                ${scheduleData.monthly_payment.toFixed(2)}
               </div>
               <div className="text-[11px] text-slate-400 mt-1">
-                Total Interest: ${scheduleData.total_interest.toLocaleString()}
+                {scheduleData.escrow_payment > 0
+                  ? `Incl. $${scheduleData.escrow_payment.toFixed(0)} escrow/taxes`
+                  : "Principal + Interest"}
+              </div>
+            </div>
+
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+              <span className="text-xs text-slate-400 font-medium uppercase">Projected Payoff</span>
+              <div className="mt-2 text-xl sm:text-2xl font-bold text-indigo-400">
+                {scheduleData.projected_payoff_date}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-1">
+                {scheduleData.remaining_months} payments remaining
               </div>
             </div>
           </div>
 
           {/* Payment Breakdown Chart */}
-          <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-xl">
-            <h2 className="text-base font-semibold text-slate-200 mb-1">
+          <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-xl">
+            <h2 className="text-sm sm:text-base font-semibold text-slate-200 mb-1">
               Payment Composition (Upcoming 12 Months)
             </h2>
             <p className="text-xs text-slate-400 mb-4">
@@ -182,16 +182,36 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
             </div>
           </div>
 
-          {/* Full Schedule Table */}
+          {/* Full Schedule */}
           <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden shadow-xl">
             <div className="p-4 border-b border-slate-800 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-slate-200">Full Amortization Schedule</h2>
               <span className="text-xs text-slate-400 font-mono">
-                {scheduleData.schedule.length} Total Periods
+                {scheduleData.schedule.length} Periods
               </span>
             </div>
 
-            <div className="overflow-x-auto max-h-96">
+            {/* Mobile Schedule Feed (< md) */}
+            <div className="block md:hidden divide-y divide-slate-800/60 font-mono text-xs max-h-96 overflow-y-auto">
+              {scheduleData.schedule.map((row) => (
+                <div key={row.period} className="p-3 space-y-1.5 hover:bg-slate-800/30">
+                  <div className="flex items-center justify-between font-bold">
+                    <span className="text-slate-400">Period #{row.period} • {row.payment_date}</span>
+                    <span className="text-slate-100">${row.total_payment.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
+                    <span>
+                      <b className="text-blue-400">${row.principal.toFixed(0)}</b> P / <b className="text-rose-400">${row.interest.toFixed(0)}</b> I
+                      {row.escrow > 0 && <span> / <b className="text-purple-400">${row.escrow.toFixed(0)}</b> E</span>}
+                    </span>
+                    <span>Bal: ${row.remaining_balance.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table (>= md) */}
+            <div className="hidden md:block overflow-x-auto max-h-96">
               <table className="w-full text-left text-xs">
                 <thead className="sticky top-0 bg-slate-900 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
                   <tr>
