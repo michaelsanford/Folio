@@ -49,27 +49,36 @@ graph LR
 - Python 3.13+
 - Node.js 23+ and npm (or Node 22 LTS)
 
-### 2. Backend Setup
-```bash
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+### 2. 1-Command Local Development
+Launch both the FastAPI backend and Vite frontend with live hot-reloading:
+
+**Windows (PowerShell):**
+```powershell
+.\dev.ps1
 ```
 
-The API docs will be available at:
-- Interactive Swagger UI: `http://localhost:8000/api/docs`
-- ReDoc: `http://localhost:8000/api/redoc`
-
-### 3. Frontend Setup
+**macOS / Linux (Bash):**
 ```bash
-cd frontend
-npm install
-npm run dev
+./dev.sh
 ```
 
-Open `http://localhost:5173` in your browser.
+This automatically initializes the environment, launches the backend on `http://localhost:8000`, the frontend on `http://localhost:5173`, and opens your browser.
+
+---
+
+## Running Automated Tests
+
+Run the complete test suite (backend Pytest coverage + frontend TypeScript build check) in 1 command:
+
+**Windows (PowerShell):**
+```powershell
+.\test.ps1
+```
+
+**macOS / Linux (Bash):**
+```bash
+./test.sh
+```
 
 ---
 
@@ -88,22 +97,11 @@ Access the application at `http://localhost:8000`.
 ## PyCharm / JetBrains IDE Setup
 
 Pre-configured run configurations are included in `.idea/runConfigurations/`:
-- **docker-compose up**: Starts the unified stack inside Docker with `--build`.
 - **Full Stack (Backend + Frontend)**: Launches both the FastAPI server and Vite dev server concurrently.
 - **FastAPI Backend**: Runs `uvicorn app.main:app --reload --port 8000` with hot-reload.
 - **Vite Frontend (Dev)**: Runs `npm run dev`.
 - **Pytest (Backend)**: Runs the Pytest test suite with graphical test tree.
-
----
-
-## Running Automated Tests
-
-Run the Pytest suite (covering ingestion, loan math, rule matching, and budgeting):
-
-```bash
-cd backend
-pytest
-```
+- **docker-compose up**: Starts the unified stack inside Docker with `--build`.
 
 ---
 

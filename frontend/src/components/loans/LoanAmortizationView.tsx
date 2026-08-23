@@ -9,16 +9,7 @@ import {
   Calculator,
   ChevronRight,
 } from "lucide-react";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  Legend,
-} from "recharts";
+import ReactECharts from "echarts-for-react";
 import type { Account, AmortizationScheduleResponse } from "../../types";
 import { api } from "../../services/api";
 
@@ -38,62 +29,147 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (selectedLoanId) {
+    if (!selectedLoanId) return;
+
+    const fetchSchedule = async () => {
       setIsLoading(true);
-      api
-        .getAmortization(selectedLoanId)
-        .then((data) => setScheduleData(data))
-        .catch((err) => console.error(err))
-        .finally(() => setIsLoading(false));
-    }
+      try {
+        const data = await api.getAmortizationSchedule(selectedLoanId);
+        setScheduleData(data);
+      } catch (err) {
+        console.error("Failed to load loan amortization schedule:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchSchedule();
   }, [selectedLoanId]);
 
   if (loanAccounts.length === 0) {
     return (
-      <div className="p-12 text-center rounded-2xl bg-slate-900/60 border border-slate-800 text-slate-400">
-        <Landmark className="w-12 h-12 text-slate-500 mx-auto mb-3" />
-        <h3 className="text-base font-semibold text-slate-200">No Loan Accounts Found</h3>
-        <p className="text-xs text-slate-400 mt-1">
-          Add a Mortgage or Vehicle Loan in the Accounts tab to generate full amortization schedules and automated payment split calculations.
+      <div className="p-12 text-center rounded-2xl bg-slate-900/60 border border-slate-800">
+        <Landmark className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+        <h3 className="text-base font-medium text-slate-300">No Liability Accounts Found</h3>
+        <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+          Add a Mortgage, Vehicle Loan, or Liability account under Accounts to compute amortization schedules.
         </p>
       </div>
     );
   }
 
-  // Sample data for the next 12 months chart
-  const next12Months = scheduleData?.schedule.slice(0, 12).map((row) => ({
-    date: row.payment_date.substring(0, 7),
-    Principal: row.principal,
-    Interest: row.interest,
-    Escrow: row.escrow,
-  })) || [];
+  // Pre-calculate next 12 months for breakdown chart
+  const next12Months =
+    scheduleData?.schedule.slice(0, 12).map((row) => ({
+      date: row.payment_date.slice(5),
+      Principal: row.principal,
+      Interest: row.interest,
+      Escrow: row.escrow,
+    })) || [];
+
+  const hasEscrow = (scheduleData?.escrow_payment ?? 0) > 0;
+
+  // ECharts Stacked Bar Options
+  const barOptions = {
+    backgroundColor: "transparent",
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      backgroundColor: "#0f172a",
+      borderColor: "#334155",
+      textStyle: { color: "#f8fafc", fontSize: 12 },
+      formatter: (params: any[]) => {
+        let total = 0;
+        let content = `<div class="font-semibold text-slate-200 mb-1">${params[0]?.name}</div>`;
+        params.forEach((p) => {
+          total += Number(p.value || 0);
+          content += `<div class="flex items-center justify-between gap-4 text-xs">
+            <span style="color:${p.color}">● ${p.seriesName}:</span>
+            <b>$${Number(p.value).toFixed(2)}</b>
+          </div>`;
+        });
+        content += `<div class="border-t border-slate-700 mt-1 pt-1 flex justify-between font-bold text-xs text-slate-100">
+          <span>Total Payment:</span>
+          <span>$${total.toFixed(2)}</span>
+        </div>`;
+        return content;
+      },
+    },
+    legend: {
+      top: "0%",
+      right: "4%",
+      textStyle: { color: "#94a3b8", fontSize: 11 },
+    },
+    grid: {
+      left: "2%",
+      right: "3%",
+      bottom: "3%",
+      top: "14%",
+      containLabel: true,
+    },
+    xAxis: {
+      type: "category",
+      data: next12Months.map((m) => m.date),
+      axisLine: { lineStyle: { color: "#334155" } },
+      axisLabel: { color: "#64748b", fontSize: 11 },
+    },
+    yAxis: {
+      type: "value",
+      axisLine: { show: false },
+      splitLine: { lineStyle: { color: "#334155", opacity: 0.3 } },
+      axisLabel: {
+        color: "#64748b",
+        fontSize: 11,
+        formatter: (val: number) => `$${val}`,
+      },
+    },
+    series: [
+      {
+        name: "Principal",
+        type: "bar",
+        stack: "total",
+        itemStyle: { color: "#3b82f6" },
+        data: next12Months.map((m) => m.Principal),
+      },
+      {
+        name: "Interest",
+        type: "bar",
+        stack: "total",
+        itemStyle: { color: "#ef4444" },
+        data: next12Months.map((m) => m.Interest),
+      },
+      ...(hasEscrow
+        ? [
+            {
+              name: "Escrow",
+              type: "bar",
+              stack: "total",
+              itemStyle: { color: "#8b5cf6" },
+              data: next12Months.map((m) => m.Escrow),
+            },
+          ]
+        : []),
+    ],
+  };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Header & Loan Account Tabs */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
-        <div>
-          <h1 className="text-lg sm:text-xl font-bold text-slate-100">Loan & Mortgage Amortization</h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Track principal reduction, interest amortization, escrow splits, and payoff projections.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {loanAccounts.map((loan) => (
-            <button
-              key={loan.id}
-              onClick={() => setSelectedLoanId(loan.id)}
-              className={`px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs font-semibold transition-all ${
-                selectedLoanId === loan.id
-                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20"
-                  : "bg-slate-800/80 text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              {loan.name}
-            </button>
-          ))}
-        </div>
+      {/* Account Selector Tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-800">
+        {loanAccounts.map((acc) => (
+          <button
+            key={acc.id}
+            onClick={() => setSelectedLoanId(acc.id)}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-2 ${
+              selectedLoanId === acc.id
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                : "bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-slate-800"
+            }`}
+          >
+            <Landmark className="w-3.5 h-3.5" />
+            {acc.name}
+          </button>
+        ))}
       </div>
 
       {isLoading ? (
@@ -158,27 +234,11 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
             </p>
 
             <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={next12Months}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.4} />
-                  <XAxis dataKey="date" stroke="#64748b" fontSize={11} />
-                  <YAxis stroke="#64748b" fontSize={11} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#0f172a",
-                      borderColor: "#334155",
-                      borderRadius: "0.5rem",
-                      fontSize: "12px",
-                    }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: "12px" }} />
-                  <Bar dataKey="Principal" stackId="a" fill="#3b82f6" />
-                  <Bar dataKey="Interest" stackId="a" fill="#ef4444" />
-                  {scheduleData.escrow_payment > 0 && (
-                    <Bar dataKey="Escrow" stackId="a" fill="#8b5cf6" />
-                  )}
-                </BarChart>
-              </ResponsiveContainer>
+              <ReactECharts
+                option={barOptions}
+                style={{ height: "100%", width: "100%" }}
+                opts={{ renderer: "svg" }}
+              />
             </div>
           </div>
 
@@ -199,50 +259,51 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
                     <span className="text-slate-400">Period #{row.period} • {row.payment_date}</span>
                     <span className="text-slate-100">${row.total_payment.toFixed(2)}</span>
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span>
-                      <b className="text-blue-400">${row.principal.toFixed(0)}</b> P / <b className="text-rose-400">${row.interest.toFixed(0)}</b> I
-                      {row.escrow > 0 && <span> / <b className="text-purple-400">${row.escrow.toFixed(0)}</b> E</span>}
-                    </span>
-                    <span>Bal: ${row.remaining_balance.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
+                  <div className="grid grid-cols-3 gap-1 text-[11px] text-slate-400">
+                    <div>
+                      <span className="text-[9px] uppercase block text-slate-500">Principal</span>
+                      <span className="text-blue-400 font-medium">${row.principal.toFixed(2)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] uppercase block text-slate-500">Interest</span>
+                      <span className="text-rose-400 font-medium">${row.interest.toFixed(2)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] uppercase block text-slate-500">Balance</span>
+                      <span className="text-slate-200 font-medium">${row.remaining_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Desktop Table (>= md) */}
+            {/* Desktop Schedule Table (>= md) */}
             <div className="hidden md:block overflow-x-auto max-h-96">
-              <table className="w-full text-left text-xs">
-                <thead className="sticky top-0 bg-slate-900 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+              <table className="w-full text-left text-xs font-mono">
+                <thead className="bg-slate-950/60 text-slate-400 sticky top-0 border-b border-slate-800">
                   <tr>
-                    <th className="p-3">Period</th>
-                    <th className="p-3">Payment Date</th>
-                    <th className="p-3 text-right">Payment</th>
-                    <th className="p-3 text-right">Principal</th>
-                    <th className="p-3 text-right">Interest</th>
-                    <th className="p-3 text-right">Escrow</th>
-                    <th className="p-3 text-right">Remaining Balance</th>
+                    <th className="py-2.5 px-4">Period</th>
+                    <th className="py-2.5 px-4">Date</th>
+                    <th className="py-2.5 px-4">Total Payment</th>
+                    <th className="py-2.5 px-4 text-blue-400">Principal</th>
+                    <th className="py-2.5 px-4 text-rose-400">Interest</th>
+                    <th className="py-2.5 px-4 text-violet-400">Escrow</th>
+                    <th className="py-2.5 px-4">Remaining Balance</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 font-mono font-medium">
+                <tbody className="divide-y divide-slate-800/40 text-slate-300">
                   {scheduleData.schedule.map((row) => (
-                    <tr key={row.period} className="hover:bg-slate-800/40 text-slate-300">
-                      <td className="p-3 text-slate-400">#{row.period}</td>
-                      <td className="p-3">{row.payment_date}</td>
-                      <td className="p-3 text-right font-bold text-slate-100">
+                    <tr key={row.period} className="hover:bg-slate-800/30 transition-colors">
+                      <td className="py-2 px-4 text-slate-500">#{row.period}</td>
+                      <td className="py-2 px-4">{row.payment_date}</td>
+                      <td className="py-2 px-4 font-semibold text-slate-100">
                         ${row.total_payment.toFixed(2)}
                       </td>
-                      <td className="p-3 text-right text-blue-400">
-                        ${row.principal.toFixed(2)}
-                      </td>
-                      <td className="p-3 text-right text-rose-400">
-                        ${row.interest.toFixed(2)}
-                      </td>
-                      <td className="p-3 text-right text-purple-400">
-                        ${row.escrow.toFixed(2)}
-                      </td>
-                      <td className="p-3 text-right font-bold text-slate-200">
-                        ${row.remaining_balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <td className="py-2 px-4 text-blue-400">${row.principal.toFixed(2)}</td>
+                      <td className="py-2 px-4 text-rose-400">${row.interest.toFixed(2)}</td>
+                      <td className="py-2 px-4 text-violet-400">${row.escrow.toFixed(2)}</td>
+                      <td className="py-2 px-4 font-bold text-slate-200">
+                        ${row.remaining_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                       </td>
                     </tr>
                   ))}
