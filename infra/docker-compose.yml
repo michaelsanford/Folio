@@ -13,7 +13,7 @@ services:
     environment:
       - SQLITE_DB_PATH=/app/data/folio.db
       - S3_BUCKET_NAME=${S3_BUCKET_NAME:-folio-storage-vault}
-      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ca-central-1}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     restart: unless-stopped

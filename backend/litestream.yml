@@ -5,6 +5,6 @@ dbs:
       - type: s3
         bucket: ${S3_BUCKET_NAME}
         path: db-replicas/folio.db
-        region: ${AWS_DEFAULT_REGION:-us-east-1}
+        region: ${AWS_DEFAULT_REGION:-ca-central-1}
         sync-interval: 1s
         retention: 720h # 30 days of point-in-time recovery
