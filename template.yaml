@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Folio - Ultra-Minimalist Serverless SAM Application (FastAPI + React 19 PWA + SQLite + Auth) in ca-central-1
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: prod
+    Description: Stage environment name (e.g. prod, staging, dev)
+
+  MasterPassword:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: Optional master passphrase for vault authentication (can also be configured on initial launch)
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 1024
+    Architectures:
+      - arm64
+
+Resources:
+  # 1. Private S3 Vault for Database Snapshots and Statement Archives
+  FolioStorageVault:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub 'folio-vault-${AWS::AccountId}-${AWS::Region}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldSnapshots
+            Status: Enabled
+            Prefix: database/
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+
+  # 2. Serverless Function (FastAPI + Embedded PWA via AWS Lambda Web Adapter)
+  FolioServerlessFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ReservedConcurrentExecutions: 1
+      Environment:
+        Variables:
+          AWS_LWA_PORT: "8000"
+          AWS_LWA_ASYNC_INIT: "true"
+          SQLITE_DB_PATH: "/tmp/folio.db"
+          S3_BUCKET_NAME: !Ref FolioStorageVault
+          AWS_DEFAULT_REGION: !Ref AWS::Region
+          FOLIO_MASTER_PASSWORD: !Ref MasterPassword
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - '*'
+          AllowMethods:
+            - '*'
+          AllowHeaders:
+            - '*'
+          AllowCredentials: true
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Sub 'folio-vault-${AWS::AccountId}-${AWS::Region}'
+    Metadata:
+      DockerTag: latest
+      DockerContext: .
+      Dockerfile: Dockerfile.sam
+
+Outputs:
+  FolioAppUrl:
+    Description: Live Public HTTPS URL for Folio App
+    Value: !GetAtt FolioServerlessFunctionUrl.FunctionUrl
+
+  S3VaultBucket:
+    Description: S3 Storage Vault Bucket Name
+    Value: !Ref FolioStorageVault

@@ -1,12 +1,14 @@
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.core.config import settings
 from app.core.database import engine, Base, SessionLocal
+from app.core.security import require_auth
+from app.core.s3_sync import restore_db_from_s3, sync_db_to_s3
 from app.models import (
     Account,
     Category,
@@ -17,6 +19,7 @@ from app.models import (
     BudgetItem,
     StatementFile,
 )
+from app.api.auth import router as auth_router
 from app.api.accounts import router as accounts_router
 from app.api.categories import router as categories_router, seed_default_categories
 from app.api.transactions import router as transactions_router
@@ -28,6 +31,10 @@ from app.api.analytics import router as analytics_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # If S3 bucket configured (e.g. Lambda serverless cold start), restore database
+    if settings.S3_BUCKET_NAME:
+        restore_db_from_s3(settings.SQLITE_DB_PATH, settings.S3_BUCKET_NAME, settings.AWS_REGION)
+
     # Ensure database schema is created
     Base.metadata.create_all(bind=engine)
     
@@ -40,6 +47,10 @@ async def lifespan(app: FastAPI):
         
     yield
 
+    # On graceful shutdown / checkpoint
+    if settings.S3_BUCKET_NAME:
+        sync_db_to_s3(settings.SQLITE_DB_PATH, settings.S3_BUCKET_NAME, settings.AWS_REGION)
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -51,6 +62,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Injects essential security headers into every response."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
@@ -60,14 +83,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API routers under /api
-app.include_router(accounts_router, prefix=settings.API_V1_STR)
-app.include_router(categories_router, prefix=settings.API_V1_STR)
-app.include_router(transactions_router, prefix=settings.API_V1_STR)
-app.include_router(rules_router, prefix=settings.API_V1_STR)
-app.include_router(ingestion_router, prefix=settings.API_V1_STR)
-app.include_router(budgets_router, prefix=settings.API_V1_STR)
-app.include_router(analytics_router, prefix=settings.API_V1_STR)
+# Public Auth router
+app.include_router(auth_router, prefix=settings.API_V1_STR)
+
+# Protected API routers (require authentication if auth is configured)
+app.include_router(accounts_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
+app.include_router(categories_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
+app.include_router(transactions_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
+app.include_router(rules_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
+app.include_router(ingestion_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
+app.include_router(budgets_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
+app.include_router(analytics_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
 
 
 @app.get("/api/health", tags=["Health"])
