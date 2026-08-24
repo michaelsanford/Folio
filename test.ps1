@@ -11,21 +11,21 @@ $FrontendPath = Join-Path $RootPath "frontend"
 $PytestExe = Join-Path $BackendPath ".venv\Scripts\pytest.exe"
 
 # 1. Backend Pytest Suite
-Write-Host "`n[1/3] Running Backend Pytest Suite (Coverage & Integration Tests)..." -ForegroundColor Yellow
+Write-Host "`n[1/3] Running Backend Pytest Suite..." -ForegroundColor Yellow
 if (-not (Test-Path $PytestExe)) {
     throw "Pytest not found in backend\.venv. Run dev.ps1 first to setup environment."
 }
 
 Push-Location $BackendPath
 try {
-    & $PytestExe tests -o addopts="" --cov=app --cov-report=term-missing
+    & $PytestExe tests
     if ($LASTEXITCODE -ne 0) { throw "Backend Pytest tests failed." }
 } finally {
     Pop-Location
 }
 
 # 2. Frontend Vitest Suite
-Write-Host "`n[2/3] Running Frontend Vitest Suite (Component & Auth Unit Tests)..." -ForegroundColor Yellow
+Write-Host "`n[2/3] Running Frontend Vitest Suite..." -ForegroundColor Yellow
 Push-Location $FrontendPath
 try {
     & npm.cmd test
