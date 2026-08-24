@@ -11,12 +11,15 @@ venv/
 backend/.pytest_cache/
 *.egg-info/
 .coverage
+.coverage.*
 htmlcov/
 .env
 
 # Node / Frontend
 frontend/node_modules/
 frontend/dist/
+frontend/coverage/
+coverage/
 frontend/.vite/
 *.tsbuildinfo
 npm-debug.log*
