@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Test Full Suite (Pytest + Typecheck)" type="CompoundRunConfigurationType">
+    <toRun name="Pytest (Backend)" type="tests" />
+    <toRun name="Vite Frontend (Build)" type="js.build_tools.npm" />
+    <method v="2" />
+  </configuration>
+</component>

@@ -8,8 +8,9 @@ import { LoanAmortizationView } from "./components/loans/LoanAmortizationView";
 import { BudgetingView } from "./components/budgeting/BudgetingView";
 import { RulesManagerView } from "./components/rules/RulesManagerView";
 import { AccountsManagerView } from "./components/accounts/AccountsManagerView";
+import { LockScreen } from "./components/auth/LockScreen";
 import type { Account, Category, DashboardAnalyticsResponse } from "./types";
-import { api } from "./services/api";
+import { api, setOnUnauthorized } from "./services/api";
 import { Sparkles } from "lucide-react";
 
 export function App() {
@@ -18,6 +19,37 @@ export function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [analytics, setAnalytics] = useState<DashboardAnalyticsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Authentication State
+  const [authStatus, setAuthStatus] = useState<{
+    authenticated: boolean;
+    auth_required: boolean;
+    is_loading: boolean;
+  }>({
+    authenticated: false,
+    auth_required: false,
+    is_loading: true,
+  });
+
+  const checkAuth = async () => {
+    try {
+      const status = await api.auth.getStatus();
+      setAuthStatus({
+        authenticated: status.authenticated,
+        auth_required: status.auth_required,
+        is_loading: false,
+      });
+      if (status.authenticated || !status.auth_required) {
+        loadAllData();
+      }
+    } catch {
+      setAuthStatus({
+        authenticated: false,
+        auth_required: true,
+        is_loading: false,
+      });
+    }
+  };
 
   const loadAllData = async () => {
     try {
@@ -37,14 +69,17 @@ export function App() {
   };
 
   useEffect(() => {
-    loadAllData();
+    setOnUnauthorized(() => {
+      setAuthStatus((prev) => ({ ...prev, authenticated: false, auth_required: true }));
+    });
+    checkAuth();
   }, []);
 
   // Quick starter seeder for initial user demo
   const handleSeedDemoData = async () => {
     try {
       // Create Checking
-      const chk = await api.createAccount({
+      await api.createAccount({
         name: "Main Checking",
         type: "CHECKING",
         institution: "Chase",
@@ -53,7 +88,7 @@ export function App() {
       });
 
       // Create Credit Card
-      const cc = await api.createAccount({
+      await api.createAccount({
         name: "Sapphire Reserve",
         type: "CREDIT_CARD",
         institution: "Chase",
@@ -79,72 +114,100 @@ export function App() {
 
       // Create Vehicle Loan
       await api.createAccount({
-        name: "Auto Loan",
+        name: "Vehicle Auto Loan",
         type: "VEHICLE_LOAN",
-        institution: "Credit Union",
+        institution: "Toyota Financial",
         account_number_mask: "*9012",
         current_balance: 24500.0,
-        loan_original_principal: 320000.0,
-        interest_rate: 4.75,
+        loan_original_principal: 32000.0,
+        interest_rate: 4.99,
         loan_term_months: 60,
-        monthly_payment: 599.5,
+        monthly_payment: 603.82,
         escrow_payment: 0.0,
       });
 
-      // Add sample transactions
-      const nowIso = new Date().toISOString();
-      await api.createTransaction({
-        account_id: chk.id,
-        transaction_date: nowIso,
-        raw_payee: "PAYROLL DIRECT DEPOSIT ACME CORP",
-        normalized_payee: "Acme Corp Payroll",
-        amount: 3850.0,
+      // Seed Initial Categorization Rules
+      await api.createRule({
+        category_id: categories.find((c) => c.slug === "coffee")?.id || "",
+        pattern: "STARBUCKS",
+        pattern_type: "CONTAINS",
+        priority: 10,
+        normalized_payee_override: "Starbucks Coffee",
       });
 
-      await api.createTransaction({
-        account_id: chk.id,
-        transaction_date: nowIso,
-        raw_payee: "WHOLEFDS MKT #10293",
-        normalized_payee: "Whole Foods",
-        amount: -145.2,
+      await api.createRule({
+        category_id: categories.find((c) => c.slug === "groceries")?.id || "",
+        pattern: "WHOLEFDS",
+        pattern_type: "STARTS_WITH",
+        priority: 10,
+        normalized_payee_override: "Whole Foods Market",
       });
 
-      await api.createTransaction({
-        account_id: cc.id,
-        transaction_date: nowIso,
-        raw_payee: "AMZN MKTP US*1A2B3C",
-        normalized_payee: "Amazon",
-        amount: -89.99,
+      await api.createRule({
+        category_id: categories.find((c) => c.slug === "groceries")?.id || "",
+        pattern: "TRADER JOE",
+        pattern_type: "CONTAINS",
+        priority: 10,
+        normalized_payee_override: "Trader Joe's",
+      });
+
+      await api.createRule({
+        category_id: categories.find((c) => c.slug === "restaurants")?.id || "",
+        pattern: "CHIPOTLE",
+        pattern_type: "CONTAINS",
+        priority: 10,
+        normalized_payee_override: "Chipotle Mexican Grill",
+      });
+
+      await api.createRule({
+        category_id: categories.find((c) => c.slug === "mortgage-principal")?.id || "",
+        pattern: "WELLS FARGO MORTGAGE",
+        pattern_type: "CONTAINS",
+        priority: 20,
       });
 
       await loadAllData();
-    } catch (err: any) {
-      alert(`Seeding failed: ${err.message}`);
+    } catch (err) {
+      console.error("Demo seeding error:", err);
     }
   };
 
+  // Auth Loading
+  if (authStatus.is_loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mr-3"></div>
+        Authenticating session...
+      </div>
+    );
+  }
+
+  // If Auth Required and Unauthenticated -> Render Lock Screen
+  if (authStatus.auth_required && !authStatus.authenticated) {
+    return <LockScreen onUnlocked={checkAuth} />;
+  }
+
   return (
     <AppLayout
-      activeTab={activeTab as NavTab}
+      activeTab={activeTab}
       onTabChange={(tab) => setActiveTab(tab)}
       accounts={accounts}
     >
-      {/* Empty State Banner if no accounts */}
+      {/* Empty State Banner if no accounts configured */}
       {accounts.length === 0 && !isLoading && (
-        <div className="mb-6 p-6 rounded-2xl bg-indigo-950/40 border border-indigo-500/40 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="mb-6 p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-xl bg-indigo-600/30 text-indigo-300">
-              <Sparkles className="w-6 h-6" />
+            <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400">
+              <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-100">Welcome to Folio!</h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Get started by creating your financial accounts, or generate demo accounts with mortgage & credit cards.
-              </p>
+              <div className="text-sm font-semibold text-slate-100">Welcome to Folio!</div>
+              <div className="text-xs text-slate-400">
+                Get started by creating your bank accounts or load standard demo accounts.
+              </div>
             </div>
           </div>
-
-          <div className="flex gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setActiveTab("accounts")}
               className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"

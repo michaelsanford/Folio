@@ -101,31 +101,52 @@ Pre-configured run configurations are included in `.idea/runConfigurations/`:
 - **FastAPI Backend**: Runs `uvicorn app.main:app --reload --port 8000` with hot-reload.
 - **Vite Frontend (Dev)**: Runs `npm run dev`.
 - **Pytest (Backend)**: Runs the Pytest test suite with graphical test tree.
-- **docker-compose up**: Starts the unified stack inside Docker with `--build`.
+- **Deploy to AWS (SAM Serverless)**: Deploys the serverless stack using AWS SAM.
+- **docker-compose up**: Starts the unified container locally.
 
 ---
 
-## Automated AWS Cloud Deployment (CloudFormation + App Runner)
+## Security & Authentication
 
-Folio includes Infrastructure-as-Code in `infra/cloudformation.yml` and automated deployment scripts that provision the S3 replication vault, ECR repository, IAM roles, and AWS App Runner service in `ca-central-1`.
+Folio features multi-layered security designed for public cloud deployment:
 
-### 1-Command Deployment (PowerShell / Windows)
+- **Master Passphrase Vault Lock**: Protected by bcrypt password hashing and signed `HttpOnly`, `SameSite=Strict`, `Secure` JWT session tokens.
+- **Protected Endpoints**: All financial data routes require authenticated sessions.
+- **Security Headers**: Automatic injection of `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection`, and `Referrer-Policy`.
+- **WAF & Edge Protection**: Compatible with Cloudflare Free Tier (DDoS, WAF, and Zero Trust Access) or AWS WAF on CloudFront.
+
+---
+
+## AWS SAM Serverless Deployment (True $0.00/mo Baseline)
+
+Folio includes a native AWS SAM model (`template.yaml` + `Dockerfile.sam`) utilizing the **AWS Lambda Web Adapter** on ARM64 Graviton2 with direct **Lambda Function URLs**:
+
+### 1-Command SAM Deployment (PowerShell / Windows)
+```powershell
+.\infra\sam-deploy.ps1 -Region ca-central-1 -StackName folio-sam-prod
+```
+
+### 1-Command SAM Deployment (Bash / Linux / macOS)
+```bash
+./infra/sam-deploy.sh ca-central-1 folio-sam-prod
+```
+
+### How the SAM Architecture Works:
+1. **Lambda Web Adapter**: Runs the standard FastAPI app and compiled React 19 PWA directly inside AWS Lambda without code modifications.
+2. **Lambda Function URL**: Provides a direct public HTTPS endpoint with automated TLS and free CORS (bypassing API Gateway fees).
+3. **Single-Writer SQLite Locking**: Configured with `ReservedConcurrentExecutions: 1` to guarantee database file consistency.
+4. **Automated S3 Sync**: Pulls `folio.db` on cold-start and checkpoints snapshots back to the private S3 vault.
+5. **Cost**: **$0.00/month** (100% within the AWS Lambda Always-Free Tier of 1M requests/month).
+
+---
+
+## Alternative: AWS App Runner CloudFormation Deployment
+
+If you prefer a 24/7 warm container with continuous Litestream WAL background streaming (~$3.50/mo):
+
 ```powershell
 .\infra\deploy.ps1 -Region ca-central-1 -StackName folio-prod
 ```
-
-### 1-Command Deployment (Bash / Linux / macOS)
-```bash
-./infra/deploy.sh ca-central-1 folio-prod
-```
-
-### What the Automation Does:
-1. Provisions the private S3 Litestream Vault (`folio-vault-<account-id>-ca-central-1`) with 30-day WAL lifecycle retention.
-2. Creates the Amazon ECR container repository with image retention policies.
-3. Configures fine-grained IAM Instance Roles (App Runner assumes IAM credentials directly, eliminating hardcoded secrets).
-4. Builds the unified multi-stage container and pushes it to ECR.
-5. Deploys the AWS App Runner service with health checks on `/api/health`, automated HTTPS, and auto-pause when idle.
-6. Returns the live public HTTPS URL.
 
 ---
 
