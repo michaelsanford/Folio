@@ -119,16 +119,16 @@ Folio features multi-layered security designed for public cloud deployment:
 
 ## AWS SAM Serverless Deployment (True $0.00/mo Baseline)
 
-Folio includes a native AWS SAM model (`template.yaml` + `Dockerfile.sam`) utilizing the **AWS Lambda Web Adapter** on ARM64 Graviton2 with direct **Lambda Function URLs**:
+Folio includes a native AWS SAM model (`template.yaml` + `Dockerfile`) utilizing the **AWS Lambda Web Adapter** on ARM64 Graviton2 with direct **Lambda Function URLs**:
 
 ### 1-Command SAM Deployment (PowerShell / Windows)
 ```powershell
-.\infra\sam-deploy.ps1 -Region ca-central-1 -StackName folio-sam-prod
+.\infra\deploy.ps1 -Region ca-central-1 -StackName folio-prod
 ```
 
 ### 1-Command SAM Deployment (Bash / Linux / macOS)
 ```bash
-./infra/sam-deploy.sh ca-central-1 folio-sam-prod
+./infra/deploy.sh ca-central-1 folio-prod
 ```
 
 ### How the SAM Architecture Works:
@@ -137,16 +137,6 @@ Folio includes a native AWS SAM model (`template.yaml` + `Dockerfile.sam`) utili
 3. **Single-Writer SQLite Locking**: Configured with `ReservedConcurrentExecutions: 1` to guarantee database file consistency.
 4. **Automated S3 Sync**: Pulls `folio.db` on cold-start and checkpoints snapshots back to the private S3 vault.
 5. **Cost**: **$0.00/month** (100% within the AWS Lambda Always-Free Tier of 1M requests/month).
-
----
-
-## Alternative: AWS App Runner CloudFormation Deployment
-
-If you prefer a 24/7 warm container with continuous Litestream WAL background streaming (~$3.50/mo):
-
-```powershell
-.\infra\deploy.ps1 -Region ca-central-1 -StackName folio-prod
-```
 
 ---
 

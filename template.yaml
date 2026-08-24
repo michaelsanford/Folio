@@ -77,7 +77,7 @@ Resources:
     Metadata:
       DockerTag: latest
       DockerContext: .
-      Dockerfile: Dockerfile.sam
+      Dockerfile: Dockerfile
 
 Outputs:
   FolioAppUrl:
