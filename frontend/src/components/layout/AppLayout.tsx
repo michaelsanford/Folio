@@ -7,7 +7,6 @@ import {
   Landmark,
   Sliders,
   Wallet,
-  ShieldCheck,
   Menu,
   X,
 } from "lucide-react";
@@ -16,9 +15,9 @@ import type { Account } from "../../types";
 export type NavTab =
   | "dashboard"
   | "ledger"
-  | "ingestion"
   | "budgeting"
   | "loans"
+  | "ingestion"
   | "rules";
 
 interface AppLayoutProps {
@@ -49,9 +48,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const navItems = [
     { id: "dashboard" as NavTab, label: "Dashboard", icon: LayoutDashboard },
     { id: "ledger" as NavTab, label: "Ledger", icon: ReceiptText },
-    { id: "ingestion" as NavTab, label: "Import Statements", icon: UploadCloud },
     { id: "budgeting" as NavTab, label: "Budget", icon: PiggyBank },
-    { id: "loans" as NavTab, label: "Loans & Mortgages", icon: Landmark },
+    { id: "loans" as NavTab, label: "Loans", icon: Landmark },
+    { id: "ingestion" as NavTab, label: "Import", icon: UploadCloud },
     { id: "rules" as NavTab, label: "Auto-Rules", icon: Sliders },
   ];
 
@@ -109,15 +108,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             );
           })}
         </nav>
-
-        {/* System & Sync Status */}
-        <div className="p-4 border-t border-slate-800/80 text-xs text-slate-400 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>SQLite + Litestream</span>
-          </div>
-          <ShieldCheck className="w-4 h-4 text-emerald-400/80" />
-        </div>
       </aside>
 
       {/* Main Area */}
@@ -172,14 +162,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
         {/* Mobile Bottom Navigation */}
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-slate-800 bg-slate-900/95 backdrop-blur-xl py-2 px-1">
-          {navItems.slice(0, 5).map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
               <button
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
-                className={`flex flex-col items-center gap-1 py-1 px-3 text-[10px] font-medium transition-colors ${
+                className={`flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-medium transition-colors ${
                   isActive ? "text-indigo-400 font-semibold" : "text-slate-400"
                 }`}
               >
