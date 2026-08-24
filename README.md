@@ -1,6 +1,6 @@
 # Folio
 
-Folio is a self-hosted personal finance tracking, statement ingestion, and household budgeting application. Built with FastAPI, SQLite (WAL mode), Litestream (continuous S3 replication), and a React 19 + Vite + Tailwind CSS PWA.
+Folio is a self-hosted personal finance tracking, statement ingestion, and household budgeting application. Built with FastAPI, SQLite (WAL mode), and a React 19 + Vite + Tailwind CSS PWA, designed for native AWS SAM serverless deployment in `ca-central-1`.
 
 Designed for high-density desktop statement parsing and data entry with responsive mobile consultation (charts, budget meters, net worth progression).
 
@@ -24,8 +24,9 @@ Designed for high-density desktop statement parsing and data entry with responsi
   - Category target progress meters with live spend tracking and overspend warnings.
   - Interactive Sankey Flow Chart visualizing cash flow from Income into Category expenditures and Net Savings.
   - 6-Month Net Worth timeline (Assets vs. Liabilities).
-- **Resilient Cloud & Disaster Recovery**:
-  - SQLite in WAL mode with Litestream continuously streaming SQLite WAL transactions to AWS S3 in real-time.
+- **Zero-Cost Serverless Cloud Architecture**:
+  - AWS SAM model with Lambda Web Adapter and Function URL ($0.00/month baseline within AWS Free Tier).
+  - Automatic S3 SQLite cold-start restore and write-snapshot synchronization.
   - Installable PWA with service worker caching for offline balance consultation on iOS and Android.
 
 ---
@@ -36,9 +37,10 @@ Folio uses a unified single-container deployment model. The React PWA is compile
 
 ```mermaid
 graph LR
-    User[Client: Desktop / Mobile PWA] -->|HTTPS| AR[AWS App Runner<br/>Single Container: FastAPI + Embedded React PWA]
-    AR <-->|Local NVMe/SSD| DB[(SQLite WAL Engine)]
-    DB -->|Litestream Real-Time Stream| S3[(AWS S3 Bucket<br/>ca-central-1)]
+    User[Client: Desktop / Mobile PWA] -->|HTTPS| FURL[Lambda Function URL<br/>Free HTTPS & Automated TLS]
+    FURL --> LWA[AWS Lambda + Web Adapter<br/>FastAPI + Embedded React PWA<br/>ARM64 Graviton2]
+    LWA <-->|Local /tmp SSD| DB[(SQLite WAL Engine)]
+    DB <-->|Cold-Start Restore / Write-Sync| S3[(Amazon S3 Private Vault<br/>ca-central-1)]
 ```
 
 ---
