@@ -54,41 +54,29 @@ graph LR
 ### 2. 1-Command Local Development
 Launch both the FastAPI backend and Vite frontend with live hot-reloading:
 
-**Windows (PowerShell):**
 ```powershell
 .\dev.ps1
 ```
 
-**macOS / Linux (Bash):**
-```bash
-./dev.sh
-```
-
-This automatically initializes the environment, launches the backend on `http://localhost:8000`, the frontend on `http://localhost:5173`, and opens your browser.
+This automatically initializes the virtual environment, installs requirements, launches the backend on `http://localhost:8000`, the frontend on `http://localhost:5173`, and opens your browser.
 
 ---
 
 ## Running Automated Tests
 
-Run the complete test suite (backend Pytest coverage + frontend TypeScript build check) in 1 command:
+Run the complete 3-phase test suite (backend Pytest coverage + frontend Vitest component tests + production build verification) in 1 command:
 
-**Windows (PowerShell):**
 ```powershell
 .\test.ps1
-```
-
-**macOS / Linux (Bash):**
-```bash
-./test.sh
 ```
 
 ---
 
 ## Docker Compose Setup
 
-Run the unified single-container build (FastAPI + embedded PWA + SQLite + Litestream):
+Run the unified single-container build (FastAPI + embedded PWA + SQLite):
 
-```bash
+```powershell
 docker compose -f infra/docker-compose.yml up --build
 ```
 
@@ -99,12 +87,12 @@ Access the application at `http://localhost:8000`.
 ## PyCharm / JetBrains IDE Setup
 
 Pre-configured run configurations are included in `.idea/runConfigurations/`:
-- **Full Stack (Backend + Frontend)**: Launches both the FastAPI server and Vite dev server concurrently.
-- **FastAPI Backend**: Runs `uvicorn app.main:app --reload --port 8000` with hot-reload.
-- **Vite Frontend (Dev)**: Runs `npm run dev`.
-- **Pytest (Backend)**: Runs the Pytest test suite with graphical test tree.
-- **Deploy to AWS (SAM Serverless)**: Deploys the serverless stack using AWS SAM.
-- **docker-compose up**: Starts the unified container locally.
+- **`Test: Full Suite (test.ps1)`**: Runs the complete 3-phase test suite (`test.ps1`).
+- **`Test: Backend (Pytest)`**: Native Python test runner with graphical test tree and coverage reporting.
+- **`Test: Frontend (Vitest)`**: Native NPM runner for frontend component and API tests.
+- **`Dev: Local Stack (dev.ps1)`**: Launches the full local dev environment (`dev.ps1`).
+- **`Docker: Local Container`**: Builds and boots the production container via `infra/docker-compose.yml`.
+- **`Deploy: AWS SAM (deploy.ps1)`**: Deploys the serverless stack using AWS SAM.
 
 ---
 
@@ -123,14 +111,9 @@ Folio features multi-layered security designed for public cloud deployment:
 
 Folio includes a native AWS SAM model (`template.yaml` + `Dockerfile`) utilizing the **AWS Lambda Web Adapter** on ARM64 Graviton2 with direct **Lambda Function URLs**:
 
-### 1-Command SAM Deployment (PowerShell / Windows)
+### 1-Command SAM Deployment
 ```powershell
 .\infra\deploy.ps1 -Region ca-central-1 -StackName folio-prod
-```
-
-### 1-Command SAM Deployment (Bash / Linux / macOS)
-```bash
-./infra/deploy.sh ca-central-1 folio-prod
 ```
 
 ### How the SAM Architecture Works:
