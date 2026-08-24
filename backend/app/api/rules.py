@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.database import get_db
 from app.models.rule import CategorizationRule
 from app.models.category import Category
+from app.models.transaction import Transaction, TransactionSplit
 from app.schemas.rule import (
     CategorizationRuleCreate,
     CategorizationRuleUpdate,
@@ -79,3 +80,39 @@ def test_rule_match(req: TestRuleMatchRequest, db: Session = Depends(get_db)):
         suggested_category_id=match_result.category_id,
         suggested_payee=match_result.normalized_payee,
     )
+
+
+@router.post("/apply-batch", status_code=status.HTTP_200_OK)
+def apply_rules_batch(db: Session = Depends(get_db)):
+    """
+    Applies active categorization rules to all uncategorized transactions.
+    """
+    uncategorized_txns = (
+        db.query(Transaction)
+        .options(joinedload(Transaction.splits))
+        .all()
+    )
+
+    applied_count = 0
+    for txn in uncategorized_txns:
+        # Check if uncategorized
+        is_uncategorized = not txn.splits or all(s.category_id is None for s in txn.splits)
+        if not is_uncategorized:
+            continue
+
+        match = evaluate_rules(db, txn.raw_payee, txn.amount, txn.account_id)
+        if match.matched:
+            if match.normalized_payee:
+                txn.normalized_payee = match.normalized_payee
+
+            if txn.splits:
+                txn.splits[0].category_id = match.category_id
+            else:
+                txn.splits.append(TransactionSplit(category_id=match.category_id, amount=txn.amount))
+
+            applied_count += 1
+
+    if applied_count > 0:
+        db.commit()
+
+    return {"applied_count": applied_count}
