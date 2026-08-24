@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Pytest (Backend)" type="tests" factoryName="py.test">
+  <configuration default="false" name="Test: Backend (Pytest)" type="tests" factoryName="py.test">
     <module name="Folio" />
     <option name="ENV_FILES" value="" />
     <option name="INTERPRETER_OPTIONS" value="" />
@@ -11,7 +11,7 @@
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <option name="_new_keywords" value="&quot;&quot;" />
     <option name="_new_parameters" value="&quot;&quot;" />
-    <option name="_new_additionalArguments" value="&quot;&quot;" />
+    <option name="_new_additionalArguments" value="&quot;--cov=app --cov-report=term-missing&quot;" />
     <option name="_new_target" value="&quot;$PROJECT_DIR$/backend/tests&quot;" />
     <option name="_new_targetType" value="&quot;PATH&quot;" />
     <method v="2" />
