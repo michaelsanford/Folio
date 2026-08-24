@@ -35,12 +35,6 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'html', 'clover', 'json'],
-      include: ['src/**/*.ts', 'src/**/*.tsx'],
-      exclude: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'src/main.tsx', 'src/vite-env.d.ts'],
-    },
   },
   server: {
     port: 5173,
