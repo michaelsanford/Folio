@@ -18,7 +18,7 @@ if (-not (Test-Path $PytestExe)) {
 
 Push-Location $BackendPath
 try {
-    & $PytestExe tests --cov=app --cov-report=term-missing
+    & $PytestExe tests -o addopts="" --cov=app --cov-report=term-missing
     if ($LASTEXITCODE -ne 0) { throw "Backend Pytest tests failed." }
 } finally {
     Pop-Location

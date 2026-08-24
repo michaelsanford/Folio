@@ -1,19 +1,13 @@
 [run]
-source = 
+source =
     app
-    P:/github.com/michaelsanford/Folio/backend/app
 branch = True
 omit =
     tests/*
+    */tests/*
     .venv/*
-    venv/*
-    */site-packages/*
+    */.venv/*
 
 [report]
 show_missing = True
-exclude_lines =
-    pragma: no cover
-    def __repr__
-    if TYPE_CHECKING:
-    raise NotImplementedError
-    if __name__ == .__main__.:
+skip_covered = False
