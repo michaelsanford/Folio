@@ -1,5 +1,4 @@
 import hashlib
-from datetime import datetime
 from sqlalchemy.orm import Session
 from app.models.transaction import Transaction
 

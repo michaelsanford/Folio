@@ -26,7 +26,6 @@ def test_restore_db_success(mock_get_client, tmp_path):
 @patch("app.core.s3_sync.get_s3_client")
 def test_restore_db_404_handled_gracefully(mock_get_client, tmp_path):
     mock_client = MagicMock()
-    error_response = {"Error": {"Code": "404", "Message": "Not Found"}}
     mock_client.download_file.side_effect = Exception("Not Found")
     mock_get_client.return_value = mock_client
 

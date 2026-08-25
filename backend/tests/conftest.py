@@ -8,7 +8,6 @@ from app.core.database import Base, get_db
 from app.core.security import require_auth
 from app.main import app
 from app.models.account import Account, AccountType
-from app.models.category import Category, CategoryType
 from app.api.categories import seed_default_categories
 
 # Use in-memory SQLite for testing

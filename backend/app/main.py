@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, Request
@@ -129,21 +128,23 @@ if STATIC_DIR.exists() and (STATIC_DIR / "index.html").exists():
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
+    ALLOWED_ROOT_PWA_FILES = {
+        "favicon.ico",
+        "manifest.webmanifest",
+        "registerSW.js",
+        "sw.js",
+    }
+
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
-        # Sanitize path to disallow traversal sequences
-        safe_rel_path = os.path.normpath(full_path).lstrip("/\\")
-        if not safe_rel_path or ".." in safe_rel_path.split(os.path.sep):
-            return FileResponse(STATIC_DIR / "index.html")
-
-        try:
-            static_root = str(STATIC_DIR.resolve())
-            target_path = os.path.abspath(os.path.join(static_root, safe_rel_path))
-            if os.path.commonpath([static_root, target_path]) == static_root and os.path.isfile(target_path):
-                return FileResponse(target_path)
-        except Exception:
-            # Fallback to SPA shell if path resolution fails
-            pass
-
+        # Allow exact matching for known root PWA static files
+        if full_path:
+            file_name = full_path.split("/")[-1]
+            if file_name in ALLOWED_ROOT_PWA_FILES or (file_name.startswith("workbox-") and file_name.endswith(".js")):
+                target = STATIC_DIR / file_name
+                if target.is_file():
+                    return FileResponse(target)
+        # All other application paths render the Single Page Application shell
         return FileResponse(STATIC_DIR / "index.html")
+
 
