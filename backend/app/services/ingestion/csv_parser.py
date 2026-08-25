@@ -19,14 +19,28 @@ from app.services.categorization.transfer_matcher import find_potential_transfer
 
 
 def clean_amount_str(val: str) -> float:
-    """Converts raw string like '$1,234.56', '(50.00)', or '- 12.34' to a float."""
+    """Converts raw string like '$1,234.56', '(50.00)', '-19.47', or '1 234,56 $' to a float."""
     if not val or not val.strip():
         return 0.0
     cleaned = val.strip()
+
+    # Guard: If value looks like a date (e.g. 6/27/2026 or 2026-06-27), do NOT parse as amount
+    if re.search(r"^\d{1,4}[/\-\.]\d{1,2}[/\-\.]\d{1,4}$", cleaned):
+        return 0.0
+
     is_negative = False
     if cleaned.startswith("(") and cleaned.endswith(")"):
         is_negative = True
         cleaned = cleaned[1:-1].strip()
+
+    # Handle French/European decimal comma: e.g. "19,47" or "-1 234,56"
+    if "," in cleaned and "." not in cleaned:
+        cleaned = cleaned.replace(",", ".")
+    elif "," in cleaned and "." in cleaned:
+        # e.g. "1,234.56" -> remove thousands comma
+        cleaned = cleaned.replace(",", "")
+
+    # Strip currency symbols and whitespace
     cleaned = re.sub(r"[^\d\.\-]", "", cleaned)
     try:
         amt = float(cleaned)
@@ -36,7 +50,10 @@ def clean_amount_str(val: str) -> float:
 
 
 def auto_detect_csv_columns(header: list[str]) -> CsvColumnMapping:
-    """Intelligently detects column indices/names from header strings."""
+    """
+    Intelligently detects column indices/names from header strings across
+    major Canadian (RBC, TD, BMO, Scotia, Desjardins, CIBC) and US/Global bank formats.
+    """
     date_col = None
     payee_col = None
     amount_col = None
@@ -45,30 +62,73 @@ def auto_detect_csv_columns(header: list[str]) -> CsvColumnMapping:
     category_col = None
     notes_col = None
 
+    # Priority 1: Match explicit known headers
     for col in header:
         col_lower = col.lower().strip()
-        if not date_col and any(k in col_lower for k in ["date", "trans date", "posting date", "transaction date"]):
+
+        # Date column matching
+        if not date_col and any(k in col_lower for k in [
+            "transaction date", "trans date", "posting date", "posted date",
+            "trade date", "date de transaction", "date",
+        ]):
             date_col = col
-        elif not payee_col and any(k in col_lower for k in ["description", "payee", "merchant", "name", "narrative"]):
+
+        # Payee / Description matching
+        elif not payee_col and any(k in col_lower for k in [
+            "description 1", "description", "payee", "merchant", "name",
+            "narrative", "transaction details", "marchand", "libellé", "libelle",
+        ]):
             payee_col = col
-        elif not debit_col and any(k in col_lower for k in ["debit", "withdrawal", "spent"]):
+
+        # Debit column matching
+        elif not debit_col and any(k in col_lower for k in [
+            "debit", "débit", "withdrawal", "retrait", "spent", "charge", "outflow",
+        ]):
             debit_col = col
-        elif not credit_col and any(k in col_lower for k in ["credit", "deposit", "inflow"]):
+
+        # Credit column matching
+        elif not credit_col and any(k in col_lower for k in [
+            "credit", "crédit", "deposit", "dépôt", "depot", "inflow",
+        ]):
             credit_col = col
-        elif not amount_col and any(k in col_lower for k in ["amount", "total"]):
+
+        # Amount column matching (including CAD$, USD$, Montant, Amount)
+        elif not amount_col and any(k in col_lower for k in [
+            "cad$", "usd$", "cad", "usd", "amount", "montant", "total", "valeur", "price",
+        ]):
             amount_col = col
+
         elif not category_col and "category" in col_lower:
             category_col = col
-        elif not notes_col and any(k in col_lower for k in ["memo", "note"]):
+
+        elif not notes_col and any(k in col_lower for k in [
+            "description 2", "memo", "note", "notes", "cheque number", "reference",
+        ]):
             notes_col = col
 
-    # Fallbacks if not detected
-    if not date_col and len(header) > 0:
-        date_col = header[0]
-    if not payee_col and len(header) > 1:
-        payee_col = header[1]
-    if not amount_col and not debit_col and not credit_col and len(header) > 2:
-        amount_col = header[2]
+    # Fallback assignment: only pick columns not already claimed
+    claimed = {date_col, payee_col, amount_col, debit_col, credit_col, category_col, notes_col}
+
+    if not date_col:
+        for c in header:
+            if c not in claimed:
+                date_col = c
+                claimed.add(c)
+                break
+
+    if not payee_col:
+        for c in header:
+            if c not in claimed:
+                payee_col = c
+                claimed.add(c)
+                break
+
+    if not amount_col and not debit_col and not credit_col:
+        for c in header:
+            if c not in claimed:
+                amount_col = c
+                claimed.add(c)
+                break
 
     return CsvColumnMapping(
         date_column=date_col or "Date",
@@ -92,7 +152,6 @@ def parse_csv_content(
     Parses CSV content into normalized transaction preview items.
     """
     if isinstance(content, bytes):
-        # Try UTF-8 with fallback
         try:
             text = content.decode("utf-8-sig")
         except UnicodeDecodeError:
@@ -132,6 +191,13 @@ def parse_csv_content(
         raw_date_str = row.get(mapping.date_column, "").strip()
         raw_payee = row.get(mapping.payee_column, "").strip()
 
+        # Check secondary description if available (e.g. RBC Description 2)
+        desc2 = row.get("Description 2", "").strip() if "Description 2" in row else ""
+        if desc2 and desc2 != raw_payee and not row.get(mapping.notes_column or "", ""):
+            row_notes = desc2
+        else:
+            row_notes = row.get(mapping.notes_column, "").strip() if mapping.notes_column else None
+
         if not raw_date_str or not raw_payee:
             continue
 
@@ -144,7 +210,16 @@ def parse_csv_content(
 
         # Calculate amount
         amount = 0.0
-        if mapping.amount_column and mapping.amount_column in row:
+
+        # Special handling for RBC / multi-currency headers (CAD$, USD$)
+        if "CAD$" in row or "USD$" in row:
+            val_cad = row.get("CAD$", "").strip()
+            val_usd = row.get("USD$", "").strip()
+            if val_cad:
+                amount = clean_amount_str(val_cad)
+            elif val_usd:
+                amount = clean_amount_str(val_usd)
+        elif mapping.amount_column and mapping.amount_column in row:
             amount = clean_amount_str(row[mapping.amount_column])
         elif mapping.debit_column and mapping.credit_column:
             debit = abs(clean_amount_str(row.get(mapping.debit_column, "0")))
@@ -161,7 +236,7 @@ def parse_csv_content(
         # Normalize payee
         norm_payee = normalize_payee(raw_payee)
 
-        # Rule evaluation for category suggestion
+        # Rule evaluation for category suggestion (Multi-tier: Explicit + Semantic)
         rule_match = evaluate_rules(db, raw_payee, amount, account_id)
         suggested_cat_id = rule_match.category_id if rule_match.matched else None
         suggested_cat_name = rule_match.category_name if rule_match.matched else None
@@ -183,8 +258,9 @@ def parse_csv_content(
             suggested_category_id=suggested_cat_id,
             suggested_category_name=suggested_cat_name,
             suggested_category_color=suggested_cat_color,
-            is_duplicate=False,  # Will update in batch check
+            is_duplicate=False,
             import_hash=item_hash,
+            notes=row_notes or None,
             potential_transfer_account_id=potential_xfer_acc_id,
             potential_transfer_account_name=potential_xfer_acc_name,
             confidence_score=rule_match.confidence if rule_match.matched else 0.5,
