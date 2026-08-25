@@ -111,7 +111,7 @@ Folio implements an enterprise-grade defense-in-depth security model engineered 
   - **Master Passphrase Vault (Local / Docker)**: Protected by bcrypt hashing, constant-time comparisons (`secrets.compare_digest`), and signed `HttpOnly`, `SameSite=Strict`, `Secure` JWT session cookies.
 - **Fail-Closed Access Control**: Unconfigured or invalid sessions are strictly rejected (`HTTP 401 Unauthorized`); no unauthenticated routes bypass financial endpoints.
 - **Edge Perimeter Protection**: Lambda Function URL is protected with origin secret verification (`X-Folio-Origin-Verify`) to ensure traffic flows through CloudFront CDN / AWS WAF, mitigating single-concurrency exhaustion (DoS) attacks.
-- **Modern Defense-in-Depth HTTP Headers**: Full injection of `Content-Security-Policy` (CSP), `Strict-Transport-Security` (HSTS: `max-age=63072000; includeSubDomains; preload`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and `Permissions-Policy`.
+- **Modern Defense-in-Depth HTTP Headers**: Full injection of `Content-Security-Policy` (CSP), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and `Permissions-Policy`.
 - **Directory Traversal & Ingestion Safeguards**: Strict filesystem boundary containment checks for static SPA routing and 25 MB max upload limits with magic-byte format verification for PDF and statement files.
 - **Transactional S3 Vault Encryption**: Private S3 database snapshots are uploaded with Server-Side Encryption (`AES256`/`KMS`) and write-through checkpoint synchronization after every batch commit or balance change.
 - **Container Non-Root Isolation**: Multi-stage Docker execution runs as a dedicated unprivileged `appuser` (UID 1000).
