@@ -8,6 +8,7 @@ from app.models.transaction import Transaction, TransactionSplit
 from app.schemas.budget import (
     BudgetCreate,
     BudgetUpdate,
+    BudgetItemCreate,
     BudgetResponse,
     BudgetItemResponse,
 )
@@ -16,7 +17,7 @@ router = APIRouter(prefix="/budgets", tags=["Budgets"])
 
 
 def populate_budget_actuals(db: Session, budget: Budget) -> BudgetResponse:
-    """Calculates actual spending/income for each category in the budget month."""
+    """Calculates actual spending/income for each category in the budget month and syncs all budgeted categories."""
     start_of_month = datetime(budget.year, budget.month, 1)
     if budget.month == 12:
         end_of_month = datetime(budget.year + 1, 1, 1)
@@ -45,6 +46,36 @@ def populate_budget_actuals(db: Session, budget: Budget) -> BudgetResponse:
         else:
             total_expense += abs(split.amount)
 
+    # Ensure all budgeted expense categories (and any category with actual spend) exist in the budget items
+    existing_cat_ids = {it.category_id for it in budget.items}
+    budgeted_categories = (
+        db.query(Category)
+        .filter(Category.is_budgeted.is_(True), Category.type == CategoryType.EXPENSE)
+        .all()
+    )
+
+    new_items_added = False
+    for cat in budgeted_categories:
+        if cat.id not in existing_cat_ids:
+            item = BudgetItem(budget_id=budget.id, category_id=cat.id, planned_amount=0.0)
+            budget.items.append(item)
+            existing_cat_ids.add(cat.id)
+            new_items_added = True
+
+    # Also add any uncategorized spend or non-budgeted categories that had actual spend this month
+    for cat_id in actuals_by_cat.keys():
+        if cat_id not in existing_cat_ids:
+            cat = db.query(Category).filter(Category.id == cat_id).first()
+            if cat and cat.type == CategoryType.EXPENSE:
+                item = BudgetItem(budget_id=budget.id, category_id=cat.id, planned_amount=0.0)
+                budget.items.append(item)
+                existing_cat_ids.add(cat.id)
+                new_items_added = True
+
+    if new_items_added:
+        db.commit()
+        db.refresh(budget)
+
     items_resp: list[BudgetItemResponse] = []
     for item in budget.items:
         actual = actuals_by_cat.get(item.category_id, 0.0)
@@ -60,6 +91,9 @@ def populate_budget_actuals(db: Session, budget: Budget) -> BudgetResponse:
                 category=item.category,
             )
         )
+
+    # Sort items by category name for predictable order
+    items_resp.sort(key=lambda x: (x.category.name if x.category else ""))
 
     return BudgetResponse(
         id=budget.id,
@@ -108,7 +142,15 @@ def get_budget_by_month(year: int, month: int, db: Session = Depends(get_db)):
         .first()
     )
     if not budget:
-        raise HTTPException(status_code=404, detail="Budget not found for this period")
+        # Automatically initialize budget for requested period
+        budget = Budget(year=year, month=month)
+        categories = db.query(Category).filter(Category.is_budgeted.is_(True), Category.type == CategoryType.EXPENSE).all()
+        for cat in categories:
+            budget.items.append(BudgetItem(category_id=cat.id, planned_amount=0.0))
+        db.add(budget)
+        db.commit()
+        db.refresh(budget)
+
     return populate_budget_actuals(db, budget)
 
 
@@ -132,6 +174,60 @@ def create_budget(budget_in: BudgetCreate, db: Session = Depends(get_db)):
     db.add(budget)
     db.commit()
     db.refresh(budget)
+    return populate_budget_actuals(db, budget)
+
+
+@router.post("/{year}/{month}/items", response_model=BudgetResponse)
+def upsert_budget_item(
+    year: int,
+    month: int,
+    item_in: BudgetItemCreate,
+    db: Session = Depends(get_db),
+):
+    """Adds or updates a category budget target for a specific month and marks the category as budgeted."""
+    budget = (
+        db.query(Budget)
+        .options(joinedload(Budget.items).joinedload(BudgetItem.category))
+        .filter(Budget.year == year, Budget.month == month)
+        .first()
+    )
+    if not budget:
+        budget = Budget(year=year, month=month)
+        db.add(budget)
+        db.flush()
+
+    # Ensure category exists and is marked as is_budgeted
+    cat = db.query(Category).filter(Category.id == item_in.category_id).first()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Category not found")
+    if not cat.is_budgeted:
+        cat.is_budgeted = True
+
+    # Check if item already exists
+    existing_item = next((it for it in budget.items if it.category_id == item_in.category_id), None)
+    if existing_item:
+        existing_item.planned_amount = item_in.planned_amount
+    else:
+        budget.items.append(BudgetItem(category_id=item_in.category_id, planned_amount=item_in.planned_amount))
+
+    db.commit()
+    db.refresh(budget)
+    return populate_budget_actuals(db, budget)
+
+
+@router.delete("/{budget_id}/items/{category_id}", response_model=BudgetResponse)
+def delete_budget_item(budget_id: str, category_id: str, db: Session = Depends(get_db)):
+    """Removes a category from the budget."""
+    budget = db.query(Budget).filter(Budget.id == budget_id).first()
+    if not budget:
+        raise HTTPException(status_code=404, detail="Budget not found")
+
+    item = db.query(BudgetItem).filter(BudgetItem.budget_id == budget_id, BudgetItem.category_id == category_id).first()
+    if item:
+        db.delete(item)
+        db.commit()
+        db.refresh(budget)
+
     return populate_budget_actuals(db, budget)
 
 

@@ -250,7 +250,7 @@ export function App() {
       )}
 
       {activeTab === "budgeting" && (
-        <BudgetingView categories={categories} />
+        <BudgetingView categories={categories} onCategoriesModified={loadAllData} />
       )}
 
       {activeTab === "loans" && (
