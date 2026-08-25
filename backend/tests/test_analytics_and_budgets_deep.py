@@ -1,5 +1,3 @@
-from app.models.account import AccountType
-from app.models.category import CategoryType
 
 
 def test_upsert_budget_item_and_retrieve_envelope(client):

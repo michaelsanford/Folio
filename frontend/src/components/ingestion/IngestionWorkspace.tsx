@@ -7,7 +7,6 @@ import {
   ArrowRight,
   ShieldCheck,
   RefreshCw,
-  Trash2,
 } from "lucide-react";
 import type { Account, Category, IngestionPreviewResponse, ParsedTransactionItem } from "../../types";
 import { api } from "../../services/api";

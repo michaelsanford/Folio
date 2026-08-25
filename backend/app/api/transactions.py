@@ -6,7 +6,6 @@ from app.core.database import get_db
 from app.models.transaction import Transaction, TransactionSplit, TransactionStatus
 from app.models.account import Account
 from app.models.category import Category
-from app.models.rule import CategorizationRule, RulePatternType
 from app.schemas.transaction import (
     TransactionCreate,
     TransactionUpdate,

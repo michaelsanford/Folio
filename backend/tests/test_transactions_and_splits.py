@@ -1,5 +1,3 @@
-from datetime import datetime
-from app.models.account import AccountType
 
 
 def test_create_and_get_transaction(client, sample_checking_account):

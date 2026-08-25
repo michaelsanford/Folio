@@ -1,14 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
-  Landmark,
-  Shield,
-  Percent,
-  Calendar,
-  DollarSign,
-  TrendingDown,
-  Calculator,
-  ChevronRight,
-} from "lucide-react";
+import { Landmark } from "lucide-react";
 import ReactECharts from "echarts-for-react";
 import type { Account, AmortizationScheduleResponse } from "../../types";
 import { api } from "../../services/api";

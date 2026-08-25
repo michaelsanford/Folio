@@ -1,5 +1,4 @@
 import io
-from app.models.transaction import Transaction
 
 
 def test_csv_upload_preview_and_commit(client, sample_checking_account):
