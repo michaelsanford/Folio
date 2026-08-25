@@ -188,11 +188,18 @@ export const api = {
     const queryString = query.toString() ? `?${query.toString()}` : "";
     return request<TransactionListResponse>(`/transactions${queryString}`);
   },
+  createTransaction: (txn: Partial<Transaction> & { splits?: any[] }) =>
+    request<Transaction>("/transactions", {
+      method: "POST",
+      body: JSON.stringify(txn),
+    }),
   updateTransaction: (id: string, update: Partial<Transaction>) =>
     request<Transaction>(`/transactions/${id}`, {
       method: "PUT",
       body: JSON.stringify(update),
     }),
+  deleteTransaction: (id: string) =>
+    request<void>(`/transactions/${id}`, { method: "DELETE" }),
   updateSplits: (
     transactionId: string,
     splits: { category_id: string; amount: number; notes?: string }[]
@@ -200,6 +207,22 @@ export const api = {
     request<Transaction>(`/transactions/${transactionId}/splits`, {
       method: "POST",
       body: JSON.stringify(splits),
+    }),
+  batchCategorize: (req: {
+    transaction_ids: string[];
+    category_id: string;
+    normalized_payee?: string;
+    create_rule?: boolean;
+    rule_pattern?: string;
+  }) =>
+    request<{ updated_count: number }>("/transactions/batch-categorize", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
+  linkTransfer: (req: { source_transaction_id: string; target_transaction_id: string }) =>
+    request<{ status: string; transaction1: string; transaction2: string }>("/transactions/link-transfer", {
+      method: "POST",
+      body: JSON.stringify(req),
     }),
 
   // Rules
@@ -234,7 +257,7 @@ export const api = {
     }),
 
   // Ingestion
-  uploadStatement: async (accountId: string, file: File) => {
+  uploadStatementPreview: async (accountId: string, file: File) => {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("account_id", accountId);
@@ -244,7 +267,7 @@ export const api = {
       ? { Authorization: `Bearer ${token}` }
       : {};
 
-    const res = await fetch(`${API_BASE}/ingestion/upload`, {
+    const res = await fetch(`${API_BASE}/ingestion/upload-preview`, {
       method: "POST",
       headers: authHeader,
       body: formData,
@@ -257,19 +280,43 @@ export const api = {
 
     return res.json() as Promise<IngestionPreviewResponse>;
   },
-  commitImport: (items: any[]) =>
+  uploadStatement: async (accountId: string, file: File) => {
+    return api.uploadStatementPreview(accountId, file);
+  },
+  commitIngestionBatch: (req: {
+    account_id: string;
+    statement_file_id?: string;
+    items: any[];
+  }) =>
     request<{
-      imported_count: number;
-      duplicates_skipped: number;
+      committed_count: number;
       account_id: string;
+      new_account_balance: number;
     }>("/ingestion/commit", {
       method: "POST",
-      body: JSON.stringify(items),
+      body: JSON.stringify(req),
     }),
+  commitImport: (req: any) => api.commitIngestionBatch(req),
+  getStatementFiles: (accountId?: string) => {
+    const query = accountId ? `?account_id=${accountId}` : "";
+    return request<any[]>(`/ingestion/statement-files${query}`);
+  },
 
   // Budgets
+  getCurrentBudget: () =>
+    request<Budget>("/budgets/current"),
   getBudget: (year: number, month: number) =>
     request<Budget>(`/budgets/${year}/${month}`),
+  createBudget: (budget: Partial<Budget>) =>
+    request<Budget>("/budgets", {
+      method: "POST",
+      body: JSON.stringify(budget),
+    }),
+  updateBudget: (budgetId: string, budget: Partial<Budget>) =>
+    request<Budget>(`/budgets/${budgetId}`, {
+      method: "PUT",
+      body: JSON.stringify(budget),
+    }),
   upsertBudgetItem: (
     year: number,
     month: number,
