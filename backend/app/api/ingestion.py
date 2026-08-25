@@ -88,72 +88,91 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
         if not stmt_file:
             stmt_file_id = None
 
-    for item in req.items:
-        try:
-            trn_date = datetime.strptime(item.transaction_date, "%Y-%m-%d")
-        except Exception:
-            try:
-                trn_date = datetime.fromisoformat(item.transaction_date)
-            except Exception:
-                trn_date = datetime.now()
+    seen_hashes_in_batch: set[str] = set()
 
-        # Check deduplication hash once more
-        if item.import_hash:
-            existing = db.query(Transaction).filter(
-                Transaction.account_id == req.account_id,
-                Transaction.import_hash == item.import_hash,
-            ).first()
-            if existing:
-                continue
+    try:
+        for item in req.items:
+            # Parse transaction date safely
+            trn_date = datetime.now()
+            if item.transaction_date:
+                try:
+                    trn_date = datetime.strptime(item.transaction_date[:10], "%Y-%m-%d")
+                except Exception:
+                    try:
+                        trn_date = datetime.fromisoformat(item.transaction_date)
+                    except Exception:
+                        trn_date = datetime.now()
 
-        # Sanitize category_id (must be valid or None to prevent FK constraint failures)
-        cat_id = item.category_id if item.category_id and item.category_id.strip() else None
-        if cat_id:
-            cat = db.query(Category).filter(Category.id == cat_id).first()
-            if not cat:
-                cat_id = None
+            # Deduplication check against DB and current batch
+            if item.import_hash:
+                if item.import_hash in seen_hashes_in_batch:
+                    continue
+                seen_hashes_in_batch.add(item.import_hash)
 
-        txn = Transaction(
-            account_id=req.account_id,
-            statement_file_id=stmt_file_id,
-            transaction_date=trn_date,
-            raw_payee=item.raw_payee or "Unknown Payee",
-            normalized_payee=item.normalized_payee or item.raw_payee or "Unknown Payee",
-            amount=item.amount,
-            currency=account.currency or "USD",
-            import_hash=item.import_hash or None,
-            status=TransactionStatus.CLEARED,
-            notes=item.notes,
-        )
+                existing = db.query(Transaction).filter(
+                    Transaction.account_id == req.account_id,
+                    Transaction.import_hash == item.import_hash,
+                ).first()
+                if existing:
+                    continue
 
-        txn.splits.append(
-            TransactionSplit(
-                category_id=cat_id,
-                amount=item.amount,
-                memo=item.notes,
+            # Sanitize category_id (must be a valid UUID in categories table or None)
+            cat_id = item.category_id if item.category_id and item.category_id.strip() else None
+            if cat_id:
+                cat = db.query(Category).filter(Category.id == cat_id).first()
+                if not cat:
+                    cat_id = None
+
+            raw_name = (item.raw_payee or "Unknown Payee").strip()
+            norm_name = (item.normalized_payee or raw_name).strip()
+
+            txn = Transaction(
+                account_id=req.account_id,
+                statement_file_id=stmt_file_id,
+                transaction_date=trn_date,
+                raw_payee=raw_name,
+                normalized_payee=norm_name,
+                amount=float(item.amount),
+                currency=account.currency or "USD",
+                import_hash=item.import_hash or None,
+                status=TransactionStatus.CLEARED,
+                notes=item.notes,
             )
+
+            txn.splits.append(
+                TransactionSplit(
+                    category_id=cat_id,
+                    amount=float(item.amount),
+                    memo=item.notes,
+                )
+            )
+
+            db.add(txn)
+            committed_count += 1
+
+        # Update statement file transaction count
+        if stmt_file_id:
+            stmt_file = db.query(StatementFile).filter(StatementFile.id == stmt_file_id).first()
+            if stmt_file:
+                stmt_file.transaction_count = (stmt_file.transaction_count or 0) + committed_count
+
+        db.commit()
+
+        # Recalculate account balance
+        recalculate_account_balance(db, req.account_id)
+        db.refresh(account)
+
+        return IngestionCommitResponse(
+            committed_count=committed_count,
+            account_id=req.account_id,
+            new_account_balance=account.current_balance,
         )
-
-        db.add(txn)
-        committed_count += 1
-
-    # Update statement file transaction count
-    if stmt_file_id:
-        stmt_file = db.query(StatementFile).filter(StatementFile.id == stmt_file_id).first()
-        if stmt_file:
-            stmt_file.transaction_count = committed_count
-
-    db.commit()
-
-    # Recalculate account balance
-    recalculate_account_balance(db, req.account_id)
-    db.refresh(account)
-
-    return IngestionCommitResponse(
-        committed_count=committed_count,
-        account_id=req.account_id,
-        new_account_balance=account.current_balance,
-    )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to commit transactions: {str(e)}",
+        )
 
 
 @router.get("/statement-files", response_model=list[StatementFileResponse])
