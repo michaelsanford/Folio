@@ -105,6 +105,32 @@ def test_rule_priority_resolution(client):
     assert test_resp.json()["suggested_category_id"] == dining["id"]
 
 
+def test_seed_merchant_rules_matches(client):
+    """Verifies that common seeded merchant patterns match immediately out-of-the-box."""
+    cat_resp = client.get("/api/categories")
+    categories = cat_resp.json()
+    cat_map = {c["slug"]: c["id"] for c in categories}
+
+    test_merchants = [
+        ("ACH DEBIT JEAN COUTU #142 MONTREAL", cat_map["health-medical"], "Jean Coutu"),
+        ("POS PURCHASE CLINIQUE PRIVAMED LAVAL QC", cat_map["health-medical"], "Clinique Privamed"),
+        ("ULTRAMAR #8822 QUEBEC QC", cat_map["fuel"], "Ultramar"),
+        ("REST BOUSTAN DOWNTOWN", cat_map["restaurants"], "Boustan"),
+        ("A&W RESTAURANT #4122", cat_map["restaurants"], "A&W"),
+        ("KINTON RAMEN MONT-ROYAL", cat_map["restaurants"], "Kinton Ramen"),
+        ("TRADINGVIEW.COM SUBSCRIPTION", cat_map["subscriptions"], "TradingView"),
+        ("HYDRO-QUEBEC PRELEVEMENT", cat_map["utilities"], "Hydro-Québec"),
+    ]
+
+    for raw_payee, expected_cat_id, expected_norm in test_merchants:
+        res = client.post("/api/rules/test", json={"raw_payee": raw_payee})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["matched"] is True, f"Failed to match {raw_payee}"
+        assert data["suggested_category_id"] == expected_cat_id
+        assert data["suggested_payee"] == expected_norm
+
+
 def test_apply_rules_batch(client, sample_checking_account):
     cat_resp = client.get("/api/categories")
     categories = cat_resp.json()

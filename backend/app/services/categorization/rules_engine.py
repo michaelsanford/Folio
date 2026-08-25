@@ -27,7 +27,7 @@ class RuleMatchResult:
 def evaluate_rules(
     db: Session,
     raw_payee: str,
-    amount: float,
+    amount: float | None = None,
     account_id: str | None = None,
     rules: list[CategorizationRule] | None = None,
 ) -> RuleMatchResult:
@@ -44,18 +44,19 @@ def evaluate_rules(
         )
 
     target_text = raw_payee.upper().strip()
+    abs_amount = abs(amount) if amount is not None else None
 
     for rule in rules:
         # Check account constraint
         if rule.target_account_id and rule.target_account_id != account_id:
             continue
 
-        # Check amount constraints (absolute amount comparison)
-        abs_amount = abs(amount)
-        if rule.min_amount is not None and abs_amount < rule.min_amount:
-            continue
-        if rule.max_amount is not None and abs_amount > rule.max_amount:
-            continue
+        # Check amount constraints (absolute amount comparison) if amount is provided
+        if abs_amount is not None:
+            if rule.min_amount is not None and abs_amount < rule.min_amount:
+                continue
+            if rule.max_amount is not None and abs_amount > rule.max_amount:
+                continue
 
         rule_pattern = rule.pattern.upper().strip()
         is_match = False

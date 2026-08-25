@@ -43,7 +43,7 @@ class CategorizationRuleResponse(CategorizationRuleBase):
 
 class TestRuleMatchRequest(BaseModel):
     raw_payee: str
-    amount: float
+    amount: float | None = None
     account_id: str | None = None
 
 
