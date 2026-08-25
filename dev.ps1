@@ -1,4 +1,9 @@
 # Folio - 1-Command Local Development Launcher
+[CmdletBinding()]
+param(
+    [switch]$Clean
+)
+
 $ErrorActionPreference = "Stop"
 
 Write-Host "==========================================" -ForegroundColor Cyan
@@ -9,6 +14,15 @@ $RootPath = $PSScriptRoot
 $BackendPath = Join-Path $RootPath "backend"
 $FrontendPath = Join-Path $RootPath "frontend"
 $PythonExe = Join-Path $BackendPath ".venv\Scripts\python.exe"
+$DataPath = Join-Path $BackendPath "data"
+
+# 0. Handle -Clean Flag (Reinitialize DB & Uploads)
+if ($Clean) {
+    Write-Host "`n[-Clean] Reinitializing SQLite Database & Clearing Uploads..." -ForegroundColor Magenta
+    Remove-Item -Force -Recurse (Join-Path $DataPath "folio.db*") -ErrorAction SilentlyContinue
+    Remove-Item -Force -Recurse (Join-Path $DataPath "uploads\*") -ErrorAction SilentlyContinue
+    Write-Host "Database wiped. A clean database will be initialized on boot." -ForegroundColor Green
+}
 
 # 1. Check Python Virtual Environment
 if (-not (Test-Path $PythonExe)) {
