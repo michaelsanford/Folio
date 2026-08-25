@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.config import settings
 from app.models.account import Account
+from app.models.category import Category
 from app.models.statement_file import StatementFile
 from app.models.transaction import Transaction, TransactionSplit, TransactionStatus
 from app.schemas.ingestion import (
@@ -81,39 +82,53 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail="Account not found")
 
     committed_count = 0
+    stmt_file_id = req.statement_file_id if req.statement_file_id and req.statement_file_id.strip() else None
+    if stmt_file_id:
+        stmt_file = db.query(StatementFile).filter(StatementFile.id == stmt_file_id).first()
+        if not stmt_file:
+            stmt_file_id = None
 
     for item in req.items:
         try:
             trn_date = datetime.strptime(item.transaction_date, "%Y-%m-%d")
-        except ValueError:
-            trn_date = datetime.now()
+        except Exception:
+            try:
+                trn_date = datetime.fromisoformat(item.transaction_date)
+            except Exception:
+                trn_date = datetime.now()
 
         # Check deduplication hash once more
-        existing = db.query(Transaction).filter(
-            Transaction.account_id == req.account_id,
-            Transaction.import_hash == item.import_hash,
-        ).first()
+        if item.import_hash:
+            existing = db.query(Transaction).filter(
+                Transaction.account_id == req.account_id,
+                Transaction.import_hash == item.import_hash,
+            ).first()
+            if existing:
+                continue
 
-        if existing:
-            continue
+        # Sanitize category_id (must be valid or None to prevent FK constraint failures)
+        cat_id = item.category_id if item.category_id and item.category_id.strip() else None
+        if cat_id:
+            cat = db.query(Category).filter(Category.id == cat_id).first()
+            if not cat:
+                cat_id = None
 
         txn = Transaction(
             account_id=req.account_id,
-            statement_file_id=req.statement_file_id,
+            statement_file_id=stmt_file_id,
             transaction_date=trn_date,
-            raw_payee=item.raw_payee,
-            normalized_payee=item.normalized_payee,
+            raw_payee=item.raw_payee or "Unknown Payee",
+            normalized_payee=item.normalized_payee or item.raw_payee or "Unknown Payee",
             amount=item.amount,
             currency=account.currency or "USD",
-            import_hash=item.import_hash,
+            import_hash=item.import_hash or None,
             status=TransactionStatus.CLEARED,
             notes=item.notes,
         )
 
-        # Create split
         txn.splits.append(
             TransactionSplit(
-                category_id=item.category_id,
+                category_id=cat_id,
                 amount=item.amount,
                 memo=item.notes,
             )
@@ -123,8 +138,8 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
         committed_count += 1
 
     # Update statement file transaction count
-    if req.statement_file_id:
-        stmt_file = db.query(StatementFile).filter(StatementFile.id == req.statement_file_id).first()
+    if stmt_file_id:
+        stmt_file = db.query(StatementFile).filter(StatementFile.id == stmt_file_id).first()
         if stmt_file:
             stmt_file.transaction_count = committed_count
 

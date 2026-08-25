@@ -23,7 +23,7 @@ from app.api.auth import router as auth_router
 from app.api.accounts import router as accounts_router
 from app.api.categories import router as categories_router, seed_default_categories
 from app.api.transactions import router as transactions_router
-from app.api.rules import router as rules_router
+from app.api.rules import router as rules_router, seed_default_rules
 from app.api.ingestion import router as ingestion_router
 from app.api.budgets import router as budgets_router
 from app.api.analytics import router as analytics_router
@@ -38,10 +38,11 @@ async def lifespan(app: FastAPI):
     # Ensure database schema is created
     Base.metadata.create_all(bind=engine)
     
-    # Ensure default categories seeded
+    # Ensure default categories and categorization rules are seeded
     db = SessionLocal()
     try:
         seed_default_categories(db)
+        seed_default_rules(db)
     finally:
         db.close()
         
