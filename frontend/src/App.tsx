@@ -24,10 +24,12 @@ export function App() {
   const [authStatus, setAuthStatus] = useState<{
     authenticated: boolean;
     auth_required: boolean;
+    auth_mode: "cognito" | "master_password" | "unconfigured";
     is_loading: boolean;
   }>({
     authenticated: false,
     auth_required: false,
+    auth_mode: "master_password",
     is_loading: true,
   });
 
@@ -37,6 +39,7 @@ export function App() {
       setAuthStatus({
         authenticated: status.authenticated,
         auth_required: status.auth_required,
+        auth_mode: status.auth_mode || "master_password",
         is_loading: false,
       });
       if (status.authenticated || !status.auth_required) {
@@ -46,10 +49,12 @@ export function App() {
       setAuthStatus({
         authenticated: false,
         auth_required: true,
+        auth_mode: "master_password",
         is_loading: false,
       });
     }
   };
+
 
   const loadAllData = async () => {
     try {
@@ -184,7 +189,7 @@ export function App() {
 
   // If Auth Required and Unauthenticated -> Render Lock Screen
   if (authStatus.auth_required && !authStatus.authenticated) {
-    return <LockScreen onUnlocked={checkAuth} />;
+    return <LockScreen onUnlocked={checkAuth} authMode={authStatus.auth_mode} />;
   }
 
   return (

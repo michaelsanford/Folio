@@ -156,6 +156,7 @@ def get_budget_by_month(year: int, month: int, db: Session = Depends(get_db)):
 
 @router.post("", response_model=BudgetResponse, status_code=status.HTTP_201_CREATED)
 def create_budget(budget_in: BudgetCreate, db: Session = Depends(get_db)):
+    from app.core.s3_sync import sync_db_if_configured
     existing = db.query(Budget).filter(Budget.year == budget_in.year, Budget.month == budget_in.month).first()
     if existing:
         raise HTTPException(status_code=400, detail="Budget already exists for this year/month")
@@ -174,6 +175,7 @@ def create_budget(budget_in: BudgetCreate, db: Session = Depends(get_db)):
     db.add(budget)
     db.commit()
     db.refresh(budget)
+    sync_db_if_configured()
     return populate_budget_actuals(db, budget)
 
 
@@ -185,6 +187,7 @@ def upsert_budget_item(
     db: Session = Depends(get_db),
 ):
     """Adds or updates a category budget target for a specific month and marks the category as budgeted."""
+    from app.core.s3_sync import sync_db_if_configured
     budget = (
         db.query(Budget)
         .options(joinedload(Budget.items).joinedload(BudgetItem.category))
@@ -212,12 +215,14 @@ def upsert_budget_item(
 
     db.commit()
     db.refresh(budget)
+    sync_db_if_configured()
     return populate_budget_actuals(db, budget)
 
 
 @router.delete("/{budget_id}/items/{category_id}", response_model=BudgetResponse)
 def delete_budget_item(budget_id: str, category_id: str, db: Session = Depends(get_db)):
     """Removes a category from the budget."""
+    from app.core.s3_sync import sync_db_if_configured
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if not budget:
         raise HTTPException(status_code=404, detail="Budget not found")
@@ -227,12 +232,14 @@ def delete_budget_item(budget_id: str, category_id: str, db: Session = Depends(g
         db.delete(item)
         db.commit()
         db.refresh(budget)
+        sync_db_if_configured()
 
     return populate_budget_actuals(db, budget)
 
 
 @router.put("/{budget_id}", response_model=BudgetResponse)
 def update_budget(budget_id: str, budget_in: BudgetUpdate, db: Session = Depends(get_db)):
+    from app.core.s3_sync import sync_db_if_configured
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if not budget:
         raise HTTPException(status_code=404, detail="Budget not found")
@@ -255,4 +262,5 @@ def update_budget(budget_id: str, budget_in: BudgetUpdate, db: Session = Depends
 
     db.commit()
     db.refresh(budget)
+    sync_db_if_configured()
     return populate_budget_actuals(db, budget)

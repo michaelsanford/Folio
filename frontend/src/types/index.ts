@@ -233,3 +233,18 @@ export interface DashboardAnalyticsResponse {
   category_spending: CategorySpendPoint[];
   sankey: SankeyData;
 }
+
+export interface AuthStatusResponse {
+  authenticated: boolean;
+  auth_required: boolean;
+  auth_mode: "cognito" | "master_password" | "unconfigured";
+  cognito_enabled: boolean;
+}
+
+export interface CognitoConfigResponse {
+  enabled: boolean;
+  user_pool_id: string;
+  client_id: string;
+  region: string;
+}
+

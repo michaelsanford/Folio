@@ -25,10 +25,12 @@ def list_accounts(
 
 @router.post("", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
 def create_account(account_in: AccountCreate, db: Session = Depends(get_db)):
+    from app.core.s3_sync import sync_db_if_configured
     account = Account(**account_in.model_dump())
     db.add(account)
     db.commit()
     db.refresh(account)
+    sync_db_if_configured()
     return account
 
 
@@ -46,6 +48,7 @@ def update_account(
     account_in: AccountUpdate,
     db: Session = Depends(get_db),
 ):
+    from app.core.s3_sync import sync_db_if_configured
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
@@ -56,17 +59,20 @@ def update_account(
 
     db.commit()
     db.refresh(account)
+    sync_db_if_configured()
     return account
 
 
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_account(account_id: str, db: Session = Depends(get_db)):
+    from app.core.s3_sync import sync_db_if_configured
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
     db.delete(account)
     db.commit()
+    sync_db_if_configured()
     return None
 
 

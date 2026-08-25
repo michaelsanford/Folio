@@ -102,20 +102,25 @@ Access the application at `http://localhost:8000`.
 
 ---
 
-## Security & Authentication
+## Security & Zero-Trust Architecture
 
-Folio features multi-layered security designed for private self-hosting and cloud deployment:
+Folio implements an enterprise-grade defense-in-depth security model engineered for hosting personal financial data on the public internet:
 
-- **Master Passphrase Vault Lock**: Protected by bcrypt password hashing and signed `HttpOnly`, `SameSite=Strict`, `Secure` JWT session tokens.
-- **Protected Endpoints**: All financial data routes require authenticated sessions.
-- **Security Headers**: Automatic injection of `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection`, and `Referrer-Policy`.
-- **WAF & Edge Protection**: Compatible with Cloudflare Free Tier (DDoS, WAF, and Zero Trust Access) or AWS WAF on CloudFront.
+- **Dual-Auth Identity Engine**:
+  - **AWS Cognito User Pool (Cloud / Production)**: Zero-Trust OpenID Connect / JWKS cryptographic token validation, Admin-only user provisioning (`AllowAdminCreateUserOnly: true`), robust password policies, and optional **TOTP Software Token MFA** (Google Authenticator, 1Password, Apple Keychain) with 50,000 free monthly active users.
+  - **Master Passphrase Vault (Local / Docker)**: Protected by bcrypt hashing, constant-time comparisons (`secrets.compare_digest`), and signed `HttpOnly`, `SameSite=Strict`, `Secure` JWT session cookies.
+- **Fail-Closed Access Control**: Unconfigured or invalid sessions are strictly rejected (`HTTP 401 Unauthorized`); no unauthenticated routes bypass financial endpoints.
+- **Edge Perimeter Protection**: Lambda Function URL is protected with origin secret verification (`X-Folio-Origin-Verify`) to ensure traffic flows through CloudFront CDN / AWS WAF, mitigating single-concurrency exhaustion (DoS) attacks.
+- **Modern Defense-in-Depth HTTP Headers**: Full injection of `Content-Security-Policy` (CSP), `Strict-Transport-Security` (HSTS: `max-age=63072000; includeSubDomains; preload`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and `Permissions-Policy`.
+- **Directory Traversal & Ingestion Safeguards**: Strict filesystem boundary containment checks for static SPA routing and 25 MB max upload limits with magic-byte format verification for PDF and statement files.
+- **Transactional S3 Vault Encryption**: Private S3 database snapshots are uploaded with Server-Side Encryption (`AES256`/`KMS`) and write-through checkpoint synchronization after every batch commit or balance change.
+- **Container Non-Root Isolation**: Multi-stage Docker execution runs as a dedicated unprivileged `appuser` (UID 1000).
 
 ---
 
 ## AWS SAM Serverless Deployment (True $0.00/mo Baseline)
 
-Folio includes a native AWS SAM model (`template.yaml` + `Dockerfile`) utilizing the **AWS Lambda Web Adapter** on ARM64 Graviton2 with direct **Lambda Function URLs**:
+Folio includes a native AWS SAM model (`template.yaml` + `Dockerfile`) utilizing the **AWS Lambda Web Adapter** on ARM64 Graviton2 with direct **Lambda Function URLs** and Cognito User Pools:
 
 ### 1-Command SAM Deployment
 ```powershell
@@ -124,13 +129,15 @@ Folio includes a native AWS SAM model (`template.yaml` + `Dockerfile`) utilizing
 
 ### How the SAM Architecture Works:
 1. **Lambda Web Adapter**: Runs the standard FastAPI app and compiled React 19 PWA directly inside AWS Lambda without code modifications.
-2. **Lambda Function URL**: Provides a direct public HTTPS endpoint with automated TLS and free CORS (bypassing API Gateway fees).
-3. **Single-Writer SQLite Locking**: Configured with `ReservedConcurrentExecutions: 1` to guarantee database file consistency.
-4. **Automated S3 Sync**: Pulls `folio.db` on cold-start and checkpoints snapshots back to the private S3 vault.
-5. **Cost**: **$0.00/month** (100% within the AWS Lambda Always-Free Tier of 1M requests/month).
+2. **Lambda Function URL**: Provides a direct HTTPS endpoint with automated TLS and free CORS (bypassing API Gateway fees).
+3. **AWS Cognito User Pool**: Manages owner identity, credentials, and TOTP MFA tokens out of the box.
+4. **Single-Writer SQLite Locking**: Configured with `ReservedConcurrentExecutions: 1` to guarantee database file consistency.
+5. **Automated S3 Write-Through Sync**: Restores `folio.db` on cold-start and checkpoints snapshots back to the private S3 vault upon every batch commit and ledger mutation.
+6. **Cost**: **$0.00/month** (100% within the AWS Lambda Always-Free Tier of 1M requests/month + Cognito 50,000 free MAUs).
 
 ---
 
 ## License & Rights
 
 All rights reserved (c) Michael Sanford.
+

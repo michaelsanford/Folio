@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Folio - Ultra-Minimalist Serverless SAM Application (FastAPI + React 19 PWA + SQLite + Auth) in ca-central-1
+Description: Folio - Hardened Serverless Application (FastAPI + React 19 PWA + SQLite + Cognito) in ca-central-1
 
 Parameters:
   EnvironmentName:
@@ -12,7 +12,13 @@ Parameters:
     Type: String
     NoEcho: true
     Default: ''
-    Description: Optional master passphrase for vault authentication (can also be configured on initial launch)
+    Description: Optional master passphrase for local/fallback vault authentication
+
+  OriginVerifySecret:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: Optional secret verification header token injected by CloudFront/WAF to protect direct Lambda Function URL access
 
 Globals:
   Function:
@@ -47,7 +53,51 @@ Resources:
             NoncurrentVersionExpiration:
               NoncurrentDays: 30
 
-  # 2. Serverless Function (FastAPI + Embedded PWA via AWS Lambda Web Adapter)
+  # 2. AWS Cognito User Pool for Zero-Trust Identity
+  FolioUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub 'folio-userpool-${EnvironmentName}'
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true  # Prevents public sign-ups (Owner-only private vault)
+      AutoVerifiedAttributes:
+        - email
+      MfaConfiguration: "OPTIONAL"     # Supports TOTP Authenticator apps (Google Authenticator, 1Password, Apple Keychain)
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  # 3. Cognito User Pool App Client for SPA PWA
+  FolioUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub 'folio-client-${EnvironmentName}'
+      UserPoolId: !Ref FolioUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+      PreventUserExistenceErrors: ENABLED
+      TokenValidityUnits:
+        AccessToken: days
+        IdToken: days
+        RefreshToken: days
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+
+  # 4. Serverless Function (FastAPI + Embedded PWA via AWS Lambda Web Adapter)
   FolioServerlessFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -57,17 +107,27 @@ Resources:
         Variables:
           AWS_LWA_PORT: "8000"
           AWS_LWA_ASYNC_INIT: "true"
+          FOLIO_ENV: !Ref EnvironmentName
           SQLITE_DB_PATH: "/tmp/folio.db"
           S3_BUCKET_NAME: !Ref FolioStorageVault
           AWS_DEFAULT_REGION: !Ref AWS::Region
           FOLIO_MASTER_PASSWORD: !Ref MasterPassword
+          COGNITO_USER_POOL_ID: !Ref FolioUserPool
+          COGNITO_CLIENT_ID: !Ref FolioUserPoolClient
+          COGNITO_REGION: !Ref AWS::Region
+          FOLIO_ORIGIN_VERIFY_SECRET: !Ref OriginVerifySecret
       FunctionUrlConfig:
         AuthType: NONE
         Cors:
           AllowOrigins:
             - '*'
           AllowMethods:
-            - '*'
+            - 'GET'
+            - 'POST'
+            - 'PUT'
+            - 'DELETE'
+            - 'OPTIONS'
+            - 'HEAD'
           AllowHeaders:
             - '*'
           AllowCredentials: true
@@ -81,8 +141,16 @@ Resources:
 
 Outputs:
   FolioAppUrl:
-    Description: Live Public HTTPS URL for Folio App
+    Description: Live Serverless HTTPS Endpoint for Folio App
     Value: !GetAtt FolioServerlessFunctionUrl.FunctionUrl
+
+  CognitoUserPoolId:
+    Description: AWS Cognito User Pool ID
+    Value: !Ref FolioUserPool
+
+  CognitoClientId:
+    Description: AWS Cognito App Client ID
+    Value: !Ref FolioUserPoolClient
 
   S3VaultBucket:
     Description: S3 Storage Vault Bucket Name

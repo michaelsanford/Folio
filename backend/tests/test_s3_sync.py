@@ -51,5 +51,9 @@ def test_sync_db_to_s3_success(mock_get_client, tmp_path):
     result = sync_db_to_s3(db_path, "my-vault-bucket", "ca-central-1")
     assert result is True
     mock_client.upload_file.assert_called_once_with(
-        str(db_path), "my-vault-bucket", "database/folio.db"
+        str(db_path),
+        "my-vault-bucket",
+        "database/folio.db",
+        ExtraArgs={"ServerSideEncryption": "AES256"},
     )
+

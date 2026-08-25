@@ -53,25 +53,44 @@ async def lifespan(app: FastAPI):
         sync_db_to_s3(settings.SQLITE_DB_PATH, settings.S3_BUCKET_NAME, settings.AWS_REGION)
 
 
+# In production mode, disable public Swagger docs to prevent API surface scanning
+is_prod = settings.ENVIRONMENT.lower() == "production"
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="Folio - Self-hosted Personal Finance & Budgeting Engine",
     version="1.0.0",
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    docs_url=f"{settings.API_V1_STR}/docs",
-    redoc_url=f"{settings.API_V1_STR}/redoc",
+    openapi_url=None if is_prod else f"{settings.API_V1_STR}/openapi.json",
+    docs_url=None if is_prod else f"{settings.API_V1_STR}/docs",
+    redoc_url=None if is_prod else f"{settings.API_V1_STR}/redoc",
     lifespan=lifespan,
 )
 
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
-    """Injects essential security headers into every response."""
+    """Injects comprehensive defense-in-depth security headers into every response."""
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
+    
+    # Modern Content Security Policy (allows Cognito auth and self assets)
+    csp_directives = [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "font-src 'self' data:",
+        "img-src 'self' data: https:",
+        "connect-src 'self' https://cognito-idp.*.amazonaws.com https://cognito-identity.*.amazonaws.com",
+        "frame-ancestors 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+    ]
+    response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
     return response
 
 
@@ -80,14 +99,14 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=["*"],
 )
 
 # Public Auth router
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 
-# Protected API routers (require authentication if auth is configured)
+# Protected API routers (require authentication)
 app.include_router(accounts_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
 app.include_router(categories_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
 app.include_router(transactions_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
@@ -103,6 +122,7 @@ def health_check():
         "status": "healthy",
         "service": settings.PROJECT_NAME,
         "database": "sqlite_wal",
+        "auth_mode": "cognito" if settings.is_cognito_enabled else "master_password",
     }
 
 
@@ -120,7 +140,13 @@ if STATIC_DIR.exists() and (STATIC_DIR / "index.html").exists():
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
-        file_path = STATIC_DIR / full_path
-        if file_path.is_file():
-            return FileResponse(file_path)
+        # Strict containment verification against directory traversal
+        try:
+            static_root = STATIC_DIR.resolve()
+            target_path = (STATIC_DIR / full_path).resolve()
+            if target_path.is_file() and target_path.is_relative_to(static_root):
+                return FileResponse(target_path)
+        except Exception:
+            pass
         return FileResponse(STATIC_DIR / "index.html")
+

@@ -65,9 +65,23 @@ def sync_db_to_s3(db_path: Path, bucket_name: str, region: str = "ca-central-1")
 
         s3_key = "database/folio.db"
         logger.info(f"Synchronizing database snapshot to S3 ({bucket_name}/{s3_key})...")
-        client.upload_file(str(db_path), bucket_name, s3_key)
+        client.upload_file(
+            str(db_path),
+            bucket_name,
+            s3_key,
+            ExtraArgs={"ServerSideEncryption": "AES256"},
+        )
         logger.info("Database snapshot successfully uploaded to S3.")
         return True
     except Exception as e:
         logger.error(f"Failed to sync SQLite database to S3: {e}")
         return False
+
+
+def sync_db_if_configured() -> bool:
+    """Convenience helper to checkpoint and push DB snapshot to S3 if S3_BUCKET_NAME is configured."""
+    from app.core.config import settings
+    if settings.S3_BUCKET_NAME:
+        return sync_db_to_s3(settings.SQLITE_DB_PATH, settings.S3_BUCKET_NAME, settings.AWS_REGION)
+    return False
+

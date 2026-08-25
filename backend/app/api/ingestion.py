@@ -1,11 +1,13 @@
 import hashlib
 import os
+import re
 from pathlib import Path
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.s3_sync import sync_db_if_configured
 from app.models.account import Account
 from app.models.category import Category
 from app.models.statement_file import StatementFile
@@ -35,17 +37,38 @@ async def upload_statement_preview(
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    content = await file.read()
+    # Guard against memory exhaustion DoS: limit read to MAX_UPLOAD_SIZE_BYTES + 1
+    max_bytes = settings.MAX_UPLOAD_SIZE_BYTES
+    content = await file.read(max_bytes + 1)
+    if len(content) > max_bytes:
+        max_mb = max_bytes // (1024 * 1024)
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Statement file exceeds maximum allowed size of {max_mb} MB",
+        )
+
     if not content:
         raise HTTPException(status_code=400, detail="Empty file uploaded")
 
-    filename = file.filename or "statement"
-    ext = Path(filename).suffix.lower()
+    # Sanitize filename strictly to prevent path traversal and control character attacks
+    raw_filename = Path(file.filename or "statement").name
+    safe_filename = re.sub(r"[^a-zA-Z0-9_\-\.]", "_", raw_filename)
+    if not safe_filename or safe_filename.startswith("."):
+        safe_filename = f"statement{Path(raw_filename).suffix}"
+        
+    ext = Path(safe_filename).suffix.lower()
+
+    # Magic byte verification for PDF
+    if ext == ".pdf" and not content.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid PDF statement: file magic header missing or corrupt",
+        )
 
     # Save statement file to disk
     settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     file_hash = hashlib.sha256(content).hexdigest()
-    saved_filename = f"{account_id}_{file_hash[:12]}_{filename}"
+    saved_filename = f"{account_id}_{file_hash[:12]}_{safe_filename}"
     saved_path = settings.UPLOAD_DIR / saved_filename
     
     with open(saved_path, "wb") as f:
@@ -53,7 +76,7 @@ async def upload_statement_preview(
 
     stmt_file = StatementFile(
         account_id=account_id,
-        filename=filename,
+        filename=safe_filename,
         file_path=str(saved_path),
         file_hash=file_hash,
         mime_type=file.content_type or "application/octet-stream",
@@ -66,14 +89,15 @@ async def upload_statement_preview(
 
     # Route parser based on extension
     if ext == ".pdf":
-        preview = parse_pdf_content(db, account_id, content, filename)
+        preview = parse_pdf_content(db, account_id, content, safe_filename)
     elif ext in [".ofx", ".qfx", ".qbo"]:
-        preview = parse_ofx_content(db, account_id, content, filename)
+        preview = parse_ofx_content(db, account_id, content, safe_filename)
     else:  # Default to CSV / text
-        preview = parse_csv_content(db, account_id, content, filename)
+        preview = parse_csv_content(db, account_id, content, safe_filename)
 
     preview.file_id = stmt_file.id
     return preview
+
 
 
 @router.post("/commit", response_model=IngestionCommitResponse)
@@ -166,6 +190,9 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
         # Recalculate account balance
         recalculate_account_balance(db, req.account_id)
         db.refresh(account)
+
+        # Write-through checkpoint synchronization to S3 vault
+        sync_db_if_configured()
 
         return IngestionCommitResponse(
             committed_count=committed_count,

@@ -34,6 +34,15 @@ COPY backend/ .
 # Copy compiled Frontend PWA into /app/static
 COPY --from=frontend-builder /app/frontend/dist /app/static
 
+# Create non-root user and group with proper permissions
+RUN groupadd -g 1000 appuser && \
+    useradd -u 1000 -g appuser -d /app -s /bin/bash appuser && \
+    mkdir -p /app/data/uploads /tmp && \
+    chown -R appuser:appuser /app /tmp
+
+USER appuser
+
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
