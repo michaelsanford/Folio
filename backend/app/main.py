@@ -128,23 +128,24 @@ if STATIC_DIR.exists() and (STATIC_DIR / "index.html").exists():
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
-    ALLOWED_ROOT_PWA_FILES = {
-        "favicon.ico",
-        "manifest.webmanifest",
-        "registerSW.js",
-        "sw.js",
-    }
+    # Pre-indexed dictionary of safe root PWA files discovered on disk at startup
+    ROOT_PWA_FILES: dict[str, Path] = {}
+    for name in ["favicon.ico", "manifest.webmanifest", "registerSW.js", "sw.js"]:
+        fpath = STATIC_DIR / name
+        if fpath.is_file():
+            ROOT_PWA_FILES[name] = fpath
+    for fpath in STATIC_DIR.glob("workbox-*.js"):
+        if fpath.is_file():
+            ROOT_PWA_FILES[fpath.name] = fpath
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
-        # Allow exact matching for known root PWA static files
-        if full_path:
-            file_name = full_path.split("/")[-1]
-            if file_name in ALLOWED_ROOT_PWA_FILES or (file_name.startswith("workbox-") and file_name.endswith(".js")):
-                target = STATIC_DIR / file_name
-                if target.is_file():
-                    return FileResponse(target)
+        # Look up requested file in safe pre-indexed Path dictionary
+        target = ROOT_PWA_FILES.get(full_path.strip("/"))
+        if target is not None:
+            return FileResponse(target)
         # All other application paths render the Single Page Application shell
         return FileResponse(STATIC_DIR / "index.html")
+
 
 
