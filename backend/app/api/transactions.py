@@ -58,31 +58,32 @@ def list_transactions(
         query = query.filter(Transaction.transaction_date >= start_date)
     if end_date:
         query = query.filter(Transaction.transaction_date <= end_date)
-    if search:
-        pattern = f"%{search}%"
-        query = query.filter(
-            or_(
-                Transaction.raw_payee.ilike(pattern),
-                Transaction.normalized_payee.ilike(pattern),
-                Transaction.notes.ilike(pattern),
-            )
-        )
+
     if category_id:
         query = query.join(Transaction.splits).filter(TransactionSplit.category_id == category_id)
 
-    total = query.count()
+    if search:
+        search_filter = or_(
+            Transaction.raw_payee.ilike(f"%{search}%"),
+            Transaction.normalized_payee.ilike(f"%{search}%"),
+            Transaction.notes.ilike(f"%{search}%"),
+        )
+        query = query.filter(search_filter)
 
-    # Sorting
-    sort_col = getattr(Transaction, sort_by)
-    query = query.order_by(desc(sort_col) if sort_order == "desc" else asc(sort_col))
+    total_count = query.distinct().count()
 
-    # Pagination
-    offset = (page - 1) * page_size
-    items = query.offset(offset).limit(page_size).all()
+    # Dynamic sorting
+    order_col = getattr(Transaction, sort_by)
+    if sort_order == "desc":
+        query = query.order_by(desc(order_col), desc(Transaction.created_at))
+    else:
+        query = query.order_by(asc(order_col), asc(Transaction.created_at))
+
+    items = query.offset((page - 1) * page_size).limit(page_size).all()
 
     return TransactionListResponse(
-        total=total,
         items=items,
+        total=total_count,
         page=page,
         page_size=page_size,
     )
@@ -90,13 +91,15 @@ def list_transactions(
 
 @router.post("", response_model=TransactionResponse, status_code=status.HTTP_201_CREATED)
 def create_transaction(txn_in: TransactionCreate, db: Session = Depends(get_db)):
+    from app.api.rules import auto_learn_rule
+
     account = db.query(Account).filter(Account.id == txn_in.account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
     txn_data = txn_in.model_dump(exclude={"splits"})
     txn = Transaction(**txn_data)
-    
+
     # If no splits provided, default single split with full amount
     splits_data = txn_in.splits or []
     if not splits_data:
@@ -108,6 +111,10 @@ def create_transaction(txn_in: TransactionCreate, db: Session = Depends(get_db))
     db.add(txn)
     db.commit()
     db.refresh(txn)
+
+    # Adaptive learning: remember category assigned to payee
+    if txn.splits and txn.splits[0].category_id:
+        auto_learn_rule(db, raw_payee=txn.raw_payee, category_id=txn.splits[0].category_id, normalized_payee=txn.normalized_payee)
 
     # Recalculate account balance
     recalculate_account_balance(db, txn.account_id)
@@ -134,6 +141,8 @@ def update_transaction(
     txn_in: TransactionUpdate,
     db: Session = Depends(get_db),
 ):
+    from app.api.rules import auto_learn_rule
+
     txn = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not txn:
         raise HTTPException(status_code=404, detail="Transaction not found")
@@ -151,6 +160,10 @@ def update_transaction(
 
     db.commit()
     db.refresh(txn)
+
+    # Adaptive learning
+    if txn.splits and txn.splits[0].category_id:
+        auto_learn_rule(db, raw_payee=txn.raw_payee, category_id=txn.splits[0].category_id, normalized_payee=txn.normalized_payee)
 
     recalculate_account_balance(db, txn.account_id)
     return txn
@@ -176,6 +189,8 @@ def batch_categorize(req: BatchCategorizeRequest, db: Session = Depends(get_db))
     Applies category and optional payee override to multiple transactions in one batch.
     Optionally creates a new categorization rule for future imports.
     """
+    from app.api.rules import auto_learn_rule
+
     category = db.query(Category).filter(Category.id == req.category_id).first()
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
@@ -192,33 +207,31 @@ def batch_categorize(req: BatchCategorizeRequest, db: Session = Depends(get_db))
         else:
             txn.splits.append(TransactionSplit(category_id=req.category_id, amount=txn.amount))
 
-    # If user wants to remember this rule for future imports
-    if req.create_rule and transactions:
-        sample_txn = transactions[0]
-        pattern = req.rule_pattern or sample_txn.raw_payee
-        rule = CategorizationRule(
-            category_id=req.category_id,
-            pattern=pattern,
-            pattern_type=RulePatternType.CONTAINS,
-            normalized_payee_override=req.normalized_payee or sample_txn.normalized_payee,
-        )
-        db.add(rule)
+        # Auto-learn rule for each merchant
+        auto_learn_rule(db, raw_payee=txn.raw_payee, category_id=req.category_id, normalized_payee=req.normalized_payee or txn.normalized_payee)
 
     db.commit()
     return {"updated_count": len(transactions)}
 
 
-@router.post("/link-transfer", status_code=status.HTTP_200_OK)
-def link_transfers(req: TransferLinkRequest, db: Session = Depends(get_db)):
-    """Pairs two transactions as reciprocal transfers."""
-    txn1 = db.query(Transaction).filter(Transaction.id == req.source_transaction_id).first()
-    txn2 = db.query(Transaction).filter(Transaction.id == req.target_transaction_id).first()
+@router.post("/link-transfer", response_model=TransactionResponse)
+def link_transfer_pair(req: TransferLinkRequest, db: Session = Depends(get_db)):
+    """
+    Links two offsetting transactions between accounts as a transfer pair.
+    """
+    txn_from = db.query(Transaction).filter(Transaction.id == req.source_transaction_id).first()
+    txn_to = db.query(Transaction).filter(Transaction.id == req.target_transaction_id).first()
 
-    if not txn1 or not txn2:
+    if not txn_from or not txn_to:
         raise HTTPException(status_code=404, detail="One or both transactions not found")
 
-    txn1.transfer_transaction_id = txn2.id
-    txn2.transfer_transaction_id = txn1.id
+    if txn_from.id == txn_to.id:
+        raise HTTPException(status_code=400, detail="Cannot link a transaction to itself")
+
+    # Set bidirectional pointer
+    txn_from.transfer_transaction_id = txn_to.id
+    txn_to.transfer_transaction_id = txn_from.id
 
     db.commit()
-    return {"status": "linked", "transaction1": txn1.id, "transaction2": txn2.id}
+    db.refresh(txn_from)
+    return txn_from
