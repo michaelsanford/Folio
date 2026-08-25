@@ -326,6 +326,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify(item),
     }),
+  deleteBudgetItem: (budgetId: string, categoryId: string) =>
+    request<Budget>(`/budgets/${budgetId}/items/${categoryId}`, {
+      method: "DELETE",
+    }),
 
   // Analytics & Dashboard
   getDashboardAnalytics: () =>
