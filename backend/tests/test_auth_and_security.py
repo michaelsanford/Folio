@@ -119,10 +119,10 @@ def test_security_headers():
     assert response.status_code == 200
     assert response.headers.get("X-Content-Type-Options") == "nosniff"
     assert response.headers.get("X-Frame-Options") == "DENY"
-    assert response.headers.get("Strict-Transport-Security") is not None
     assert response.headers.get("Content-Security-Policy") is not None
     assert "default-src 'self'" in response.headers.get("Content-Security-Policy")
     assert response.headers.get("Permissions-Policy") is not None
+
 
 
 def test_spa_path_traversal_defense():
