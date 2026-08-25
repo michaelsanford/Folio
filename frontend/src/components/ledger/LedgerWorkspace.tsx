@@ -1,14 +1,9 @@
 import React, { useState, useEffect } from "react";
 import {
   Search,
-  Filter,
   Plus,
   Split,
-  Tag,
-  Check,
-  ChevronDown,
   Trash2,
-  Calendar,
   Layers,
   Sparkles,
 } from "lucide-react";
@@ -33,7 +28,6 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
   onDataModified,
 }) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
@@ -482,7 +476,6 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 transactions.map((txn) => {
                   const isChecked = selectedTxnIds.has(txn.id);
                   const isSplit = txn.splits && txn.splits.length > 1;
-                  const firstCategory = txn.splits?.[0]?.category;
                   const matchedAccount = accounts.find((a) => a.id === txn.account_id);
 
                   return (

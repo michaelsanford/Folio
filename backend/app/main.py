@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, Request, Response
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -9,16 +9,8 @@ from app.core.config import settings
 from app.core.database import engine, Base, SessionLocal
 from app.core.security import require_auth
 from app.core.s3_sync import restore_db_from_s3, sync_db_to_s3
-from app.models import (
-    Account,
-    Category,
-    Transaction,
-    TransactionSplit,
-    CategorizationRule,
-    Budget,
-    BudgetItem,
-    StatementFile,
-)
+import app.models  # noqa: F401 - registers SQLAlchemy models with Base metadata
+
 from app.api.auth import router as auth_router
 from app.api.accounts import router as accounts_router
 from app.api.categories import router as categories_router, seed_default_categories
@@ -139,13 +131,19 @@ if STATIC_DIR.exists() and (STATIC_DIR / "index.html").exists():
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
-        # Strict containment verification against directory traversal
+        # Sanitize path to disallow traversal sequences
+        safe_rel_path = os.path.normpath(full_path).lstrip("/\\")
+        if not safe_rel_path or ".." in safe_rel_path.split(os.path.sep):
+            return FileResponse(STATIC_DIR / "index.html")
+
         try:
-            static_root = STATIC_DIR.resolve()
-            target_path = (STATIC_DIR / full_path).resolve()
-            if target_path.is_file() and target_path.is_relative_to(static_root):
+            static_root = str(STATIC_DIR.resolve())
+            target_path = os.path.abspath(os.path.join(static_root, safe_rel_path))
+            if os.path.commonpath([static_root, target_path]) == static_root and os.path.isfile(target_path):
                 return FileResponse(target_path)
         except Exception:
+            # Fallback to SPA shell if path resolution fails
             pass
+
         return FileResponse(STATIC_DIR / "index.html")
 

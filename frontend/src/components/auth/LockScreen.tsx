@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Lock, KeyRound, Eye, EyeOff, ShieldCheck, ArrowRight, ShieldAlert, Cpu } from "lucide-react";
+import { Lock, KeyRound, Eye, EyeOff, ShieldCheck, ArrowRight, Cpu } from "lucide-react";
 import { api } from "../../services/api";
 
 interface LockScreenProps {

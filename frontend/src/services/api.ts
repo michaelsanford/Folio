@@ -15,32 +15,20 @@ import type {
 } from "../types";
 
 const API_BASE = "/api";
-const TOKEN_KEY = "folio_access_token";
 
 let onUnauthorizedCallback: (() => void) | null = null;
+let inMemoryToken: string | null = null;
 
 export function setOnUnauthorized(callback: () => void) {
   onUnauthorizedCallback = callback;
 }
 
 export function getStoredToken(): string | null {
-  try {
-    return localStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null;
-  }
+  return inMemoryToken;
 }
 
 export function setStoredToken(token: string | null) {
-  try {
-    if (token) {
-      localStorage.setItem(TOKEN_KEY, token);
-    } else {
-      localStorage.removeItem(TOKEN_KEY);
-    }
-  } catch {
-    // Ignore storage errors
-  }
+  inMemoryToken = token;
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -50,6 +38,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     : {};
 
   const res = await fetch(`${API_BASE}${path}`, {
+    credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
       ...authHeader,
@@ -277,6 +266,7 @@ export const api = {
 
     const res = await fetch(`${API_BASE}/ingestion/upload-preview`, {
       method: "POST",
+      credentials: "same-origin",
       headers: authHeader,
       body: formData,
     });

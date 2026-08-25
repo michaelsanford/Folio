@@ -1,4 +1,3 @@
-import io
 from app.services.ingestion.ofx_parser import parse_ofx_content
 
 

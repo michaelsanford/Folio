@@ -1,14 +1,11 @@
 import React, { useState } from "react";
 import {
-  Landmark,
   Plus,
   CreditCard,
   Building2,
   PiggyBank,
   Edit2,
   Trash2,
-  Percent,
-  Calendar,
 } from "lucide-react";
 import type { Account, AccountType } from "../../types";
 import { api } from "../../services/api";

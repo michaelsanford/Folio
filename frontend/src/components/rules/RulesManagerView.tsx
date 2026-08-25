@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from "react";
 import {
-  Sliders,
   Plus,
   Trash2,
   CheckCircle2,
   Sparkles,
   Play,
-  ArrowRight,
 } from "lucide-react";
 import type { CategorizationRule, Category, RulePatternType } from "../../types";
 import { api } from "../../services/api";

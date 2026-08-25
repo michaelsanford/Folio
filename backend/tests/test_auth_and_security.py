@@ -1,10 +1,8 @@
-import io
 import pytest
-from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 from app.main import app
 from app.core.config import settings
-from app.core.security import hash_password, create_access_token
+from app.core.security import hash_password
 
 
 @pytest.fixture(autouse=True)
