@@ -95,7 +95,7 @@ Folio includes automated GitHub Actions workflows:
 Run the unified single-container build (FastAPI + embedded PWA + SQLite):
 
 ```powershell
-docker compose -f infra/docker-compose.yml up --build
+docker compose up --build
 ```
 
 Access the application at `http://localhost:8000`.
@@ -124,7 +124,7 @@ Folio includes a native AWS SAM model (`template.yaml` + `Dockerfile`) utilizing
 
 ### 1-Command SAM Deployment
 ```powershell
-.\infra\deploy.ps1 -Region ca-central-1 -StackName folio-prod
+.\deploy.ps1 -Region ca-central-1 -StackName folio-prod
 ```
 
 ### How the SAM Architecture Works:

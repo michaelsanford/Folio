@@ -4,13 +4,13 @@ name: folio
 services:
   folio:
     build:
-      context: ..
+      context: .
       dockerfile: Dockerfile
     container_name: folio-app
     ports:
       - "8000:8000"
     volumes:
-      - ../backend/data:/app/data
+      - ./backend/data:/app/data
     environment:
       - SQLITE_DB_PATH=/app/data/folio.db
       - S3_BUCKET_NAME=${S3_BUCKET_NAME:-}

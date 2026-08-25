@@ -25,8 +25,7 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 $AccountId = (aws sts get-caller-identity --query "Account" --output text).Trim()
 Write-Host "Authenticated as AWS Account: $AccountId in $Region" -ForegroundColor Green
 
-$RootPath = Resolve-Path (Join-Path $PSScriptRoot "..")
-Push-Location $RootPath
+Push-Location $PSScriptRoot
 
 try {
     # 2. SAM Build
@@ -87,4 +86,3 @@ try {
 } finally {
     Pop-Location
 }
-
