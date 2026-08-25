@@ -63,11 +63,28 @@ try {
         --query "Stacks[0].Outputs[?OutputKey=='S3VaultBucket'].OutputValue" `
         --output text
 
+    $UserPoolId = aws cloudformation describe-stacks `
+        --stack-name "$StackName" `
+        --region "$Region" `
+        --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolId'].OutputValue" `
+        --output text
+
+    $ClientId = aws cloudformation describe-stacks `
+        --stack-name "$StackName" `
+        --region "$Region" `
+        --query "Stacks[0].Outputs[?OutputKey=='CognitoClientId'].OutputValue" `
+        --output text
+
     Write-Host "`n========================================================" -ForegroundColor Green
     Write-Host "Folio Serverless SAM Deployment Complete!" -ForegroundColor Green
     Write-Host "Live HTTPS Application URL: $AppUrl" -ForegroundColor Cyan
     Write-Host "S3 Storage Vault Bucket:    $VaultBucket" -ForegroundColor Gray
+    if ($UserPoolId -and $UserPoolId -ne "None") {
+        Write-Host "Cognito User Pool ID:       $UserPoolId" -ForegroundColor Yellow
+        Write-Host "Cognito App Client ID:      $ClientId" -ForegroundColor Yellow
+    }
     Write-Host "========================================================" -ForegroundColor Green
 } finally {
     Pop-Location
 }
+

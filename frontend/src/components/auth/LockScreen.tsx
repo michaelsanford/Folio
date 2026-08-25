@@ -1,15 +1,17 @@
 import React, { useState } from "react";
-import { Lock, KeyRound, Eye, EyeOff, ShieldCheck, ArrowRight } from "lucide-react";
+import { Lock, KeyRound, Eye, EyeOff, ShieldCheck, ArrowRight, ShieldAlert, Cpu } from "lucide-react";
 import { api } from "../../services/api";
 
 interface LockScreenProps {
   onUnlocked: () => void;
   isInitialSetup?: boolean;
+  authMode?: "cognito" | "master_password" | "unconfigured";
 }
 
 export const LockScreen: React.FC<LockScreenProps> = ({
   onUnlocked,
   isInitialSetup = false,
+  authMode = "master_password",
 }) => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -24,15 +26,21 @@ export const LockScreen: React.FC<LockScreenProps> = ({
     setError(null);
 
     try {
-      if (isInitialSetup) {
+      if (authMode === "cognito") {
+        // Direct Cognito token or auth credential injection
+        api.auth.setToken(password.trim());
+        await api.getAccounts(); // Probe endpoint with token to verify
+        onUnlocked();
+      } else if (isInitialSetup) {
         await api.auth.setup(password);
         await api.auth.login(password);
+        onUnlocked();
       } else {
         await api.auth.login(password);
+        onUnlocked();
       }
-      onUnlocked();
     } catch (err: any) {
-      setError(err.message || "Incorrect master password");
+      setError(err.message || (authMode === "cognito" ? "Invalid Cognito token" : "Incorrect master passphrase"));
     } finally {
       setIsLoading(false);
     }
@@ -52,10 +60,18 @@ export const LockScreen: React.FC<LockScreenProps> = ({
           </div>
           <h1 className="text-2xl font-bold text-slate-100 tracking-tight">Folio Vault</h1>
           <p className="text-xs text-slate-400 mt-1">
-            {isInitialSetup
+            {authMode === "cognito"
+              ? "Zero-Trust AWS Cognito authentication required"
+              : isInitialSetup
               ? "Set up your master passphrase to encrypt and secure your vault"
               : "Enter master passphrase to unlock your personal finances"}
           </p>
+          {authMode === "cognito" && (
+            <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-950/60 border border-indigo-500/30 text-[10px] text-indigo-300 font-medium">
+              <Cpu className="w-3 h-3" />
+              <span>AWS Cognito Protected</span>
+            </div>
+          )}
         </div>
 
         {/* Form Container */}
@@ -63,7 +79,11 @@ export const LockScreen: React.FC<LockScreenProps> = ({
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                {isInitialSetup ? "New Master Passphrase" : "Master Passphrase"}
+                {authMode === "cognito"
+                  ? "Cognito Access Token / Secret"
+                  : isInitialSetup
+                  ? "New Master Passphrase"
+                  : "Master Passphrase"}
               </label>
               <div className="relative">
                 <input
@@ -105,7 +125,13 @@ export const LockScreen: React.FC<LockScreenProps> = ({
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
               ) : (
                 <>
-                  <span>{isInitialSetup ? "Initialize Vault" : "Unlock Vault"}</span>
+                  <span>
+                    {authMode === "cognito"
+                      ? "Authenticate with Cognito"
+                      : isInitialSetup
+                      ? "Initialize Vault"
+                      : "Unlock Vault"}
+                  </span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -121,3 +147,4 @@ export const LockScreen: React.FC<LockScreenProps> = ({
     </div>
   );
 };
+

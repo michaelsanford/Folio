@@ -20,7 +20,8 @@ router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
 
 def recalculate_account_balance(db: Session, account_id: str):
-    """Recalculates account current balance from all cleared/pending transactions."""
+    """Recalculates account current balance from all cleared/pending transactions and syncs to S3."""
+    from app.core.s3_sync import sync_db_if_configured
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
         return
@@ -29,6 +30,7 @@ def recalculate_account_balance(db: Session, account_id: str):
     balance = sum(t.amount for t in total_tx)
     account.current_balance = round(balance, 2)
     db.commit()
+    sync_db_if_configured()
 
 
 @router.get("", response_model=TransactionListResponse)

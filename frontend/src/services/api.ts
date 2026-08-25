@@ -10,6 +10,8 @@ import type {
   AmortizationScheduleResponse,
   LoanSplitSuggestion,
   DashboardAnalyticsResponse,
+  AuthStatusResponse,
+  CognitoConfigResponse,
 } from "../types";
 
 const API_BASE = "/api";
@@ -90,7 +92,12 @@ export const api = {
   // Authentication
   auth: {
     getStatus: () =>
-      request<{ authenticated: boolean; auth_required: boolean }>("/auth/status"),
+      request<AuthStatusResponse>("/auth/status"),
+    getCognitoConfig: () =>
+      request<CognitoConfigResponse>("/auth/config/cognito"),
+    setToken: (token: string | null) => {
+      setStoredToken(token);
+    },
     login: async (password: string) => {
       const res = await request<{ access_token: string }>("/auth/login", {
         method: "POST",
@@ -112,6 +119,7 @@ export const api = {
         body: JSON.stringify({ password }),
       }),
   },
+
 
   // Accounts
   getAccounts: (isActive?: boolean) => {
