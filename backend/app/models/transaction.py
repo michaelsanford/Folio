@@ -30,7 +30,7 @@ class Transaction(Base):
     currency = Column(String(3), nullable=False, default="USD")
     
     # Deduplication fingerprint: SHA256(account_id|date|amount|raw_payee)
-    import_hash = Column(String(64), nullable=True, unique=True, index=True)
+    import_hash = Column(String(64), nullable=True, index=True)
     
     status = Column(Enum(TransactionStatus), nullable=False, default=TransactionStatus.CLEARED)
     notes = Column(String(500), nullable=True)
