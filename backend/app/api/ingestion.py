@@ -20,6 +20,7 @@ from app.services.ingestion.csv_parser import parse_csv_content
 from app.services.ingestion.pdf_parser import parse_pdf_content
 from app.services.ingestion.ofx_parser import parse_ofx_content
 from app.api.transactions import recalculate_account_balance
+from app.api.rules import auto_learn_rule
 
 router = APIRouter(prefix="/ingestion", tags=["Statement Ingestion"])
 
@@ -149,6 +150,10 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
 
             db.add(txn)
             committed_count += 1
+
+            # Adaptive learning: remember this category selection for future imports
+            if cat_id:
+                auto_learn_rule(db, raw_payee=raw_name, category_id=cat_id, normalized_payee=norm_name)
 
         # Update statement file transaction count
         if stmt_file_id:

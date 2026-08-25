@@ -2,6 +2,8 @@ import re
 from sqlalchemy.orm import Session
 from app.models.rule import CategorizationRule, RulePatternType
 from app.models.category import Category
+from app.services.categorization.normalizer import normalize_payee
+from app.services.categorization.semantic_classifier import classify_by_semantic_keywords
 
 
 class RuleMatchResult:
@@ -32,9 +34,13 @@ def evaluate_rules(
     rules: list[CategorizationRule] | None = None,
 ) -> RuleMatchResult:
     """
-    Evaluates active CategorizationRules against a transaction.
-    Rules are sorted by priority ASC (lower integer = higher precedence).
+    Multi-tier transaction evaluation:
+    - Tier 1: Explicit user and default priority rules (100% confidence)
+    - Tier 2: Semantic Keyword Classifier (85% confidence)
     """
+    if not raw_payee:
+        return RuleMatchResult(matched=False)
+
     if rules is None:
         rules = (
             db.query(CategorizationRule)
@@ -46,6 +52,7 @@ def evaluate_rules(
     target_text = raw_payee.upper().strip()
     abs_amount = abs(amount) if amount is not None else None
 
+    # Tier 1: Explicit Rules Engine
     for rule in rules:
         # Check account constraint
         if rule.target_account_id and rule.target_account_id != account_id:
@@ -77,6 +84,7 @@ def evaluate_rules(
             category = rule.category
             cat_name = category.name if category else None
             cat_color = category.color if category else None
+            norm_name = rule.normalized_payee_override or normalize_payee(raw_payee)
             
             return RuleMatchResult(
                 matched=True,
@@ -84,8 +92,23 @@ def evaluate_rules(
                 category_id=rule.category_id,
                 category_name=cat_name,
                 category_color=cat_color,
-                normalized_payee=rule.normalized_payee_override,
+                normalized_payee=norm_name,
                 confidence=1.0,
             )
 
-    return RuleMatchResult(matched=False)
+    # Tier 2: Semantic Keyword Classification
+    semantic_match = classify_by_semantic_keywords(raw_payee)
+    if semantic_match:
+        category = db.query(Category).filter(Category.slug == semantic_match.category_slug).first()
+        if category:
+            return RuleMatchResult(
+                matched=True,
+                rule_id=None,
+                category_id=category.id,
+                category_name=category.name,
+                category_color=category.color,
+                normalized_payee=normalize_payee(raw_payee),
+                confidence=semantic_match.confidence,
+            )
+
+    return RuleMatchResult(matched=False, normalized_payee=normalize_payee(raw_payee))

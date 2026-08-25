@@ -11,11 +11,80 @@ from app.schemas.rule import (
     TestRuleMatchRequest,
     TestRuleMatchResponse,
 )
+from app.services.categorization.normalizer import normalize_payee
 from app.services.categorization.rules_engine import evaluate_rules
 
 router = APIRouter(prefix="/rules", tags=["Categorization Rules"])
 
 DEFAULT_RULES = [
+    # --- Music, Media & AI Subscriptions (slug: "subscriptions") ---
+    {"pattern": "SUNO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Suno AI", "priority": 3},
+    {"pattern": "SUNO.AI", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Suno AI", "priority": 3},
+    {"pattern": "TIDAL", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Tidal", "priority": 3},
+    {"pattern": "ELEVENLABS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "ElevenLabs", "priority": 3},
+    {"pattern": "UDIO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Udio Music", "priority": 3},
+    {"pattern": "RUNWAYML", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "RunwayML", "priority": 3},
+    {"pattern": "TRADINGVIEW", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "TradingView", "priority": 3},
+    {"pattern": "TRADING VIEW", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "TradingView", "priority": 3},
+    {"pattern": "SEEKING ALPHA", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Seeking Alpha", "priority": 3},
+    {"pattern": "FINVIZ", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Finviz", "priority": 3},
+    {"pattern": "BENZINGA", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Benzinga", "priority": 3},
+    {"pattern": "CHATGPT", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "OpenAI / ChatGPT", "priority": 3},
+    {"pattern": "OPENAI", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "OpenAI", "priority": 3},
+    {"pattern": "ANTHROPIC", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Anthropic Claude", "priority": 3},
+    {"pattern": "CLAUDE.AI", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Anthropic Claude", "priority": 3},
+    {"pattern": "CURSOR", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Cursor AI", "priority": 3},
+    {"pattern": "MIDJOURNEY", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Midjourney", "priority": 3},
+    {"pattern": "PERPLEXITY", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Perplexity AI", "priority": 3},
+    {"pattern": "GITHUB", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "GitHub", "priority": 4},
+    {"pattern": "JETBRAINS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "JetBrains", "priority": 4},
+    {"pattern": "NETFLIX", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Netflix", "priority": 4},
+    {"pattern": "SPOTIFY", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Spotify", "priority": 4},
+    {"pattern": "APPLE.COM/BILL", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Apple Services", "priority": 4},
+    {"pattern": "ITUNES.COM", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Apple iTunes", "priority": 4},
+    {"pattern": "GOOGLE *YOUTUBE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "YouTube Premium", "priority": 4},
+    {"pattern": "GOOGLE *STORAGE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Google One Storage", "priority": 4},
+    {"pattern": "GOOGLE PLAY", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Google Play", "priority": 5},
+    {"pattern": "DISNEY PLUS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Disney+", "priority": 4},
+    {"pattern": "DISNEY+", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Disney+", "priority": 4},
+    {"pattern": "HULU", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Hulu", "priority": 4},
+    {"pattern": "HBO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Max (HBO)", "priority": 4},
+    {"pattern": "MAX.COM", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Max", "priority": 4},
+    {"pattern": "AMZN DIGITAL", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Amazon Digital", "priority": 4},
+    {"pattern": "AMAZON PRIME", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Amazon Prime", "priority": 4},
+    {"pattern": "PRIME VIDEO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Prime Video", "priority": 4},
+    {"pattern": "STEAM", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Steam Games", "priority": 4},
+    {"pattern": "PLAYSTATION", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "PlayStation Network", "priority": 4},
+    {"pattern": "PSN *", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "PlayStation Network", "priority": 4},
+    {"pattern": "XBOX", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Xbox Live / Game Pass", "priority": 4},
+    {"pattern": "NYTIMES", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "New York Times", "priority": 4},
+    {"pattern": "MICROSOFT*365", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Microsoft 365", "priority": 4},
+    {"pattern": "ADOBE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Adobe Creative Cloud", "priority": 4},
+    {"pattern": "1PASSWORD", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "1Password", "priority": 4},
+    {"pattern": "DROPBOX", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Dropbox", "priority": 4},
+    {"pattern": "NORDVPN", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "NordVPN", "priority": 4},
+    {"pattern": "PROTON", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Proton Mail / VPN", "priority": 4},
+
+    # --- Transportation, Tolls, Transit & Rideshare (slug: "transportation") ---
+    {"pattern": "A30 EXPRESS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "A30 Express Tolls", "priority": 3},
+    {"pattern": "A-30 EXPRESS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "A30 Express Tolls", "priority": 3},
+    {"pattern": "AUTOROUTE 30", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "A30 Express Tolls", "priority": 3},
+    {"pattern": "407 ETR", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "407 ETR Tolls", "priority": 3},
+    {"pattern": "PONT A25", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "Pont A25 Tolls", "priority": 3},
+    {"pattern": "E-ZPASS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "E-ZPass Tolls", "priority": 3},
+    {"pattern": "SUNPASS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "SunPass Tolls", "priority": 3},
+    {"pattern": "STM ", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "STM Transit Montréal", "priority": 4},
+    {"pattern": "OPUS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "Carte OPUS Transit", "priority": 4},
+    {"pattern": "TTC ", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "TTC Transit Toronto", "priority": 4},
+    {"pattern": "PRESTO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "Presto Transit Card", "priority": 4},
+    {"pattern": "COMMUNAUTO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "Communauto", "priority": 4},
+    {"pattern": "BIXI", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "BIXI Montréal", "priority": 4},
+    {"pattern": "INDIGO PARK", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "Indigo Parking", "priority": 4},
+    {"pattern": "IMPARK", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "Impark", "priority": 4},
+    {"pattern": "UBER TRIP", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "Uber Rides", "priority": 4},
+    {"pattern": "UBER *TRIP", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "Uber Rides", "priority": 4},
+    {"pattern": "LYFT", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "Lyft", "priority": 4},
+
     # --- Health, Medical & Pharmacy (slug: "health-medical") ---
     {"pattern": "JEAN COUTU", "pattern_type": RulePatternType.CONTAINS, "category_slug": "health-medical", "normalized_payee": "Jean Coutu", "priority": 4},
     {"pattern": "JEAN-COUTU", "pattern_type": RulePatternType.CONTAINS, "category_slug": "health-medical", "normalized_payee": "Jean Coutu", "priority": 4},
@@ -110,43 +179,6 @@ DEFAULT_RULES = [
     {"pattern": "DUNKIN", "pattern_type": RulePatternType.CONTAINS, "category_slug": "coffee-shops", "normalized_payee": "Dunkin'", "priority": 4},
     {"pattern": "PEET'S", "pattern_type": RulePatternType.CONTAINS, "category_slug": "coffee-shops", "normalized_payee": "Peet's Coffee", "priority": 4},
 
-    # --- Subscriptions, Financial Tools & Tech (slug: "subscriptions") ---
-    {"pattern": "TRADINGVIEW", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "TradingView", "priority": 3},
-    {"pattern": "TRADING VIEW", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "TradingView", "priority": 3},
-    {"pattern": "SEEKING ALPHA", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Seeking Alpha", "priority": 3},
-    {"pattern": "FINVIZ", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Finviz", "priority": 3},
-    {"pattern": "BENZINGA", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Benzinga", "priority": 3},
-    {"pattern": "CHATGPT", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "OpenAI / ChatGPT", "priority": 3},
-    {"pattern": "OPENAI", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "OpenAI", "priority": 3},
-    {"pattern": "ANTHROPIC", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Anthropic Claude", "priority": 3},
-    {"pattern": "CLAUDE.AI", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Anthropic Claude", "priority": 3},
-    {"pattern": "MIDJOURNEY", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Midjourney", "priority": 3},
-    {"pattern": "PERPLEXITY", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Perplexity AI", "priority": 3},
-    {"pattern": "GITHUB", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "GitHub", "priority": 4},
-    {"pattern": "JETBRAINS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "JetBrains", "priority": 4},
-    {"pattern": "NETFLIX", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Netflix", "priority": 4},
-    {"pattern": "SPOTIFY", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Spotify", "priority": 4},
-    {"pattern": "APPLE.COM/BILL", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Apple Services", "priority": 4},
-    {"pattern": "ITUNES.COM", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Apple iTunes", "priority": 4},
-    {"pattern": "GOOGLE *YOUTUBE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "YouTube Premium", "priority": 4},
-    {"pattern": "GOOGLE *STORAGE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Google One Storage", "priority": 4},
-    {"pattern": "GOOGLE PLAY", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Google Play", "priority": 5},
-    {"pattern": "DISNEY PLUS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Disney+", "priority": 4},
-    {"pattern": "DISNEY+", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Disney+", "priority": 4},
-    {"pattern": "HULU", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Hulu", "priority": 4},
-    {"pattern": "HBO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Max (HBO)", "priority": 4},
-    {"pattern": "MAX.COM", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Max", "priority": 4},
-    {"pattern": "AMZN DIGITAL", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Amazon Digital", "priority": 4},
-    {"pattern": "AMAZON PRIME", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Amazon Prime", "priority": 4},
-    {"pattern": "PRIME VIDEO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Prime Video", "priority": 4},
-    {"pattern": "NYTIMES", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "New York Times", "priority": 4},
-    {"pattern": "MICROSOFT*365", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Microsoft 365", "priority": 4},
-    {"pattern": "ADOBE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Adobe Creative Cloud", "priority": 4},
-    {"pattern": "1PASSWORD", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "1Password", "priority": 4},
-    {"pattern": "DROPBOX", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Dropbox", "priority": 4},
-    {"pattern": "NORDVPN", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "NordVPN", "priority": 4},
-    {"pattern": "PROTON", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Proton Mail / VPN", "priority": 4},
-
     # --- Groceries & Supermarkets (slug: "groceries") ---
     {"pattern": "IGA ", "pattern_type": RulePatternType.CONTAINS, "category_slug": "groceries", "normalized_payee": "IGA", "priority": 4},
     {"pattern": "IGA EXTRA", "pattern_type": RulePatternType.CONTAINS, "category_slug": "groceries", "normalized_payee": "IGA Extra", "priority": 4},
@@ -176,6 +208,8 @@ DEFAULT_RULES = [
     {"pattern": "PUBLIX", "pattern_type": RulePatternType.CONTAINS, "category_slug": "groceries", "normalized_payee": "Publix", "priority": 5},
 
     # --- Shopping, Hardware & Retail (slug: "shopping" / "home-maintenance") ---
+    {"pattern": "SAQ", "pattern_type": RulePatternType.CONTAINS, "category_slug": "shopping", "normalized_payee": "Société des alcools du Québec (SAQ)", "priority": 4},
+    {"pattern": "LCBO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "shopping", "normalized_payee": "LCBO", "priority": 4},
     {"pattern": "CANADIAN TIRE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "shopping", "normalized_payee": "Canadian Tire", "priority": 5},
     {"pattern": "CAN TIRE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "shopping", "normalized_payee": "Canadian Tire", "priority": 5},
     {"pattern": "RONA", "pattern_type": RulePatternType.CONTAINS, "category_slug": "home-maintenance", "normalized_payee": "RONA", "priority": 4},
@@ -188,8 +222,6 @@ DEFAULT_RULES = [
     {"pattern": "IKEA", "pattern_type": RulePatternType.CONTAINS, "category_slug": "shopping", "normalized_payee": "IKEA", "priority": 4},
     {"pattern": "DOLLARAMA", "pattern_type": RulePatternType.CONTAINS, "category_slug": "shopping", "normalized_payee": "Dollarama", "priority": 4},
     {"pattern": "DOLLAR TREE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "shopping", "normalized_payee": "Dollar Tree", "priority": 4},
-    {"pattern": "SAQ", "pattern_type": RulePatternType.CONTAINS, "category_slug": "shopping", "normalized_payee": "Société des alcools du Québec (SAQ)", "priority": 4},
-    {"pattern": "LCBO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "shopping", "normalized_payee": "LCBO", "priority": 4},
     {"pattern": "WINNERS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "shopping", "normalized_payee": "Winners", "priority": 4},
     {"pattern": "HOMESENSE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "shopping", "normalized_payee": "HomeSense", "priority": 4},
     {"pattern": "MARSHALLS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "shopping", "normalized_payee": "Marshalls", "priority": 4},
@@ -228,17 +260,6 @@ DEFAULT_RULES = [
     {"pattern": "AT&T", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "AT&T", "priority": 4},
     {"pattern": "T-MOBILE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "T-Mobile", "priority": 4},
     {"pattern": "WATER", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Water Utility", "priority": 8},
-
-    # --- Transportation, Transit & Rideshare (slug: "transportation") ---
-    {"pattern": "STM ", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "STM Transit Montréal", "priority": 4},
-    {"pattern": "OPUS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "Carte OPUS Transit", "priority": 4},
-    {"pattern": "TTC ", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "TTC Transit Toronto", "priority": 4},
-    {"pattern": "PRESTO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "Presto Transit Card", "priority": 4},
-    {"pattern": "COMMUNAUTO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "Communauto", "priority": 4},
-    {"pattern": "BIXI", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "BIXI Montréal", "priority": 4},
-    {"pattern": "UBER TRIP", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "Uber Rides", "priority": 4},
-    {"pattern": "UBER *TRIP", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "Uber Rides", "priority": 4},
-    {"pattern": "LYFT", "pattern_type": RulePatternType.CONTAINS, "category_slug": "transportation", "normalized_payee": "Lyft", "priority": 4},
 
     # --- Transfers & Payments (slug: "cc-payment") ---
     {"pattern": "AUTOPAY PAYMENT", "pattern_type": RulePatternType.CONTAINS, "category_slug": "cc-payment", "normalized_payee": "Credit Card AutoPay", "priority": 3},
@@ -285,6 +306,58 @@ def seed_default_rules(db: Session):
     if new_rules:
         db.add_all(new_rules)
         db.commit()
+
+
+def auto_learn_rule(
+    db: Session,
+    raw_payee: str,
+    category_id: str,
+    normalized_payee: str | None = None,
+) -> CategorizationRule | None:
+    """
+    Adaptive Learning: When a user assigns a category to a transaction,
+    Folio extracts a clean merchant pattern and automatically creates/updates
+    a persistent CategorizationRule so future occurrences match seamlessly.
+    """
+    if not raw_payee or not category_id:
+        return None
+
+    cat = db.query(Category).filter(Category.id == category_id).first()
+    if not cat:
+        return None
+
+    cleaned_name = normalize_payee(raw_payee)
+    norm = (normalized_payee or cleaned_name).strip()
+    if not norm or len(norm) < 2:
+        return None
+
+    pattern = norm.upper()
+
+    existing_rule = db.query(CategorizationRule).filter(
+        CategorizationRule.pattern == pattern,
+        CategorizationRule.is_active.is_(True),
+    ).first()
+
+    if existing_rule:
+        if existing_rule.category_id != category_id:
+            existing_rule.category_id = category_id
+            existing_rule.normalized_payee_override = norm
+            db.commit()
+            db.refresh(existing_rule)
+        return existing_rule
+
+    new_rule = CategorizationRule(
+        category_id=category_id,
+        priority=10,
+        pattern_type=RulePatternType.CONTAINS,
+        pattern=pattern,
+        normalized_payee_override=norm,
+        is_active=True,
+    )
+    db.add(new_rule)
+    db.commit()
+    db.refresh(new_rule)
+    return new_rule
 
 
 @router.get("", response_model=list[CategorizationRuleResponse])
@@ -342,9 +415,9 @@ def test_rule_match(req: TestRuleMatchRequest, db: Session = Depends(get_db)):
     seed_default_rules(db)
     match_result = evaluate_rules(db, req.raw_payee, req.amount, req.account_id)
     if not match_result.matched:
-        return TestRuleMatchResponse(matched=False)
+        return TestRuleMatchResponse(matched=False, suggested_payee=match_result.normalized_payee)
 
-    rule = db.query(CategorizationRule).filter(CategorizationRule.id == match_result.rule_id).first()
+    rule = db.query(CategorizationRule).filter(CategorizationRule.id == match_result.rule_id).first() if match_result.rule_id else None
     rule_resp = CategorizationRuleResponse.model_validate(rule) if rule else None
 
     return TestRuleMatchResponse(
@@ -358,7 +431,7 @@ def test_rule_match(req: TestRuleMatchRequest, db: Session = Depends(get_db)):
 @router.post("/apply-batch", status_code=status.HTTP_200_OK)
 def apply_rules_batch(db: Session = Depends(get_db)):
     """
-    Applies active categorization rules to all uncategorized transactions.
+    Applies active categorization rules and semantic classifier to all uncategorized transactions.
     """
     seed_default_rules(db)
     uncategorized_txns = (
