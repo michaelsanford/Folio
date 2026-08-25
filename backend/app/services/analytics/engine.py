@@ -1,7 +1,6 @@
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from app.models.account import Account, AccountType
 from app.models.transaction import Transaction, TransactionSplit
 from app.models.category import Category, CategoryType
