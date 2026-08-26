@@ -14,7 +14,7 @@ jobs:
       issues: write
     steps:
       - name: Close and comment on external PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             await github.rest.issues.createComment({
