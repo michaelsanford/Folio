@@ -130,8 +130,6 @@ export const api = {
     }),
   deleteAccount: (id: string) =>
     request<void>(`/accounts/${id}`, { method: "DELETE" }),
-  getAmortization: (id: string) =>
-    request<AmortizationScheduleResponse>(`/accounts/${id}/amortization`),
   getAmortizationSchedule: (id: string) =>
     request<AmortizationScheduleResponse>(`/accounts/${id}/amortization`),
   getLoanSplitSuggestion: (id: string, paymentAmount?: number) => {
@@ -287,9 +285,6 @@ export const api = {
 
     return res.json() as Promise<IngestionPreviewResponse>;
   },
-  uploadStatement: async (accountId: string, file: File) => {
-    return api.uploadStatementPreview(accountId, file);
-  },
   commitIngestionBatch: (req: {
     account_id: string;
     statement_file_id?: string;
@@ -303,7 +298,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify(req),
     }),
-  commitImport: (req: any) => api.commitIngestionBatch(req),
   deleteStatementFile: (id: string) =>
     request<void>(`/ingestion/statement-files/${id}`, { method: "DELETE" }),
   getStatementFiles: (accountId?: string) => {

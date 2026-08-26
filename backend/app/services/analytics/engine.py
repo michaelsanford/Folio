@@ -1,5 +1,4 @@
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.models.account import Account, AccountType

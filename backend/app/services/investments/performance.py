@@ -19,7 +19,6 @@ from app.models.investment import (
     Holding,
     InvestmentActivity,
     InvestmentActivityType,
-    Lot,
     PriceQuote,
 )
 
