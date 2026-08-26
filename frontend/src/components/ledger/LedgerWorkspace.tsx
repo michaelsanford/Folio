@@ -22,6 +22,8 @@ interface LedgerWorkspaceProps {
   onDataModified: () => void;
 }
 
+const PAGE_SIZE = 50;
+
 export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
   accounts,
   categories,
@@ -33,6 +35,8 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Batch selection
   const [selectedTxnIds, setSelectedTxnIds] = useState<Set<string>>(new Set());
@@ -66,19 +70,23 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
         category_id: selectedCategoryId || undefined,
         search: searchQuery || undefined,
         page,
-        page_size: 50,
+        page_size: PAGE_SIZE,
       });
       setTransactions(resp.items);
       setTotalCount(resp.total);
+      setLoadError(null);
     } catch (err: any) {
       console.error(err);
+      setLoadError(err?.message || "Could not load transactions.");
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    loadTransactions();
+    // Typing in the search box used to fire one request per keystroke.
+    const handle = window.setTimeout(loadTransactions, searchQuery ? 300 : 0);
+    return () => window.clearTimeout(handle);
   }, [selectedAccountId, selectedCategoryId, searchQuery, page]);
 
   const handleToggleSelectRow = (id: string) => {
@@ -211,8 +219,26 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
     }
   };
 
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {loadError && (
+        <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/30 text-xs text-rose-300 flex items-center justify-between gap-3">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setLoadError(null);
+              loadTransactions();
+            }}
+            className="px-3 py-1 rounded-lg bg-rose-600/80 hover:bg-rose-600 text-white font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Top Filter Bar */}
       <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
         {/* Search & Selectors */}
@@ -223,7 +249,10 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               type="text"
               placeholder="Search payees, notes, amounts..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setPage(1);
+              }}
               className="w-full pl-9 pr-4 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs text-slate-200 placeholder:text-slate-500 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
             />
           </div>
@@ -553,6 +582,36 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination */}
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-slate-800/80">
+          <div className="text-xs text-slate-400">
+            {totalCount === 0
+              ? "No transactions"
+              : `${(page - 1) * PAGE_SIZE + 1}-${Math.min(page * PAGE_SIZE, totalCount)} of ${totalCount.toLocaleString()}`}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1 || isLoading}
+              className="px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800/60"
+            >
+              Previous
+            </button>
+            <span className="text-xs text-slate-400 tabular-nums">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages || isLoading}
+              className="px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800/60"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
 

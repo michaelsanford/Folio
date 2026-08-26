@@ -7,6 +7,7 @@ import {
   Landmark,
   Sliders,
   Wallet,
+  TrendingUp,
   Menu,
   X,
 } from "lucide-react";
@@ -18,7 +19,9 @@ export type NavTab =
   | "budgeting"
   | "loans"
   | "ingestion"
-  | "rules";
+  | "rules"
+  | "investments"
+  | "accounts";
 
 interface AppLayoutProps {
   activeTab: NavTab;
@@ -49,9 +52,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     { id: "dashboard" as NavTab, label: "Dashboard", icon: LayoutDashboard },
     { id: "ledger" as NavTab, label: "Ledger", icon: ReceiptText },
     { id: "budgeting" as NavTab, label: "Budget", icon: PiggyBank },
+    { id: "investments" as NavTab, label: "Investments", icon: TrendingUp },
     { id: "loans" as NavTab, label: "Loans", icon: Landmark },
     { id: "ingestion" as NavTab, label: "Import", icon: UploadCloud },
     { id: "rules" as NavTab, label: "Auto-Rules", icon: Sliders },
+    { id: "accounts" as NavTab, label: "Accounts", icon: Wallet },
   ];
 
   return (
@@ -162,7 +167,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
         {/* Mobile Bottom Navigation */}
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-slate-800 bg-slate-900/95 backdrop-blur-xl py-2 px-1">
-          {navItems.map((item) => {
+          {navItems.slice(0, 5).map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
