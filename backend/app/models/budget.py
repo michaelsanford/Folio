@@ -1,18 +1,20 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Float, Integer, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from app.models.money_fields import with_money
 
 
+@with_money(total_income_target=False, total_expense_target=False)
 class Budget(Base):
     __tablename__ = "budgets"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     year = Column(Integer, nullable=False)
     month = Column(Integer, nullable=False)
-    total_income_target = Column(Float, nullable=False, default=0.0)
-    total_expense_target = Column(Float, nullable=False, default=0.0)
+    total_income_target_cents = Column(Integer, nullable=False, default=0)
+    total_expense_target_cents = Column(Integer, nullable=False, default=0)
     notes = Column(String(500), nullable=True)
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
@@ -26,13 +28,14 @@ class Budget(Base):
     )
 
 
+@with_money(planned_amount=False)
 class BudgetItem(Base):
     __tablename__ = "budget_items"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     budget_id = Column(String(36), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True)
     category_id = Column(String(36), ForeignKey("categories.id", ondelete="CASCADE"), nullable=False, index=True)
-    planned_amount = Column(Float, nullable=False, default=0.0)
+    planned_amount_cents = Column(Integer, nullable=False, default=0)
 
     # Relationships
     budget = relationship("Budget", back_populates="items")
