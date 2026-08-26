@@ -1,5 +1,5 @@
 # Stage 1: Build Frontend React 19 PWA
-FROM node:23-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -7,8 +7,8 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Unified Execution Environment (Docker Compose / AWS Lambda Web Adapter)
-FROM python:3.13-slim
-COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.8.4 /lambda-adapter /opt/extensions/lambda-adapter
+FROM python:3.14-slim
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0 /lambda-adapter /opt/extensions/lambda-adapter
 
 WORKDIR /app
 
@@ -25,10 +25,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt .
+# Runtime dependencies only; requirements-dev.txt adds the test tooling and is
+# deliberately not installed into the image.
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Install boto3 for native S3 synchronization in cloud serverless mode
-RUN pip install --no-cache-dir boto3
 
 COPY backend/ .
 # Copy compiled Frontend PWA into /app/static

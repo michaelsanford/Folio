@@ -28,7 +28,7 @@ if ($Clean) {
 if (-not (Test-Path $PythonExe)) {
     Write-Host "Creating Python virtual environment in backend\.venv..." -ForegroundColor Yellow
     python -m venv (Join-Path $BackendPath ".venv")
-    & $PythonExe -m pip install -r (Join-Path $BackendPath "requirements.txt")
+    & $PythonExe -m pip install -r (Join-Path $BackendPath "requirements-dev.txt")
 }
 
 # 2. Check Node modules
