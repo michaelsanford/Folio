@@ -50,8 +50,3 @@ def to_cents_optional(value: Decimal | float | int | str | None) -> int | None:
 def from_cents_optional(cents: int | None) -> Decimal | None:
     """Like :func:`from_cents` but preserves None, for nullable columns."""
     return None if cents is None else from_cents(cents)
-
-
-def format_cents(cents: int | None, symbol: str = "$") -> str:
-    """Human-readable rendering, for log and error messages."""
-    return f"{symbol}{from_cents(cents):,.2f}"
