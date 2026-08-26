@@ -93,7 +93,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
                   placeholder="••••••••••••"
                   autoFocus
                   required
-                  className="w-full px-4 py-3 pl-10 pr-12 rounded-2xl bg-slate-950/80 border border-slate-700/60 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 text-sm font-mono transition-all"
+                  className="w-full px-4 py-3 pl-10 pr-12 rounded-2xl bg-slate-950/80 border border-slate-700/60 text-slate-100 placeholder:text-slate-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 text-sm font-mono transition-all"
                 />
                 <KeyRound className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                 <button

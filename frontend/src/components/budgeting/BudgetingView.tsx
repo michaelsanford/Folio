@@ -490,7 +490,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Header & Month Navigator */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-slate-900/70 border border-slate-800/80 shadow-xl backdrop-blur-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-slate-900/70 border border-slate-800/80 shadow-xl backdrop-blur-xs">
         <div className="flex items-center gap-3">
           <div className="p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
             <PiggyBank className="w-6 h-6" />
@@ -693,7 +693,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       </div>
 
       {/* Main Budget Ledger Section */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 overflow-hidden shadow-2xl backdrop-blur-sm">
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 overflow-hidden shadow-2xl backdrop-blur-xs">
         {/* Controls Toolbar: Search, Filters, View Mode Toggle */}
         <div className="p-5 border-b border-slate-800/90 flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Status Filter Pills */}
@@ -702,7 +702,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
               onClick={() => setStatusFilter("ALL")}
               className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
                 statusFilter === "ALL"
-                  ? "bg-slate-700 text-white shadow"
+                  ? "bg-slate-700 text-white shadow-sm"
                   : "bg-slate-800/60 text-slate-400 hover:text-slate-200"
               }`}
             >
@@ -763,7 +763,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                 placeholder="Filter categories..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-950/70 border border-slate-700/80 text-slate-200 text-xs focus:outline-none focus:border-indigo-500 w-48 sm:w-56"
+                className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-950/70 border border-slate-700/80 text-slate-200 text-xs focus:outline-hidden focus:border-indigo-500 w-48 sm:w-56"
               />
               {searchQuery && (
                 <button
@@ -781,7 +781,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                 onClick={() => setViewMode("table")}
                 className={`p-1.5 rounded-lg transition-all ${
                   viewMode === "table"
-                    ? "bg-indigo-600 text-white shadow-sm"
+                    ? "bg-indigo-600 text-white shadow-xs"
                     : "text-slate-400 hover:text-slate-200"
                 }`}
                 title="Tabular Ledger (Desktop view)"
@@ -792,7 +792,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                 onClick={() => setViewMode("cards")}
                 className={`p-1.5 rounded-lg transition-all ${
                   viewMode === "cards"
-                    ? "bg-indigo-600 text-white shadow-sm"
+                    ? "bg-indigo-600 text-white shadow-xs"
                     : "text-slate-400 hover:text-slate-200"
                 }`}
                 title="Envelope Cards (Mobile view)"
@@ -925,7 +925,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2.5">
                           <span
-                            className="w-3 h-3 rounded-full shrink-0 shadow-sm"
+                            className="w-3 h-3 rounded-full shrink-0 shadow-xs"
                             style={{ backgroundColor: cat.color || "#6366f1" }}
                           ></span>
                           <div>
@@ -1212,7 +1212,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       {/* ADD / CREATE CATEGORY MODAL                                   */}
       {/* ------------------------------------------------------------- */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fade-in">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-scale-up">
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-800 flex items-center justify-between">
@@ -1241,7 +1241,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                 onClick={() => setAddModalTab("existing")}
                 className={`flex-1 py-2 rounded-xl font-semibold transition-all ${
                   addModalTab === "existing"
-                    ? "bg-indigo-600 text-white shadow"
+                    ? "bg-indigo-600 text-white shadow-sm"
                     : "text-slate-400 hover:text-slate-200"
                 }`}
               >
@@ -1251,7 +1251,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                 onClick={() => setAddModalTab("new")}
                 className={`flex-1 py-2 rounded-xl font-semibold transition-all ${
                   addModalTab === "new"
-                    ? "bg-indigo-600 text-white shadow"
+                    ? "bg-indigo-600 text-white shadow-sm"
                     : "text-slate-400 hover:text-slate-200"
                 }`}
               >
@@ -1278,7 +1278,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                         <select
                           value={selectedExistingCatId}
                           onChange={(e) => setSelectedExistingCatId(e.target.value)}
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-indigo-500"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-hidden focus:border-indigo-500"
                         >
                           {unbudgetedCategories.map((c) => (
                             <option key={c.id} value={c.id}>
@@ -1302,7 +1302,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                             step="10"
                             value={existingCatTarget}
                             onChange={(e) => setExistingCatTarget(parseFloat(e.target.value) || 0)}
-                            className="w-full pl-8 pr-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs font-mono focus:outline-none focus:border-indigo-500"
+                            className="w-full pl-8 pr-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs font-mono focus:outline-hidden focus:border-indigo-500"
                           />
                         </div>
                       </div>
@@ -1321,7 +1321,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       placeholder="e.g. Pet Care, Gym & Fitness, House Cleaning"
                       value={newCatName}
                       onChange={(e) => setNewCatName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-indigo-500"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-hidden focus:border-indigo-500"
                     />
                   </div>
 
@@ -1332,7 +1332,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                     <select
                       value={newCatParentId}
                       onChange={(e) => setNewCatParentId(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-indigo-500"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-hidden focus:border-indigo-500"
                     >
                       <option value="">-- No Parent (Top-Level Category) --</option>
                       {parentCategories.map((p) => (
@@ -1378,7 +1378,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                         step="10"
                         value={newCatTarget}
                         onChange={(e) => setNewCatTarget(parseFloat(e.target.value) || 0)}
-                        className="w-full pl-8 pr-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs font-mono focus:outline-none focus:border-indigo-500"
+                        className="w-full pl-8 pr-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs font-mono focus:outline-hidden focus:border-indigo-500"
                       />
                     </div>
                   </div>
@@ -1423,7 +1423,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       {/* TRANSACTION DRILLDOWN MODAL                                   */}
       {/* ------------------------------------------------------------- */}
       {drilldownCategory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fade-in">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-scale-up">
             {/* Header */}
             <div className="p-5 border-b border-slate-800 flex items-center justify-between">

@@ -165,7 +165,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
           <select
             value={selectedAccountId}
             onChange={(e) => setSelectedAccountId(e.target.value)}
-            className="w-full sm:w-auto px-3.5 py-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            className="w-full sm:w-auto px-3.5 py-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
           >
             {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
@@ -349,7 +349,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                         <select
                           value={assignedCat}
                           onChange={(e) => handleCategoryChange(item.import_hash, e.target.value)}
-                          className="bg-slate-800 border border-slate-700 text-slate-200 text-[10px] rounded px-1.5 py-0.5 focus:ring-1 focus:ring-indigo-500 focus:outline-none max-w-[130px] truncate"
+                          className="bg-slate-800 border border-slate-700 text-slate-200 text-[10px] rounded px-1.5 py-0.5 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden max-w-[130px] truncate"
                         >
                           <option value="">Uncategorized</option>
                           {categories.map((c) => (
@@ -433,7 +433,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                           <select
                             value={assignedCat}
                             onChange={(e) => handleCategoryChange(item.import_hash, e.target.value)}
-                            className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                            className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
                           >
                             <option value="">Uncategorized</option>
                             {categories.map((c) => (
