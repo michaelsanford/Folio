@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Response, Request, status
 from pydantic import BaseModel, Field
 from app.core.config import settings
+from app.core.rate_limit import client_key, login_limiter
 from app.core.security import (
     check_master_password,
     create_access_token,
@@ -102,12 +103,25 @@ def login(request_data: LoginRequest, request: Request, response: Response):
             detail="Vault authentication is not configured on this instance.",
         )
 
+    # Bound online guessing against the single master passphrase.
+    key = client_key(request)
+    allowed, retry_after = login_limiter.check(key)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed sign-in attempts. Try again shortly.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     if not check_master_password(request_data.password):
+        login_limiter.record_failure(key)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect master passphrase",
         )
 
+    # Only failures are counted, so a correct passphrase clears the record.
+    login_limiter.reset(key)
     token = create_access_token({"sub": "owner"})
     
     # Set HttpOnly, Secure, SameSite cookie
@@ -140,8 +154,23 @@ def logout(response: Response):
 
 @router.post("/setup")
 def setup_password(request_data: SetupPasswordRequest, request: Request):
-    """Allows setting initial master password if none is configured (dev only)."""
+    """Set an initial master passphrase. Development only.
+
+    This mutates the in-process settings object, so the value is neither persisted
+    nor shared between Lambda instances -- behaviour would differ per cold start.
+    Allowing it in production would be a way to configure auth on one instance and
+    believe the whole deployment was protected.
+    """
     verify_edge_origin(request)
+
+    if settings.is_production:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Setup is disabled in production. Configure FOLIO_MASTER_PASSWORD_HASH "
+                "or Cognito in the environment instead."
+            ),
+        )
 
     if is_auth_configured():
         raise HTTPException(

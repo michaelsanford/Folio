@@ -3,7 +3,10 @@ param (
     [string]$Region = "ca-central-1",
     [string]$StackName = "folio-prod",
     [string]$Environment = "prod",
-    [string]$MasterPassword = ""
+    [securestring]$MasterPassword,
+    # Exact origin allowed to call the API cross-origin. Leave empty when the PWA
+    # is served by the function itself, which needs no CORS at all.
+    [string]$AllowedOrigin = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,8 +38,25 @@ try {
     # 3. SAM Deploy
     Write-Host "`n[3/4] Deploying SAM Stack ($StackName)..." -ForegroundColor Yellow
     $ParamOverrides = "EnvironmentName=$Environment"
+
     if ($MasterPassword) {
-        $ParamOverrides += " MasterPassword=$MasterPassword"
+        # Hash locally so the passphrase itself never reaches CloudFormation or the
+        # Lambda environment, both of which are readable with modest IAM access.
+        # Piped over stdin so it never appears in the process list either.
+        Write-Host "Hashing master passphrase locally (bcrypt)..." -ForegroundColor Yellow
+        $PythonExe = Join-Path $PSScriptRoot "backend\.venv\Scripts\python.exe"
+        if (-not (Test-Path $PythonExe)) { $PythonExe = "python" }
+        $HashScript = Join-Path $PSScriptRoot "backend\scripts\hash_password.py"
+
+        $Plain = [System.Net.NetworkCredential]::new("", $MasterPassword).Password
+        $Hash = ($Plain | & $PythonExe $HashScript)
+        $Plain = $null
+        if ($LASTEXITCODE -ne 0 -or -not $Hash) { throw "Failed to hash the master passphrase." }
+        $ParamOverrides += " MasterPasswordHash=$($Hash.Trim())"
+    }
+
+    if ($AllowedOrigin) {
+        $ParamOverrides += " AllowedOrigin=$AllowedOrigin"
     }
 
     sam deploy `

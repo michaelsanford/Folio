@@ -4,11 +4,11 @@ from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from app.core.config import settings
+from app.core.config import settings, validate_production_settings
 from app.core.database import SessionLocal
 from app.core.migrations import run_migrations
 from app.core.security import require_auth
-from app.core.s3_sync import restore_db_from_s3, sync_db_to_s3
+from app.core.s3_sync import restore_db_from_s3, sync_now
 import app.models  # noqa: F401 - registers SQLAlchemy models with Base metadata
 
 from app.api.auth import router as auth_router
@@ -19,6 +19,8 @@ from app.api.rules import router as rules_router, seed_default_rules
 from app.api.ingestion import router as ingestion_router
 from app.api.budgets import router as budgets_router
 from app.api.analytics import router as analytics_router
+from app.api.maintenance import router as maintenance_router
+from app.api.investments import router as investments_router
 
 
 @asynccontextmanager
@@ -26,6 +28,14 @@ async def lifespan(app: FastAPI):
     # If S3 bucket configured (e.g. Lambda serverless cold start), restore database
     if settings.S3_BUCKET_NAME:
         restore_db_from_s3(settings.SQLITE_DB_PATH, settings.S3_BUCKET_NAME, settings.AWS_REGION)
+
+    # Refuse to serve production traffic with development-grade secrets.
+    problems = validate_production_settings()
+    if problems:
+        raise RuntimeError(
+            "Refusing to start in production with unsafe configuration:\n  - "
+            + "\n  - ".join(problems)
+        )
 
     if not settings.SKIP_STARTUP_TASKS:
         # Bring the schema up to head (creates it on a fresh database)
@@ -41,9 +51,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # On graceful shutdown / checkpoint
-    if settings.S3_BUCKET_NAME:
-        sync_db_to_s3(settings.SQLITE_DB_PATH, settings.S3_BUCKET_NAME, settings.AWS_REGION)
+    # On graceful shutdown, flush anything the debounce window still holds.
+    sync_now()
 
 
 # In production mode, disable public Swagger docs to prevent API surface scanning
@@ -60,6 +69,32 @@ app = FastAPI(
 )
 
 
+def _build_csp() -> str:
+    """Content-Security-Policy, with the Cognito hosts resolved for this region."""
+    connect_src = ["'self'"]
+    if settings.is_cognito_enabled:
+        region = settings.COGNITO_REGION
+        connect_src.append(f"https://cognito-idp.{region}.amazonaws.com")
+        connect_src.append(f"https://cognito-identity.{region}.amazonaws.com")
+    cognito_connect_src = "connect-src " + " ".join(connect_src)
+
+    return "; ".join([
+        "default-src 'self'",
+        "script-src 'self'",
+        # index.html loads Plus Jakarta Sans and JetBrains Mono from Google Fonts.
+        # Without these two hosts the policy blocks the stylesheet and the font
+        # files, and production silently falls back to the system sans-serif.
+        # Self-hosting the two families would let both entries be dropped.
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' data: https://fonts.gstatic.com",
+        "img-src 'self' data: https:",
+        cognito_connect_src,
+        "frame-ancestors 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+    ])
+
+
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     """Injects comprehensive defense-in-depth security headers into every response."""
@@ -70,19 +105,7 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
     
-    # Modern Content Security Policy (allows Cognito auth and self assets)
-    csp_directives = [
-        "default-src 'self'",
-        "script-src 'self'",
-        "style-src 'self' 'unsafe-inline'",
-        "font-src 'self' data:",
-        "img-src 'self' data: https:",
-        "connect-src 'self' https://cognito-idp.*.amazonaws.com https://cognito-identity.*.amazonaws.com",
-        "frame-ancestors 'none'",
-        "base-uri 'self'",
-        "form-action 'self'",
-    ]
-    response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
+    response.headers["Content-Security-Policy"] = _build_csp()
     return response
 
 
@@ -106,6 +129,8 @@ app.include_router(rules_router, prefix=settings.API_V1_STR, dependencies=[Depen
 app.include_router(ingestion_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
 app.include_router(budgets_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
 app.include_router(analytics_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
+app.include_router(maintenance_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
+app.include_router(investments_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
 
 
 @app.get("/api/health", tags=["Health"])
