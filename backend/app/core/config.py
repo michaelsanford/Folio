@@ -21,6 +21,10 @@ class Settings(BaseSettings):
 
     # Environment & Mode
     ENVIRONMENT: str = os.getenv("FOLIO_ENV", "development")
+
+    # Skip migration + seeding on app startup. Set by the test suite, which builds
+    # its own in-memory schema and must not touch the developer database.
+    SKIP_STARTUP_TASKS: bool = os.getenv("FOLIO_SKIP_STARTUP_TASKS", "").lower() in ("1", "true", "yes")
     
     # Document / statement upload directory & limits
     UPLOAD_DIR: Path = BASE_DIR / "data" / "uploads"

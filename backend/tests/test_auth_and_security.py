@@ -47,8 +47,10 @@ def test_protected_routes_fail_closed_when_unconfigured():
     assert "no authentication mechanism configured" in response.json()["detail"]
 
 
-def test_login_and_protected_routes_with_master_password():
-    client = TestClient(app)
+def test_login_and_protected_routes_with_master_password(unauthenticated_client):
+    # Real auth dependency, isolated database -- this test reaches a protected
+    # route that actually queries, so it must not run against the developer DB.
+    client = unauthenticated_client
     test_password = "SecretPassword123!"
     settings.FOLIO_MASTER_PASSWORD_HASH = hash_password(test_password)
     
