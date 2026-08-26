@@ -1,15 +1,20 @@
 import hashlib
 from sqlalchemy.orm import Session
+from app.core.money import to_cents
 from app.models.transaction import Transaction
 
 
 def generate_transaction_hash(account_id: str, date_str: str, amount: float, raw_payee: str) -> str:
     """
     Generates a deterministic SHA-256 fingerprint for deduplication.
-    Normalized amount string to 2 decimal places to avoid float precision variance.
+    The amount is keyed on exact integer cents so the fingerprint cannot vary
+    with float representation.
     """
     normalized_payee = "".join(c for c in raw_payee.lower() if c.isalnum())
-    normalized_amount = f"{amount:.2f}"
+    # Exact integer cents: f"{amount:.2f}" could render the same economic amount
+    # two different ways depending on float representation, which would let a
+    # duplicate row slip past the fingerprint.
+    normalized_amount = str(to_cents(amount))
     # Standardize date to YYYY-MM-DD
     if "T" in date_str:
         date_str = date_str.split("T")[0]

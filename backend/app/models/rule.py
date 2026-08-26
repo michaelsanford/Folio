@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime, timezone
 import enum
-from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, Enum, ForeignKey
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from app.models.money_fields import with_money
 
 
 class RulePatternType(str, enum.Enum):
@@ -13,6 +14,7 @@ class RulePatternType(str, enum.Enum):
     STARTS_WITH = "STARTS_WITH"
 
 
+@with_money(min_amount=True, max_amount=True)
 class CategorizationRule(Base):
     __tablename__ = "categorization_rules"
 
@@ -23,8 +25,8 @@ class CategorizationRule(Base):
     pattern = Column(String(255), nullable=False)
     
     # Optional constraints
-    min_amount = Column(Float, nullable=True)
-    max_amount = Column(Float, nullable=True)
+    min_amount_cents = Column(Integer, nullable=True)
+    max_amount_cents = Column(Integer, nullable=True)
     target_account_id = Column(String(36), nullable=True)
     
     # Merchant name cleaning

@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from app.models.transaction import Transaction
 from app.models.account import Account
+from app.core.money import to_cents
 
 
 class TransferMatch:
@@ -22,7 +23,9 @@ def find_potential_transfers(
     Searches for an opposing transaction in other accounts within ±window_days.
     e.g. If current transaction is -$500, looks for an existing +$500 transaction in another account.
     """
-    opposing_amount = -amount
+    # Exact integer comparison: with cents storage the old +/-0.01 float
+    # tolerance is unnecessary and could match a genuinely different amount.
+    opposing_cents = -to_cents(amount)
     start_date = transaction_date - timedelta(days=window_days)
     end_date = transaction_date + timedelta(days=window_days)
 
@@ -34,7 +37,7 @@ def find_potential_transfers(
             Transaction.account_id != current_account_id,
             Transaction.transaction_date >= start_date,
             Transaction.transaction_date <= end_date,
-            Transaction.amount.between(opposing_amount - 0.01, opposing_amount + 0.01),
+            Transaction.amount_cents == opposing_cents,
             Transaction.transfer_transaction_id.is_(None),  # Not already paired
         )
         .first()
