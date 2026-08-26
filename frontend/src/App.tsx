@@ -5,6 +5,7 @@ import { DashboardView } from "./components/dashboard/DashboardView";
 import { IngestionWorkspace } from "./components/ingestion/IngestionWorkspace";
 import { LedgerWorkspace } from "./components/ledger/LedgerWorkspace";
 import { LoanAmortizationView } from "./components/loans/LoanAmortizationView";
+import { InvestmentsView } from "./components/investments/InvestmentsView";
 import { BudgetingView } from "./components/budgeting/BudgetingView";
 import { RulesManagerView } from "./components/rules/RulesManagerView";
 import { AccountsManagerView } from "./components/accounts/AccountsManagerView";
@@ -14,7 +15,7 @@ import { api, setOnUnauthorized } from "./services/api";
 import { Sparkles } from "lucide-react";
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<NavTab | "accounts">("dashboard");
+  const [activeTab, setActiveTab] = useState<NavTab>("dashboard");
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [analytics, setAnalytics] = useState<DashboardAnalyticsResponse | null>(null);
@@ -83,46 +84,46 @@ export function App() {
   // Quick starter seeder for initial user demo
   const handleSeedDemoData = async () => {
     try {
-      // Create Checking
       await api.createAccount({
-        name: "Main Checking",
+        name: "Chequing",
         type: "CHECKING",
-        institution: "Chase",
+        institution: "RBC",
         account_number_mask: "*1234",
+        currency: "CAD",
         current_balance: 4250.0,
       });
 
-      // Create Credit Card
       await api.createAccount({
-        name: "Sapphire Reserve",
+        name: "Visa Infinite",
         type: "CREDIT_CARD",
-        institution: "Chase",
+        institution: "RBC",
         account_number_mask: "*8888",
+        currency: "CAD",
         current_balance: -840.5,
         credit_limit: 15000.0,
-        interest_rate: 21.99,
+        interest_rate: 20.99,
       });
 
-      // Create Home Mortgage
       await api.createAccount({
         name: "Home Mortgage",
         type: "MORTGAGE",
-        institution: "Wells Fargo",
+        institution: "Desjardins",
         account_number_mask: "*4567",
+        currency: "CAD",
         current_balance: 380000.0,
         loan_original_principal: 400000.0,
-        interest_rate: 6.25,
-        loan_term_months: 360,
-        monthly_payment: 2462.82,
-        escrow_payment: 475.0,
+        interest_rate: 4.79,
+        loan_term_months: 300,
+        monthly_payment: 2278.0,
+        escrow_payment: 375.0,
       });
 
-      // Create Vehicle Loan
       await api.createAccount({
-        name: "Vehicle Auto Loan",
+        name: "Vehicle Loan",
         type: "VEHICLE_LOAN",
         institution: "Toyota Financial",
         account_number_mask: "*9012",
+        currency: "CAD",
         current_balance: 24500.0,
         loan_original_principal: 32000.0,
         interest_rate: 4.99,
@@ -131,45 +132,38 @@ export function App() {
         escrow_payment: 0.0,
       });
 
-      // Seed Initial Categorization Rules
-      await api.createRule({
-        category_id: categories.find((c) => c.slug === "coffee")?.id || "",
-        pattern: "STARBUCKS",
-        pattern_type: "CONTAINS",
-        priority: 10,
-        normalized_payee_override: "Starbucks Coffee",
-      });
+      // Seed a few merchant rules. Each slug below exists in the default category
+      // seed -- an unknown slug would silently create a rule with an empty
+      // category_id, which is exactly what the old "coffee" entry did.
+      const demoRules: Array<{
+        slug: string;
+        pattern: string;
+        pattern_type: "CONTAINS" | "STARTS_WITH";
+        priority: number;
+        normalized_payee_override?: string;
+      }> = [
+        { slug: "groceries", pattern: "METRO", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Metro" },
+        { slug: "groceries", pattern: "PROVIGO", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Provigo" },
+        { slug: "coffee-shops", pattern: "TIM HORTONS", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Tim Hortons" },
+        { slug: "restaurants", pattern: "ST-HUBERT", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "St-Hubert" },
+        { slug: "fuel", pattern: "PETRO-CANADA", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Petro-Canada" },
+        { slug: "utilities", pattern: "HYDRO", pattern_type: "STARTS_WITH", priority: 15, normalized_payee_override: "Hydro-Quebec" },
+      ];
 
-      await api.createRule({
-        category_id: categories.find((c) => c.slug === "groceries")?.id || "",
-        pattern: "WHOLEFDS",
-        pattern_type: "STARTS_WITH",
-        priority: 10,
-        normalized_payee_override: "Whole Foods Market",
-      });
-
-      await api.createRule({
-        category_id: categories.find((c) => c.slug === "groceries")?.id || "",
-        pattern: "TRADER JOE",
-        pattern_type: "CONTAINS",
-        priority: 10,
-        normalized_payee_override: "Trader Joe's",
-      });
-
-      await api.createRule({
-        category_id: categories.find((c) => c.slug === "restaurants")?.id || "",
-        pattern: "CHIPOTLE",
-        pattern_type: "CONTAINS",
-        priority: 10,
-        normalized_payee_override: "Chipotle Mexican Grill",
-      });
-
-      await api.createRule({
-        category_id: categories.find((c) => c.slug === "mortgage-principal")?.id || "",
-        pattern: "WELLS FARGO MORTGAGE",
-        pattern_type: "CONTAINS",
-        priority: 20,
-      });
+      for (const rule of demoRules) {
+        const category = categories.find((c) => c.slug === rule.slug);
+        if (!category) {
+          console.warn(`Skipping demo rule for unknown category slug: ${rule.slug}`);
+          continue;
+        }
+        await api.createRule({
+          category_id: category.id,
+          pattern: rule.pattern,
+          pattern_type: rule.pattern_type,
+          priority: rule.priority,
+          normalized_payee_override: rule.normalized_payee_override,
+        });
+      }
 
       await loadAllData();
     } catch (err) {
@@ -234,7 +228,7 @@ export function App() {
         <DashboardView
           analytics={analytics}
           accounts={accounts}
-          onNavigate={(tab) => setActiveTab(tab as any)}
+          onNavigate={(tab) => setActiveTab(tab as NavTab)}
         />
       )}
 
@@ -256,6 +250,10 @@ export function App() {
 
       {activeTab === "budgeting" && (
         <BudgetingView categories={categories} onCategoriesModified={loadAllData} />
+      )}
+
+      {activeTab === "investments" && (
+        <InvestmentsView accounts={accounts} onDataModified={loadAllData} />
       )}
 
       {activeTab === "loans" && (

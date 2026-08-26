@@ -10,6 +10,9 @@ import type {
   AmortizationScheduleResponse,
   LoanSplitSuggestion,
   DashboardAnalyticsResponse,
+  HoldingValuation,
+  PerformanceResponse,
+  PriceQuote,
   AuthStatusResponse,
   CognitoConfigResponse,
 } from "../types";
@@ -134,7 +137,7 @@ export const api = {
   getLoanSplitSuggestion: (id: string, paymentAmount?: number) => {
     const query = paymentAmount ? `?payment_amount=${paymentAmount}` : "";
     return request<LoanSplitSuggestion>(
-      `/accounts/${id}/loan-split${query}`
+      `/accounts/${id}/suggest-split${query}`
     );
   },
 
@@ -166,6 +169,8 @@ export const api = {
     start_date?: string;
     end_date?: string;
     is_uncategorized?: boolean;
+    min_amount?: number;
+    max_amount?: number;
     sort_by?: string;
     sort_order?: string;
   }) => {
@@ -179,6 +184,10 @@ export const api = {
     if (params?.end_date) query.append("end_date", params.end_date);
     if (params?.is_uncategorized !== undefined)
       query.append("is_uncategorized", params.is_uncategorized.toString());
+    if (params?.min_amount !== undefined)
+      query.append("min_amount", params.min_amount.toString());
+    if (params?.max_amount !== undefined)
+      query.append("max_amount", params.max_amount.toString());
     if (params?.sort_by) query.append("sort_by", params.sort_by);
     if (params?.sort_order) query.append("sort_order", params.sort_order);
 
@@ -199,11 +208,11 @@ export const api = {
     request<void>(`/transactions/${id}`, { method: "DELETE" }),
   updateSplits: (
     transactionId: string,
-    splits: { category_id: string; amount: number; notes?: string }[]
+    splits: { category_id: string; amount: number; memo?: string }[]
   ) =>
-    request<Transaction>(`/transactions/${transactionId}/splits`, {
-      method: "POST",
-      body: JSON.stringify(splits),
+    request<Transaction>(`/transactions/${transactionId}`, {
+      method: "PUT",
+      body: JSON.stringify({ splits }),
     }),
   batchCategorize: (req: {
     transaction_ids: string[];
@@ -236,7 +245,7 @@ export const api = {
     }),
   deleteRule: (id: string) =>
     request<void>(`/rules/${id}`, { method: "DELETE" }),
-  testRule: (params: { payee: string; amount?: number }) =>
+  testRule: (params: { raw_payee: string; amount?: number; account_id?: string }) =>
     request<{
       matched: boolean;
       rule_id?: string;
@@ -295,6 +304,8 @@ export const api = {
       body: JSON.stringify(req),
     }),
   commitImport: (req: any) => api.commitIngestionBatch(req),
+  deleteStatementFile: (id: string) =>
+    request<void>(`/ingestion/statement-files/${id}`, { method: "DELETE" }),
   getStatementFiles: (accountId?: string) => {
     const query = accountId ? `?account_id=${accountId}` : "";
     return request<any[]>(`/ingestion/statement-files${query}`);
@@ -332,4 +343,69 @@ export const api = {
   // Analytics & Dashboard
   getDashboardAnalytics: () =>
     request<DashboardAnalyticsResponse>("/analytics/dashboard"),
+
+  // Investments
+  getHoldings: (accountId?: string, asOf?: string) => {
+    const q = new URLSearchParams();
+    if (accountId) q.append("account_id", accountId);
+    if (asOf) q.append("as_of", asOf);
+    const qs = q.toString() ? `?${q.toString()}` : "";
+    return request<HoldingValuation[]>(`/investments/holdings${qs}`);
+  },
+  createHolding: (payload: {
+    account_id: string;
+    symbol: string;
+    name?: string;
+    asset_class?: string;
+    lots: { trade_date: string; quantity: string; cost_basis: string; fee?: string }[];
+  }) =>
+    request<HoldingValuation>("/investments/holdings", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  deleteHolding: (id: string) =>
+    request<void>(`/investments/holdings/${id}`, { method: "DELETE" }),
+  getPerformance: (accountId: string, asOf?: string) => {
+    const q = new URLSearchParams({ account_id: accountId });
+    if (asOf) q.append("as_of", asOf);
+    return request<PerformanceResponse>(`/investments/performance?${q.toString()}`);
+  },
+  upsertPrices: (quotes: { symbol: string; as_of_date: string; price: string }[]) =>
+    request<PriceQuote[]>("/investments/prices/bulk", {
+      method: "POST",
+      body: JSON.stringify({ quotes }),
+    }),
+  getPrices: (symbol?: string) =>
+    request<PriceQuote[]>(`/investments/prices${symbol ? `?symbol=${symbol}` : ""}`),
+  createInvestmentActivity: (payload: {
+    account_id: string;
+    type: string;
+    trade_date: string;
+    symbol?: string;
+    quantity?: string;
+    amount: string;
+    fee?: string;
+    notes?: string;
+  }) =>
+    request<unknown>("/investments/activities", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  revalueInvestments: () =>
+    request<{ accounts_revalued: number; unpriced_holdings: string[] }>(
+      "/investments/revalue",
+      { method: "POST" }
+    ),
+
+  // Maintenance / backfill for existing installations
+  backfillSnapshots: (months = 24) =>
+    request<{ snapshots_written: number; months: number }>(
+      `/maintenance/backfill-snapshots?months=${months}`,
+      { method: "POST" }
+    ),
+  detectTransfers: (windowDays = 3) =>
+    request<{ pairs_linked: number; transactions_scanned: number }>(
+      `/maintenance/detect-transfers?window_days=${windowDays}`,
+      { method: "POST" }
+    ),
 };

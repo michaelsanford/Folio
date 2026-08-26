@@ -248,3 +248,67 @@ export interface CognitoConfigResponse {
   region: string;
 }
 
+
+// ---------------------------------------------------------------- Investments
+
+export type AssetClass =
+  | "EQUITY"
+  | "ETF"
+  | "MUTUAL_FUND"
+  | "FIXED_INCOME"
+  | "CASH"
+  | "CRYPTO"
+  | "OTHER";
+
+export type InvestmentActivityType =
+  | "BUY"
+  | "SELL"
+  | "DIVIDEND"
+  | "CONTRIBUTION"
+  | "WITHDRAWAL"
+  | "FEE";
+
+export interface HoldingValuation {
+  holding_id: string;
+  security_id: string;
+  symbol: string;
+  name?: string | null;
+  asset_class: string;
+  quantity: string;
+  cost_basis: number;
+  market_value: number;
+  unrealized_gain: number;
+  unrealized_gain_pct: number;
+  price?: number | null;
+  price_as_of?: string | null;
+  /** False when no quote has been entered; the value shown falls back to cost. */
+  is_priced: boolean;
+}
+
+export interface PeriodReturn {
+  money_weighted: number | null;
+  time_weighted: number | null;
+}
+
+export interface PerformanceResponse {
+  account_id: string;
+  as_of: string;
+  market_value: number;
+  cost_basis: number;
+  unrealized_gain: number;
+  contributions: number;
+  withdrawals: number;
+  net_invested: number;
+  market_growth: number;
+  holdings: HoldingValuation[];
+  returns: Record<string, PeriodReturn>;
+  unpriced_holdings: string[];
+}
+
+export interface PriceQuote {
+  id: string;
+  security_id: string;
+  symbol: string;
+  as_of_date: string;
+  price: number;
+}
