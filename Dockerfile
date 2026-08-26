@@ -8,7 +8,7 @@ RUN npm run build
 
 # Stage 2: Unified Execution Environment (Docker Compose / AWS Lambda Web Adapter)
 FROM python:3.13-slim
-COPY --from=public.ecr.aws/awsgsl/aws-lambda-web-adapter:0.8.4 /lambda-adapter /opt/extensions/lambda-adapter
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.8.4 /lambda-adapter /opt/extensions/lambda-adapter
 
 WORKDIR /app
 

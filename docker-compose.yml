@@ -1,4 +1,3 @@
-version: '3.8'
 name: folio
 
 services:
@@ -13,6 +12,15 @@ services:
       - ./backend/data:/app/data
     environment:
       - SQLITE_DB_PATH=/app/data/folio.db
+      - FOLIO_UPLOAD_DIR=/app/data/uploads
+      - FOLIO_ENV=${FOLIO_ENV:-development}
+      # Authentication is fail-closed: without one of these the app starts but
+      # every API call is rejected and the UI stays locked. Generate a hash with:
+      #   python backend/scripts/hash_password.py   (reads the passphrase on stdin)
+      - FOLIO_MASTER_PASSWORD_HASH=${FOLIO_MASTER_PASSWORD_HASH:-}
+      # Signs session tokens. Required when FOLIO_ENV=production, where startup
+      # refuses to proceed with the built-in development key.
+      - FOLIO_SECRET_KEY=${FOLIO_SECRET_KEY:-}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME:-}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ca-central-1}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
