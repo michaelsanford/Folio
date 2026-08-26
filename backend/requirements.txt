@@ -6,11 +6,12 @@ pydantic>=2.13.4
 pydantic-settings>=2.15.0
 python-multipart>=0.0.32
 pdfplumber>=0.11.10
-pypdf>=6.16.1
+pypdf>=6.16.2
 python-dateutil>=2.9.0.post0
 ofxtools>=1.1.1
 httpx>=0.28.1
 pyjwt>=2.13.0
 bcrypt>=5.0.0
-pytest>=9.1.1
-pytest-asyncio>=1.4.0
+# S3 database snapshots. Previously installed ad-hoc in the Dockerfile, which
+# left it undeclared, uncached by CI, and invisible to Dependabot.
+boto3>=1.43.80
