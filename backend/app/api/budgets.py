@@ -1,10 +1,13 @@
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.core.database import get_db
+from app.core.money import from_cents
 from app.models.budget import Budget, BudgetItem
 from app.models.category import Category, CategoryType
 from app.models.transaction import Transaction, TransactionSplit
+from app.services.analytics.classification import split_kind_case
 from app.schemas.budget import (
     BudgetCreate,
     BudgetUpdate,
@@ -24,27 +27,42 @@ def populate_budget_actuals(db: Session, budget: Budget) -> BudgetResponse:
     else:
         end_of_month = datetime(budget.year, budget.month + 1, 1)
 
-    splits = (
-        db.query(TransactionSplit, Transaction)
+    # Aggregate in SQL, and classify each group so that transfers between the
+    # household's own accounts never land in budget actuals or the month totals.
+    kind = split_kind_case().label("kind")
+    rows = (
+        db.query(
+            kind,
+            TransactionSplit.category_id.label("category_id"),
+            func.sum(TransactionSplit.amount_cents).label("total_cents"),
+        )
         .join(Transaction, TransactionSplit.transaction_id == Transaction.id)
+        .outerjoin(Category, TransactionSplit.category_id == Category.id)
         .filter(
             Transaction.transaction_date >= start_of_month,
             Transaction.transaction_date < end_of_month,
         )
+        .group_by(kind, TransactionSplit.category_id)
         .all()
     )
 
-    actuals_by_cat: dict[str, float] = {}
-    total_income = 0.0
-    total_expense = 0.0
+    # Exact integer cents throughout; converted to dollars only at the response.
+    actuals_by_cat: dict[str, int] = {}
+    income_cents = 0
+    expense_cents = 0
 
-    for split, trn in splits:
-        if split.category_id:
-            actuals_by_cat[split.category_id] = actuals_by_cat.get(split.category_id, 0.0) + abs(split.amount)
-        if split.amount > 0:
-            total_income += abs(split.amount)
-        else:
-            total_expense += abs(split.amount)
+    for row in rows:
+        total = row.total_cents or 0
+        if row.kind == "TRANSFER":
+            continue
+        if row.kind == "INCOME":
+            income_cents += total
+            continue
+        # EXPENSE: stored negative, reported as a positive outflow.
+        spent = -total
+        expense_cents += spent
+        if row.category_id:
+            actuals_by_cat[row.category_id] = actuals_by_cat.get(row.category_id, 0) + spent
 
     # Ensure all budgeted expense categories (and any category with actual spend) exist in the budget items
     existing_cat_ids = {it.category_id for it in budget.items}
@@ -78,16 +96,16 @@ def populate_budget_actuals(db: Session, budget: Budget) -> BudgetResponse:
 
     items_resp: list[BudgetItemResponse] = []
     for item in budget.items:
-        actual = actuals_by_cat.get(item.category_id, 0.0)
-        remaining = round(item.planned_amount - actual, 2)
+        actual_cents = actuals_by_cat.get(item.category_id, 0)
+        remaining_cents = item.planned_amount_cents - actual_cents
         items_resp.append(
             BudgetItemResponse(
                 id=item.id,
                 budget_id=item.budget_id,
                 category_id=item.category_id,
-                planned_amount=item.planned_amount,
-                actual_amount=round(actual, 2),
-                remaining_amount=remaining,
+                planned_amount=float(from_cents(item.planned_amount_cents)),
+                actual_amount=float(from_cents(actual_cents)),
+                remaining_amount=float(from_cents(remaining_cents)),
                 category=item.category,
             )
         )
@@ -105,8 +123,8 @@ def populate_budget_actuals(db: Session, budget: Budget) -> BudgetResponse:
         created_at=budget.created_at,
         updated_at=budget.updated_at,
         items=items_resp,
-        total_actual_income=round(total_income, 2),
-        total_actual_expense=round(total_expense, 2),
+        total_actual_income=float(from_cents(income_cents)),
+        total_actual_expense=float(from_cents(expense_cents)),
     )
 
 
