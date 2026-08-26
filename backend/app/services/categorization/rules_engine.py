@@ -1,9 +1,44 @@
+import logging
 import re
+from functools import lru_cache
+
 from sqlalchemy.orm import Session
-from app.models.rule import CategorizationRule, RulePatternType
+
+from app.core.money import to_cents
 from app.models.category import Category
+from app.models.rule import CategorizationRule, RulePatternType
 from app.services.categorization.normalizer import normalize_payee
 from app.services.categorization.semantic_classifier import classify_by_semantic_keywords
+
+logger = logging.getLogger("folio.rules")
+
+# A user-authored pattern is compiled and run against every payee. Nested
+# quantifiers can backtrack catastrophically, so patterns are length-bounded and
+# compilation is cached rather than repeated per transaction.
+MAX_PATTERN_LENGTH = 200
+_NESTED_QUANTIFIER = re.compile(r"(\([^)]*[+*]\)[+*])|(\[[^\]]*\][+*]\{)|([+*]\s*[+*])")
+
+
+@lru_cache(maxsize=512)
+def _compile_pattern(pattern: str) -> re.Pattern | None:
+    if len(pattern) > MAX_PATTERN_LENGTH:
+        logger.warning("Ignoring categorization regex over %d characters", MAX_PATTERN_LENGTH)
+        return None
+    if _NESTED_QUANTIFIER.search(pattern):
+        logger.warning("Ignoring categorization regex with nested quantifiers: %r", pattern[:60])
+        return None
+    try:
+        return re.compile(pattern, re.IGNORECASE)
+    except re.error:
+        return None
+
+
+def safe_regex_search(pattern: str, text: str) -> bool:
+    """Match a user-supplied pattern, refusing shapes that can backtrack badly."""
+    compiled = _compile_pattern(pattern)
+    if compiled is None:
+        return False
+    return bool(compiled.search(text))
 
 
 class RuleMatchResult:
@@ -50,7 +85,7 @@ def evaluate_rules(
         )
 
     target_text = raw_payee.upper().strip()
-    abs_amount = abs(amount) if amount is not None else None
+    abs_cents = abs(to_cents(amount)) if amount is not None else None
 
     # Tier 1: Explicit Rules Engine
     for rule in rules:
@@ -59,10 +94,10 @@ def evaluate_rules(
             continue
 
         # Check amount constraints (absolute amount comparison) if amount is provided
-        if abs_amount is not None:
-            if rule.min_amount is not None and abs_amount < rule.min_amount:
+        if abs_cents is not None:
+            if rule.min_amount_cents is not None and abs_cents < rule.min_amount_cents:
                 continue
-            if rule.max_amount is not None and abs_amount > rule.max_amount:
+            if rule.max_amount_cents is not None and abs_cents > rule.max_amount_cents:
                 continue
 
         rule_pattern = rule.pattern.upper().strip()
@@ -75,10 +110,7 @@ def evaluate_rules(
         elif rule.pattern_type == RulePatternType.STARTS_WITH:
             is_match = target_text.startswith(rule_pattern)
         elif rule.pattern_type == RulePatternType.REGEX:
-            try:
-                is_match = bool(re.search(rule.pattern, raw_payee, re.IGNORECASE))
-            except re.error:
-                is_match = False
+            is_match = safe_regex_search(rule.pattern, raw_payee)
 
         if is_match:
             category = rule.category

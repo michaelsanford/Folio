@@ -8,17 +8,31 @@ Parameters:
     Default: prod
     Description: Stage environment name (e.g. prod, staging, dev)
 
-  MasterPassword:
+  MasterPasswordHash:
     Type: String
     NoEcho: true
     Default: ''
-    Description: Optional master passphrase for local/fallback vault authentication
+    Description: >-
+      Optional bcrypt hash of the master passphrase for fallback vault
+      authentication. A hash, not the passphrase: Lambda environment variables
+      are readable by anyone holding lambda:GetFunctionConfiguration.
 
   OriginVerifySecret:
     Type: String
     NoEcho: true
     Default: ''
     Description: Optional secret verification header token injected by CloudFront/WAF to protect direct Lambda Function URL access
+
+  AllowedOrigin:
+    Type: String
+    Default: ''
+    Description: >-
+      Optional exact origin permitted to call the API cross-origin, e.g.
+      https://folio.example.com. Leave empty when the PWA is served from the
+      function itself, which is the default and needs no CORS at all.
+
+Conditions:
+  HasAllowedOrigin: !Not [!Equals [!Ref AllowedOrigin, '']]
 
 Globals:
   Function:
@@ -109,18 +123,28 @@ Resources:
           AWS_LWA_ASYNC_INIT: "true"
           FOLIO_ENV: !Ref EnvironmentName
           SQLITE_DB_PATH: "/tmp/folio.db"
+          # Lambda's filesystem is read-only outside /tmp; statement uploads must land there.
+          FOLIO_UPLOAD_DIR: "/tmp/uploads"
           S3_BUCKET_NAME: !Ref FolioStorageVault
           AWS_DEFAULT_REGION: !Ref AWS::Region
-          FOLIO_MASTER_PASSWORD: !Ref MasterPassword
+          FOLIO_MASTER_PASSWORD_HASH: !Ref MasterPasswordHash
           COGNITO_USER_POOL_ID: !Ref FolioUserPool
           COGNITO_CLIENT_ID: !Ref FolioUserPoolClient
           COGNITO_REGION: !Ref AWS::Region
           FOLIO_ORIGIN_VERIFY_SECRET: !Ref OriginVerifySecret
+          FOLIO_CORS_ORIGINS: !Ref AllowedOrigin
       FunctionUrlConfig:
         AuthType: NONE
+        # The app and its API are served from the same origin, so cross-origin
+        # access is not needed at all. A wildcard origin combined with
+        # AllowCredentials is invalid per the CORS specification and browsers
+        # reject it -- set AllowedOrigin to a real origin only if you front the
+        # function with a custom domain.
         Cors:
-          AllowOrigins:
-            - '*'
+          AllowOrigins: !If
+            - HasAllowedOrigin
+            - [!Ref AllowedOrigin]
+            - []
           AllowMethods:
             - 'GET'
             - 'POST'
@@ -129,7 +153,9 @@ Resources:
             - 'OPTIONS'
             - 'HEAD'
           AllowHeaders:
-            - '*'
+            - 'Content-Type'
+            - 'Authorization'
+            - 'X-Folio-Origin-Verify'
           AllowCredentials: true
       Policies:
         - S3CrudPolicy:
