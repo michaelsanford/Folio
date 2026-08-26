@@ -318,6 +318,10 @@ def auto_learn_rule(
     Adaptive Learning: When a user assigns a category to a transaction,
     Folio extracts a clean merchant pattern and automatically creates/updates
     a persistent CategorizationRule so future occurrences match seamlessly.
+
+    Flush-only: the caller owns the transaction boundary. This used to commit,
+    which meant a failure part-way through an import left the earlier rows
+    permanently committed despite the surrounding rollback.
     """
     if not raw_payee or not category_id:
         return None
@@ -342,8 +346,6 @@ def auto_learn_rule(
         if existing_rule.category_id != category_id:
             existing_rule.category_id = category_id
             existing_rule.normalized_payee_override = norm
-            db.commit()
-            db.refresh(existing_rule)
         return existing_rule
 
     new_rule = CategorizationRule(
@@ -355,9 +357,25 @@ def auto_learn_rule(
         is_active=True,
     )
     db.add(new_rule)
-    db.commit()
-    db.refresh(new_rule)
+    db.flush()
     return new_rule
+
+
+def auto_learn_rules_bulk(db: Session, learned: dict[str, tuple[str, str | None]]) -> int:
+    """Apply a batch of learned merchant->category associations in one pass.
+
+    ``learned`` maps raw payee to ``(category_id, normalized_payee)``. Collecting
+    during a loop and applying once afterwards avoids the two queries per
+    transaction that the per-row path incurred on every import.
+    """
+    if not learned:
+        return 0
+
+    applied = 0
+    for raw_payee, (category_id, normalized_payee) in learned.items():
+        if auto_learn_rule(db, raw_payee, category_id, normalized_payee) is not None:
+            applied += 1
+    return applied
 
 
 @router.get("", response_model=list[CategorizationRuleResponse])
