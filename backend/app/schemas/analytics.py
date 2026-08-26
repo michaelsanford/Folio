@@ -20,6 +20,10 @@ class CategorySpendPoint(BaseModel):
 class CashFlowSummary(BaseModel):
     total_income: float
     total_expenses: float
+    # Movement between the household's own accounts (credit-card payments,
+    # savings transfers). Excluded from income and expenses, reported so the
+    # volume is visible rather than silently dropped.
+    total_transfers: float = 0.0
     net_savings: float
     savings_rate: float
 
