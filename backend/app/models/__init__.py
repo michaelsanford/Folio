@@ -5,6 +5,16 @@ from app.models.statement_file import StatementFile
 from app.models.transaction import Transaction, TransactionSplit, TransactionStatus
 from app.models.rule import CategorizationRule, RulePatternType
 from app.models.budget import Budget, BudgetItem
+from app.models.snapshot import AccountBalanceSnapshot
+from app.models.investment import (
+    AssetClass,
+    Holding,
+    InvestmentActivity,
+    InvestmentActivityType,
+    Lot,
+    PriceQuote,
+    Security,
+)
 
 __all__ = [
     "Base",
@@ -20,4 +30,12 @@ __all__ = [
     "RulePatternType",
     "Budget",
     "BudgetItem",
+    "AccountBalanceSnapshot",
+    "Security",
+    "AssetClass",
+    "Holding",
+    "Lot",
+    "PriceQuote",
+    "InvestmentActivity",
+    "InvestmentActivityType",
 ]

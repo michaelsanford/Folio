@@ -1,8 +1,9 @@
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_, desc, asc
+from sqlalchemy import or_, desc, asc, func, select
 from app.core.database import get_db
+from app.core.money import to_cents
 from app.models.transaction import Transaction, TransactionSplit, TransactionStatus
 from app.models.account import Account
 from app.models.category import Category
@@ -19,15 +20,24 @@ router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
 
 def recalculate_account_balance(db: Session, account_id: str):
-    """Recalculates account current balance from all cleared/pending transactions and syncs to S3."""
+    """Recalculates an account's balance and records today's snapshot.
+
+    Aggregates in SQL -- this previously loaded every transaction for the account
+    into Python and summed in a loop, on every single create, update and delete.
+    """
     from app.core.s3_sync import sync_db_if_configured
+    from app.services.snapshots.balance_history import record_snapshot
+
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
         return
-    total_tx = db.query(Transaction).filter(Transaction.account_id == account_id).all()
-    # Sum up amounts
-    balance = sum(t.amount for t in total_tx)
-    account.current_balance = round(balance, 2)
+
+    balance_cents = db.query(func.sum(Transaction.amount_cents)).filter(
+        Transaction.account_id == account_id
+    ).scalar() or 0
+
+    account.current_balance_cents = balance_cents
+    record_snapshot(db, account_id, balance_cents)
     db.commit()
     sync_db_if_configured()
 
@@ -40,6 +50,9 @@ def list_transactions(
     end_date: datetime | None = None,
     status: TransactionStatus | None = None,
     search: str | None = None,
+    is_uncategorized: bool | None = None,
+    min_amount: float | None = None,
+    max_amount: float | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     sort_by: str = Query("transaction_date", pattern="^(transaction_date|amount|normalized_payee|raw_payee)$"),
@@ -62,6 +75,25 @@ def list_transactions(
 
     if category_id:
         query = query.join(Transaction.splits).filter(TransactionSplit.category_id == category_id)
+
+    if is_uncategorized is not None:
+        # A transaction counts as categorized when at least one of its splits
+        # carries a category. The frontend has always sent this filter; it was
+        # silently ignored, so "uncategorized only" returned everything.
+        has_category = (
+            select(TransactionSplit.id)
+            .where(
+                TransactionSplit.transaction_id == Transaction.id,
+                TransactionSplit.category_id.isnot(None),
+            )
+            .exists()
+        )
+        query = query.filter(~has_category if is_uncategorized else has_category)
+
+    if min_amount is not None:
+        query = query.filter(Transaction.amount_cents >= to_cents(min_amount))
+    if max_amount is not None:
+        query = query.filter(Transaction.amount_cents <= to_cents(max_amount))
 
     if search:
         search_filter = or_(
