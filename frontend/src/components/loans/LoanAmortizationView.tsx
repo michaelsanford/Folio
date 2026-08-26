@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Landmark } from "lucide-react";
-import ReactECharts from "echarts-for-react";
+import { LazyChart } from "../common/LazyChart";
 import type { Account, AmortizationScheduleResponse } from "../../types";
 import { api } from "../../services/api";
 
@@ -224,13 +224,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
               Breakdown of Principal reduction, Interest cost, and Escrow
             </p>
 
-            <div className="h-64 w-full">
-              <ReactECharts
-                option={barOptions}
-                style={{ height: "100%", width: "100%" }}
-                opts={{ renderer: "svg" }}
-              />
-            </div>
+            <LazyChart option={barOptions} className="h-64" />
           </div>
 
           {/* Full Schedule */}

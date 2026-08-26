@@ -125,13 +125,14 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
           raw_payee: item.raw_payee,
           normalized_payee: item.normalized_payee,
           amount: item.amount,
-          category_id: rowCategories[item.import_hash] || item.suggested_category_id || null,
+          category_id:
+            rowCategories[item.import_hash] || item.suggested_category_id || undefined,
           import_hash: item.import_hash,
         }));
 
       const res = await api.commitIngestionBatch({
         account_id: selectedAccountId,
-        statement_file_id: preview.file_id,
+        statement_file_id: preview.file_id ?? undefined,
         items: itemsToCommit,
       });
 

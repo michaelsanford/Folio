@@ -7,7 +7,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
 } from "lucide-react";
-import ReactECharts from "echarts-for-react";
+import { LazyChart } from "../common/LazyChart";
 import type { Account, DashboardAnalyticsResponse } from "../../types";
 
 interface DashboardViewProps {
@@ -226,13 +226,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           {sankey.links.length > 0 ? (
-            <div className="h-72 w-full">
-              <ReactECharts
-                option={sankeyOptions}
-                style={{ height: "100%", width: "100%" }}
-                opts={{ renderer: "svg" }}
-              />
-            </div>
+            <LazyChart option={sankeyOptions} className="h-72" />
           ) : (
             <div className="h-72 flex flex-col items-center justify-center text-slate-500 text-sm">
               <p>No income/expense flow recorded yet for this month.</p>
@@ -297,13 +291,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <h2 className="text-base font-semibold text-slate-200 mb-1">Net Worth Progression</h2>
           <p className="text-xs text-slate-400 mb-4">Historical trajectory of assets vs liabilities</p>
 
-          <div className="h-64 w-full">
-            <ReactECharts
-              option={netWorthOptions}
-              style={{ height: "100%", width: "100%" }}
-              opts={{ renderer: "svg" }}
-            />
-          </div>
+          <LazyChart option={netWorthOptions} className="h-64" />
         </div>
 
         {/* Managed Accounts Summary */}
