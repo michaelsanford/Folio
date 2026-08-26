@@ -1,5 +1,6 @@
-/// <reference types="vitest" />
-import { defineConfig } from 'vite'
+// defineConfig from vitest/config, not vite: the plain Vite type has no `test`
+// key, so the config did not typecheck once `tsc -b` started checking it.
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -32,6 +33,13 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    // No manualChunks: forcing echarts into a named chunk dragged React in with
+    // it (a shared dependency), which made the entry import that chunk eagerly
+    // and defeated the split. Rollup's automatic splitting handles the dynamic
+    // import in LazyChart correctly on its own.
+    chunkSizeWarningLimit: 700,
+  },
   test: {
     environment: 'happy-dom',
     globals: true,

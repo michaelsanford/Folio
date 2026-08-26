@@ -19,7 +19,7 @@ import {
   DollarSign,
   BarChart3,
 } from "lucide-react";
-import ReactECharts from "echarts-for-react";
+import { LazyChart } from "../common/LazyChart";
 import type { Budget, BudgetItem, Category, Transaction } from "../../types";
 import { api } from "../../services/api";
 
@@ -571,10 +571,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
             {/* Gauge and Central Numbers */}
             <div className="relative h-44 my-2 flex items-center justify-center">
-              <ReactECharts
-                option={overallGaugeOptions}
-                style={{ height: "100%", width: "100%" }}
-              />
+              <LazyChart option={overallGaugeOptions} className="h-full" />
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 <span className="text-2xl font-black text-slate-100">
                   {overallPercentSpent}%
@@ -637,10 +634,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
           <div className="flex-1 min-h-[220px]">
             {budget?.items && budget.items.length > 0 ? (
-              <ReactECharts
-                option={categoryBarChartOptions}
-                style={{ height: "100%", width: "100%" }}
-              />
+              <LazyChart option={categoryBarChartOptions} className="h-full" />
             ) : (
               <div className="flex items-center justify-center h-full text-slate-500 text-xs">
                 No budget targets or expenses recorded for this month.
