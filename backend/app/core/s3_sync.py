@@ -79,9 +79,19 @@ def sync_db_to_s3(db_path: Path, bucket_name: str, region: str = "ca-central-1")
 
 
 def sync_db_if_configured() -> bool:
-    """Convenience helper to checkpoint and push DB snapshot to S3 if S3_BUCKET_NAME is configured."""
-    from app.core.config import settings
-    if settings.S3_BUCKET_NAME:
-        return sync_db_to_s3(settings.SQLITE_DB_PATH, settings.S3_BUCKET_NAME, settings.AWS_REGION)
-    return False
+    """Mark the database as needing an S3 snapshot.
+
+    Deliberately does not upload inline: a full-file upload on the request path
+    made every edit pay for the whole database. See app.core.sync_scheduler.
+    Call sync_now() when the write must not be lost.
+    """
+    from app.core.sync_scheduler import sync_scheduler
+    sync_scheduler.mark_dirty()
+    return True
+
+
+def sync_now() -> bool:
+    """Force an immediate snapshot upload, bypassing the debounce."""
+    from app.core.sync_scheduler import sync_scheduler
+    return sync_scheduler.flush()
 
