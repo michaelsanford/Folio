@@ -1,0 +1,50 @@
+# Without this file, `COPY backend/ .` bakes the developer's live database and every
+# uploaded bank statement into the image -- which `sam deploy` then pushes to ECR.
+# .gitignore does not apply to Docker build contexts, so these must be listed again.
+
+# Financial data. Never build this into an image.
+backend/data/
+**/*.db
+**/*.db-wal
+**/*.db-shm
+
+# Virtualenvs: large, and built for the wrong platform.
+backend/.venv/
+backend/venv/
+.venv/
+venv/
+
+# Python build and test artifacts
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.coverage
+**/.coverage.*
+**/htmlcov/
+**/*.egg-info/
+
+# Node: reinstalled by `npm ci` inside the build stage
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/.vite/
+**/*.tsbuildinfo
+
+# Secrets and local configuration
+**/.env
+**/.env.*
+
+# Version control, CI, IDE, and docs -- not needed at runtime
+.git/
+.github/
+.idea/
+.vscode/
+*.md
+!README.md
+
+# Deployment tooling that does not belong inside the runtime image
+.aws-sam/
+deploy.ps1
+dev.ps1
+test.ps1
+docker-compose.yml
