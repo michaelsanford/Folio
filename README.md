@@ -73,8 +73,9 @@ flowchart LR
 ## Quick Start (Local Development)
 
 ### 1. Prerequisites
-- Python 3.12+ (tested up to 3.14)
-- Node.js 20+ (tested with Node 22/23 LTS) and npm
+- Python 3.13+ (CI and the container image both build on 3.14)
+- Node.js 22.12+ or 20.19+ (CI and the container image both build on 24; this is
+  Vite 8's floor) and npm
 
 ### 2. 1-Command Local Development
 Launch both the FastAPI backend and Vite frontend with live hot-reloading:
