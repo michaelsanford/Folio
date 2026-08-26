@@ -5,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.core.config import settings
-from app.core.database import engine, Base, SessionLocal
+from app.core.database import SessionLocal
+from app.core.migrations import run_migrations
 from app.core.security import require_auth
 from app.core.s3_sync import restore_db_from_s3, sync_db_to_s3
 import app.models  # noqa: F401 - registers SQLAlchemy models with Base metadata
@@ -26,17 +27,18 @@ async def lifespan(app: FastAPI):
     if settings.S3_BUCKET_NAME:
         restore_db_from_s3(settings.SQLITE_DB_PATH, settings.S3_BUCKET_NAME, settings.AWS_REGION)
 
-    # Ensure database schema is created
-    Base.metadata.create_all(bind=engine)
-    
-    # Ensure default categories and categorization rules are seeded
-    db = SessionLocal()
-    try:
-        seed_default_categories(db)
-        seed_default_rules(db)
-    finally:
-        db.close()
-        
+    if not settings.SKIP_STARTUP_TASKS:
+        # Bring the schema up to head (creates it on a fresh database)
+        run_migrations()
+
+        # Ensure default categories and categorization rules are seeded
+        db = SessionLocal()
+        try:
+            seed_default_categories(db)
+            seed_default_rules(db)
+        finally:
+            db.close()
+
     yield
 
     # On graceful shutdown / checkpoint

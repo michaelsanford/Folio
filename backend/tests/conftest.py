@@ -1,3 +1,9 @@
+import os
+
+# Must be set before app.core.config is imported: keeps the app lifespan from
+# migrating and seeding the developer database during tests.
+os.environ["FOLIO_SKIP_STARTUP_TASKS"] = "1"
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -85,3 +91,22 @@ def sample_mortgage_account(db_session):
     db_session.commit()
     db_session.refresh(account)
     return account
+
+
+@pytest.fixture
+def unauthenticated_client(db_session):
+    """Client with a real auth dependency but an isolated database.
+
+    Auth tests must exercise require_auth for real, so they cannot use the
+    ``client`` fixture -- but they still must not touch the developer database.
+    """
+    def override_get_db():
+        try:
+            yield db_session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
