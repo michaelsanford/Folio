@@ -253,7 +253,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 setSearchQuery(e.target.value);
                 setPage(1);
               }}
-              className="w-full pl-9 pr-4 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs text-slate-200 placeholder:text-slate-500 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              className="w-full pl-9 pr-4 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs text-slate-200 placeholder:text-slate-500 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
             />
           </div>
 
@@ -264,7 +264,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 setSelectedAccountId(e.target.value);
                 setPage(1);
               }}
-              className="flex-1 sm:flex-none px-3 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs font-medium text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              className="flex-1 sm:flex-none px-3 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs font-medium text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
             >
               <option value="">All Accounts</option>
               {accounts.map((a) => (
@@ -280,7 +280,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 setSelectedCategoryId(e.target.value);
                 setPage(1);
               }}
-              className="flex-1 sm:flex-none px-3 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs font-medium text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              className="flex-1 sm:flex-none px-3 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs font-medium text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
             >
               <option value="">All Categories</option>
               {categories.map((c) => (
@@ -439,7 +439,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                         <select
                           value={txn.splits?.[0]?.category_id || ""}
                           onChange={(e) => handleInlineCategoryChange(txn, e.target.value)}
-                          className="bg-slate-800 border border-slate-700/80 text-slate-200 text-[10px] rounded px-1.5 py-0.5 focus:ring-1 focus:ring-indigo-500 focus:outline-none max-w-[120px] truncate"
+                          className="bg-slate-800 border border-slate-700/80 text-slate-200 text-[10px] rounded px-1.5 py-0.5 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden max-w-[120px] truncate"
                         >
                           <option value="">Uncategorized</option>
                           {categories.map((c) => (
@@ -546,7 +546,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                           <select
                             value={txn.splits?.[0]?.category_id || ""}
                             onChange={(e) => handleInlineCategoryChange(txn, e.target.value)}
-                            className="bg-slate-800 border border-slate-700/80 text-slate-200 text-xs rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                            className="bg-slate-800 border border-slate-700/80 text-slate-200 text-xs rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
                           >
                             <option value="">Uncategorized</option>
                             {categories.map((c) => (
@@ -617,7 +617,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
       {/* Split Transaction Modal */}
       {splitModalTxn && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in">
           <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-5">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div>
@@ -720,7 +720,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
       {/* New Transaction Modal */}
       {isNewTxnOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in">
           <form
             onSubmit={handleCreateManualTxn}
             className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-4"

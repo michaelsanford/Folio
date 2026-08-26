@@ -277,7 +277,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         <select
           value={accountId}
           onChange={(e) => setAccountId(e.target.value)}
-          className="px-3 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs font-medium text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+          className="px-3 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs font-medium text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
         >
           {investmentAccounts.map((a) => (
             <option key={a.id} value={a.id}>
@@ -550,7 +550,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
 
       {/* Add holding modal */}
       {isAddOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4">
           <form
             onSubmit={handleAddHolding}
             className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 p-5 space-y-3 text-xs"
@@ -645,7 +645,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
 
       {/* Price entry modal */}
       {isPriceOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4">
           <form
             onSubmit={handleSavePrices}
             className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 p-5 space-y-3 text-xs"
