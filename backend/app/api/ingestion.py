@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, s
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.config import settings
-from app.core.s3_sync import sync_db_if_configured
+from app.core.s3_sync import sync_db_if_configured, sync_now
 from app.models.account import Account
 from app.models.category import Category
 from app.models.statement_file import StatementFile
@@ -21,7 +21,7 @@ from app.services.ingestion.csv_parser import parse_csv_content
 from app.services.ingestion.pdf_parser import parse_pdf_content
 from app.services.ingestion.ofx_parser import parse_ofx_content
 from app.api.transactions import recalculate_account_balance
-from app.api.rules import auto_learn_rule
+from app.api.rules import auto_learn_rules_bulk
 
 router = APIRouter(prefix="/ingestion", tags=["Statement Ingestion"])
 
@@ -113,6 +113,9 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
             stmt_file_id = None
 
     seen_hashes_in_batch: set[str] = set()
+    # Merchant -> (category, display name). Collected during the loop and applied
+    # once, instead of two queries and a commit per row.
+    learned: dict[str, tuple[str, str | None]] = {}
 
     try:
         for item in req.items:
@@ -176,7 +179,9 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
 
             # Adaptive learning: remember this category selection for future imports
             if cat_id:
-                auto_learn_rule(db, raw_payee=raw_name, category_id=cat_id, normalized_payee=norm_name)
+                learned[raw_name] = (cat_id, norm_name)
+
+        auto_learn_rules_bulk(db, learned)
 
         # Update statement file transaction count
         if stmt_file_id:
@@ -190,8 +195,9 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
         recalculate_account_balance(db, req.account_id)
         db.refresh(account)
 
-        # Write-through checkpoint synchronization to S3 vault
-        sync_db_if_configured()
+        # An import is a lot of work to redo, so force the snapshot rather than
+        # leaving it to the debounce window.
+        sync_now()
 
         return IngestionCommitResponse(
             committed_count=committed_count,
@@ -212,3 +218,33 @@ def list_statement_files(account_id: str | None = None, db: Session = Depends(ge
     if account_id:
         query = query.filter(StatementFile.account_id == account_id)
     return query.order_by(StatementFile.uploaded_at.desc()).all()
+
+
+@router.delete("/statement-files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_statement_file(file_id: str, db: Session = Depends(get_db)):
+    """Remove an uploaded statement and its file on disk.
+
+    Statements accumulated with no way to remove them, so a self-hosted finance
+    vault kept every bank statement forever with no user control. Imported
+    transactions are kept -- the FK is ON DELETE SET NULL -- so deleting the
+    source document never silently deletes ledger history.
+    """
+    stmt_file = db.query(StatementFile).filter(StatementFile.id == file_id).first()
+    if not stmt_file:
+        raise HTTPException(status_code=404, detail="Statement file not found")
+
+    # Only unlink inside the configured upload directory, so a tampered
+    # file_path row cannot be used to delete something else.
+    try:
+        stored = Path(stmt_file.file_path).resolve()
+        upload_root = settings.UPLOAD_DIR.resolve()
+        if stored.is_file() and stored.is_relative_to(upload_root):
+            stored.unlink()
+    except (OSError, ValueError):
+        # A missing or unreadable file should not block removing the record.
+        pass
+
+    db.delete(stmt_file)
+    db.commit()
+    sync_db_if_configured()
+    return None
