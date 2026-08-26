@@ -1,6 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
-from app.models.account import AccountType
+from app.models.account import AccountType, LoanCompounding
 
 
 class AccountBase(BaseModel):
@@ -17,6 +17,7 @@ class AccountBase(BaseModel):
     loan_original_principal: float | None = None
     monthly_payment: float | None = None
     escrow_payment: float | None = None
+    compounding: LoanCompounding = LoanCompounding.MONTHLY
     is_active: bool = True
 
 
@@ -38,6 +39,7 @@ class AccountUpdate(BaseModel):
     loan_original_principal: float | None = None
     monthly_payment: float | None = None
     escrow_payment: float | None = None
+    compounding: LoanCompounding | None = None
     is_active: bool | None = None
 
 

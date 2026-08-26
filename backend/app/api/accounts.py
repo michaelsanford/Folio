@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.models.account import Account, AccountType
+from app.models.account import Account, AccountType, LoanCompounding
 from app.schemas.account import AccountCreate, AccountUpdate, AccountResponse
 from app.schemas.loans import AmortizationScheduleResponse, LoanSplitSuggestion
 from app.services.loans.amortization import generate_amortization_schedule, suggest_loan_split
@@ -26,7 +26,12 @@ def list_accounts(
 @router.post("", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
 def create_account(account_in: AccountCreate, db: Session = Depends(get_db)):
     from app.core.s3_sync import sync_db_if_configured
-    account = Account(**account_in.model_dump())
+    data = account_in.model_dump()
+    # A Canadian fixed-rate mortgage compounds semi-annually; default new mortgage
+    # accounts accordingly unless the caller said otherwise.
+    if data.get("type") == AccountType.MORTGAGE and "compounding" not in account_in.model_fields_set:
+        data["compounding"] = LoanCompounding.SEMI_ANNUAL
+    account = Account(**data)
     db.add(account)
     db.commit()
     db.refresh(account)
