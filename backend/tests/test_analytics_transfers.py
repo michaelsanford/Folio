@@ -10,7 +10,7 @@ from datetime import datetime
 import pytest
 
 from app.models.account import Account, AccountType
-from app.models.category import Category, CategoryType
+from app.models.category import Category
 from app.models.transaction import Transaction, TransactionSplit
 
 

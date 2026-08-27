@@ -4,7 +4,6 @@ The commit handler wrapped its loop in try/except with a rollback, but the
 adaptive-learning helper committed on every row -- so a failure at row 400 left
 rows 1-399 permanently written despite the rollback.
 """
-import pytest
 
 from app.models.rule import CategorizationRule
 from app.models.transaction import Transaction
