@@ -3,10 +3,7 @@
 param(
     [switch]$Clean,
     # Set or replace the local master passphrase, even if one is already configured.
-    [switch]$SetPassword,
-    # Start without configuring authentication. The app will run, but every API
-    # call returns 401 until a passphrase or Cognito is configured.
-    [switch]$NoAuth
+    [switch]$SetPassword
 )
 
 $ErrorActionPreference = "Stop"
@@ -95,16 +92,42 @@ if (-not (Test-Path $PythonExe)) {
 #    normally and then rejects every API call, which reads as a broken build
 #    rather than an unconfigured one. Prompt instead of letting that happen.
 $DotEnv = Read-DotEnv -Path $EnvFile
-$ConfiguredHash = if ($env:FOLIO_MASTER_PASSWORD_HASH) { $env:FOLIO_MASTER_PASSWORD_HASH } else { $DotEnv["FOLIO_MASTER_PASSWORD_HASH"] }
-$CognitoPool = if ($env:COGNITO_USER_POOL_ID) { $env:COGNITO_USER_POOL_ID } else { $DotEnv["COGNITO_USER_POOL_ID"] }
-$CognitoClient = if ($env:COGNITO_CLIENT_ID) { $env:COGNITO_CLIENT_ID } else { $DotEnv["COGNITO_CLIENT_ID"] }
-$IsConfigured = [bool]$ConfiguredHash -or ([bool]$CognitoPool -and [bool]$CognitoClient)
-
-if ($NoAuth) {
-    Write-Host "`n[-NoAuth] Skipping authentication setup." -ForegroundColor Yellow
-    Write-Host "The API will reject every request with 401 until auth is configured." -ForegroundColor Yellow
+function Get-Setting {
+    param([string]$Name)
+    $fromProcess = [Environment]::GetEnvironmentVariable($Name)
+    if ($fromProcess) { return $fromProcess }
+    return $DotEnv[$Name]
 }
-elseif ($SetPassword -or -not $IsConfigured) {
+
+$ConfiguredHash = Get-Setting "FOLIO_MASTER_PASSWORD_HASH"
+# The backend also accepts a plaintext passphrase in development, so treat that
+# as configured too rather than prompting over the top of it.
+$ConfiguredPlain = Get-Setting "FOLIO_MASTER_PASSWORD"
+$CognitoPool = Get-Setting "COGNITO_USER_POOL_ID"
+$CognitoClient = Get-Setting "COGNITO_CLIENT_ID"
+$IsConfigured = [bool]$ConfiguredHash -or [bool]$ConfiguredPlain -or
+                ([bool]$CognitoPool -and [bool]$CognitoClient)
+
+if ($SetPassword -or -not $IsConfigured) {
+    # Read-Host blocks forever when stdin is redirected, so say what to do
+    # instead of hanging.
+    if ([Console]::IsInputRedirected) {
+        throw @"
+Cannot prompt for a master passphrase: this shell has no interactive input.
+
+Folio is fail-closed, so starting without one would reject every API request.
+Configure it non-interactively instead, then re-run:
+
+  # generate a hash (reads the passphrase from stdin)
+  "your passphrase" | python backend\scripts\hash_password.py
+
+  # then add it to backend\.env
+  FOLIO_MASTER_PASSWORD_HASH=<hash>
+
+Or set COGNITO_USER_POOL_ID and COGNITO_CLIENT_ID to use Cognito instead.
+"@
+    }
+
     Write-Host ""
     if ($SetPassword -and $IsConfigured) {
         Write-Host "Replacing the existing local master passphrase." -ForegroundColor Yellow
@@ -144,14 +167,16 @@ elseif ($SetPassword -or -not $IsConfigured) {
     }
 
     if (-not $Hash) {
-        throw "Could not set a master passphrase. Re-run, or pass -NoAuth to start without authentication."
+        throw "Could not set a master passphrase after 3 attempts. Re-run when ready."
     }
 
     Set-DotEnvValue -Path $EnvFile -Key "FOLIO_MASTER_PASSWORD_HASH" -Value $Hash
     Write-Host "  Passphrase configured and saved to backend\.env" -ForegroundColor Green
 }
 else {
-    $mode = if ($ConfiguredHash) { "master passphrase" } else { "Cognito" }
+    $mode = if ($ConfiguredHash) { "master passphrase" }
+            elseif ($ConfiguredPlain) { "master passphrase, plaintext" }
+            else { "Cognito" }
     Write-Host "`nAuthentication configured ($mode). Use -SetPassword to change it." -ForegroundColor Gray
 }
 

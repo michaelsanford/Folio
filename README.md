@@ -97,7 +97,6 @@ pick it up automatically.
 
 ```powershell
 .\dev.ps1 -SetPassword   # change the passphrase
-.\dev.ps1 -NoAuth        # start without it (every request will return 401)
 ```
 
 `-Clean` wipes the database and uploads but leaves the passphrase alone: it is
