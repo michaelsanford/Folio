@@ -12,6 +12,9 @@ Designed for high-density desktop statement parsing and data entry with responsi
   - **CSV & Bank Formats**: Auto-detects delimiters and column headers across major Canadian (RBC, TD, BMO, Scotiabank, Desjardins, CIBC) and US/Global banks (`CAD$`, `USD$`, `Debit`, `Credit`, `Description 1`, `Description 2`).
   - **PDF Statements**: Extracts tabular transactions and text patterns from Chase, Amex, Bank of America, and credit unions via `pdfplumber`.
   - **OFX / QFX / QBO**: Ingests direct bank export formats via `ofxtools`.
+  - **Currency**: New accounts and transactions default to **CAD** (override with
+    `FOLIO_DEFAULT_CURRENCY`). Where a statement states its own currency -- an OFX
+    `CURDEF`, or an RBC `CAD$`/`USD$` column -- the statement wins over the default.
 - **Zero-Duplicate Import Engine**: Deterministic SHA-256 fingerprinting per transaction (`account_id` + `date` + `amount` + `payee`) flags and filters out duplicate rows across overlapping statement imports.
 - **Intelligent Multi-Tier Categorization & Auto-Learning**:
   - **Tier 1 (Priority Seed Rules)**: 100+ North American, Canadian, and subscription merchants seeded out of the box (Suno AI, Tidal, A30 Express, 407 ETR, Hydro-Québec, Jean Coutu, Privamed, Boustan, A&W, SAQ, LCBO, Steam, PSN, TradingView, etc.).

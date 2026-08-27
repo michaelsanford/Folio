@@ -14,6 +14,13 @@ from app.services.ingestion.deduplication import (
 from app.services.categorization.normalizer import normalize_payee
 from app.services.categorization.rules_engine import evaluate_rules
 from app.services.categorization.transfer_matcher import find_potential_transfers
+from app.core.config import settings
+
+
+def _iso_currency(value: object) -> str | None:
+    """Coerce an OFX CURDEF to a 3-letter ISO code, or None if it is not one."""
+    code = str(value or "").strip().upper()
+    return code if len(code) == 3 and code.isalpha() else None
 
 
 def parse_ofx_content(
@@ -40,6 +47,15 @@ def parse_ofx_content(
         statements = getattr(ofx, "statements", [])
         
         for stmt in statements:
+            # OFX carries the account's currency in CURDEF; prefer it over the
+            # default, since the file is authoritative about its own amounts.
+            # Only curdef: ofxtools has no `currency` attribute on a statement,
+            # and touching it raises RecursionError -- which the outer except
+            # would swallow, silently downgrading to the regex parser below.
+            stmt_currency = (
+                _iso_currency(getattr(stmt, "curdef", None))
+                or settings.DEFAULT_CURRENCY
+            )
             transactions = getattr(stmt, "transactions", [])
             for trn in transactions:
                 dt_posted = getattr(trn, "dtposted", None)
@@ -75,7 +91,7 @@ def parse_ofx_content(
                     raw_payee=payee,
                     normalized_payee=norm_payee,
                     amount=amt,
-                    currency="USD",
+                    currency=stmt_currency,
                     suggested_category_id=suggested_cat_id,
                     suggested_category_name=suggested_cat_name,
                     suggested_category_color=suggested_cat_color,
@@ -90,6 +106,10 @@ def parse_ofx_content(
     except Exception:
         # Fallback regex parser for non-standard SGML OFX files
         text = raw_bytes.decode("latin-1", errors="ignore")
+        curdef_match = re.search(r"<CURDEF>([A-Za-z]{3})", text, re.IGNORECASE)
+        stmt_currency = (
+            _iso_currency(curdef_match.group(1)) if curdef_match else None
+        ) or settings.DEFAULT_CURRENCY
         trn_blocks = re.findall(r"<STMTTRN>(.*?)</STMTTRN>", text, re.DOTALL | re.IGNORECASE)
         for block in trn_blocks:
             dt_match = re.search(r"<DTPOSTED>(\d{8})", block, re.IGNORECASE)
@@ -131,7 +151,7 @@ def parse_ofx_content(
                     raw_payee=payee,
                     normalized_payee=norm_payee,
                     amount=amt,
-                    currency="USD",
+                    currency=stmt_currency,
                     suggested_category_id=suggested_cat_id,
                     suggested_category_name=suggested_cat_name,
                     suggested_category_color=suggested_cat_color,

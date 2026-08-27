@@ -1,5 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
+from app.core.config import settings
 
 
 class CsvColumnMapping(BaseModel):
@@ -20,7 +21,7 @@ class ParsedTransactionItem(BaseModel):
     raw_payee: str
     normalized_payee: str
     amount: float
-    currency: str = "USD"
+    currency: str = settings.DEFAULT_CURRENCY
     suggested_category_id: str | None = None
     suggested_category_name: str | None = None
     suggested_category_color: str | None = None

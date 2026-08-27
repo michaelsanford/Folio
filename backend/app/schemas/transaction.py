@@ -1,5 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
+from app.core.config import settings
 from app.models.transaction import TransactionStatus
 from app.schemas.category import CategoryResponse
 
@@ -29,7 +30,7 @@ class TransactionBase(BaseModel):
     raw_payee: str = Field(..., min_length=1, max_length=255)
     normalized_payee: str | None = None
     amount: float  # Negative for debit/expense, Positive for credit/income
-    currency: str = "USD"
+    currency: str = settings.DEFAULT_CURRENCY
     status: TransactionStatus = TransactionStatus.CLEARED
     notes: str | None = None
 

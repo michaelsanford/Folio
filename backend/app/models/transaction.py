@@ -4,6 +4,7 @@ import enum
 from sqlalchemy import Column, String, Integer, DateTime, Enum, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from app.core.config import settings
 from app.models.money_fields import with_money
 
 
@@ -29,7 +30,7 @@ class Transaction(Base):
     
     # Financial convention: Negative = Outflow / Expense / Debit, Positive = Inflow / Income / Credit
     amount_cents = Column(Integer, nullable=False)
-    currency = Column(String(3), nullable=False, default="USD")
+    currency = Column(String(3), nullable=False, default=settings.DEFAULT_CURRENCY)
     
     # Deduplication fingerprint: SHA256(account_id|date|amount|raw_payee)
     import_hash = Column(String(64), nullable=True, index=True)

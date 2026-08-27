@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # Environment & Mode
     ENVIRONMENT: str = os.getenv("FOLIO_ENV", "development")
 
+    # Default currency for new accounts and transactions. Folio targets Canadian
+    # households -- its merchant rules, bank parsers, and mortgage compounding all
+    # assume CAD -- so a foreign-currency row is the exception, not the baseline.
+    DEFAULT_CURRENCY: str = os.getenv("FOLIO_DEFAULT_CURRENCY", "CAD")
+
     # Skip migration + seeding on app startup. Set by the test suite, which builds
     # its own in-memory schema and must not touch the developer database.
     SKIP_STARTUP_TASKS: bool = os.getenv("FOLIO_SKIP_STARTUP_TASKS", "").lower() in ("1", "true", "yes")
