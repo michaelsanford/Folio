@@ -123,10 +123,21 @@ def test_csp_pins_exact_cognito_hosts_rather_than_an_invalid_wildcard():
     settings.COGNITO_CLIENT_ID = "client123"
     settings.COGNITO_REGION = "ca-central-1"
     try:
-        csp = _build_csp()
-        assert "https://cognito-idp.ca-central-1.amazonaws.com" in csp
-        # A wildcard in a non-leftmost label is invalid CSP and was silently ignored.
-        assert "cognito-idp.*." not in csp
+        # Parse into directives rather than substring-matching the whole policy:
+        # "host in csp" would also pass if the host appeared in an unrelated
+        # directive, or as a suffix of an attacker-controlled one.
+        directives = {
+            parts[0]: parts[1:]
+            for parts in (d.split() for d in _build_csp().split(";") if d.strip())
+        }
+        connect_src = directives["connect-src"]
+
+        assert "https://cognito-idp.ca-central-1.amazonaws.com" in connect_src
+        # A wildcard is only valid in the leftmost label; elsewhere the whole
+        # source is silently ignored by the browser.
+        assert not any("*" in source.partition("//")[2][1:] for source in connect_src), (
+            f"non-leftmost wildcard in connect-src: {connect_src}"
+        )
     finally:
         settings.COGNITO_USER_POOL_ID = original_pool
         settings.COGNITO_CLIENT_ID = original_client

@@ -191,7 +191,6 @@ def time_weighted_return(
 
     cumulative = 1.0
     period_start_value = start_value
-    cursor = start
 
     for flow in flows:
         # Value immediately before the flow settles.
@@ -200,7 +199,6 @@ def time_weighted_return(
             cumulative *= value_before / period_start_value
         # The flow itself changes the base but is not a return.
         period_start_value = value_before + flow.amount_cents
-        cursor = flow.trade_date
 
     end_value = account_market_value_cents(db, account_id, end)
     if period_start_value > 0:

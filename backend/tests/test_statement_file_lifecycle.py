@@ -25,7 +25,8 @@ def test_uploaded_statement_can_be_deleted(client, db_session, sample_checking_a
     stored = Path(db_session.query(StatementFile).filter(StatementFile.id == file_id).first().file_path)
     assert stored.is_file()
 
-    assert client.delete(f"/api/ingestion/statement-files/{file_id}").status_code == 204
+    deleted = client.delete(f"/api/ingestion/statement-files/{file_id}")
+    assert deleted.status_code == 204
     assert db_session.query(StatementFile).filter(StatementFile.id == file_id).first() is None
     assert not stored.exists(), "the file on disk must go too"
 
@@ -62,7 +63,8 @@ def test_deleting_a_statement_keeps_its_imported_transactions(client, db_session
 
 
 def test_deleting_an_unknown_statement_is_a_404(client):
-    assert client.delete("/api/ingestion/statement-files/does-not-exist").status_code == 404
+    deleted = client.delete("/api/ingestion/statement-files/does-not-exist")
+    assert deleted.status_code == 404
 
 
 def test_deletion_is_confined_to_the_upload_directory(client, db_session, sample_checking_account, tmp_path):
@@ -81,6 +83,7 @@ def test_deletion_is_confined_to_the_upload_directory(client, db_session, sample
     db_session.add(stmt)
     db_session.commit()
 
-    assert client.delete(f"/api/ingestion/statement-files/{stmt.id}").status_code == 204
+    deleted = client.delete(f"/api/ingestion/statement-files/{stmt.id}")
+    assert deleted.status_code == 204
     assert outside.exists(), "a path outside the upload directory must never be unlinked"
     assert settings.UPLOAD_DIR is not None
