@@ -6,7 +6,7 @@ from app.services.categorization.rules_engine import evaluate_rules
 
 def test_merchant_normalizer():
     assert normalize_payee("AMZN MKTP US*1A2B3C SEATTLE WA") == "Amazon"
-    assert normalize_payee("SQ *BLUE BOTTLE COFFEE #124") == "Coffee Shops" or normalize_payee("SQ *BLUE BOTTLE COFFEE #124") == "Blue Bottle Coffee" or "Coffee" in normalize_payee("SQ *BLUE BOTTLE COFFEE #124")
+    assert normalize_payee("SQ *BLUE BOTTLE COFFEE #124") == "Blue Bottle Coffee"
     assert normalize_payee("NETFLIX.COM 866-579-7172 CA") == "Netflix"
     assert normalize_payee("TARGET T-0842 BROOKLYN NY") == "Target"
     assert normalize_payee("WHOLEFDS MKT #10293") == "Whole Foods"

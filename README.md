@@ -76,7 +76,7 @@ flowchart LR
 ## Quick Start (Local Development)
 
 ### 1. Prerequisites
-- Python 3.13+ (CI tests on 3.13; the container image ships 3.14)
+- Python 3.14 (CI, the container image, and local development all use it)
 - Node.js 22.12+ or 20.19+ (CI and the container image both build on 24; this is
   Vite 8's floor) and npm
 
@@ -224,9 +224,9 @@ by default.
 
 ---
 
-## License & Rights
+## License
 
-All rights reserved (c) Michael Sanford.
+MIT. Copyright (c) 2026 Michael Sanford. See [LICENSE](LICENSE).
 
 
 ## Security scanning
