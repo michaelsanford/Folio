@@ -86,6 +86,31 @@ Launch both the FastAPI backend and Vite frontend with live hot-reloading:
 
 This automatically initializes the virtual environment, installs requirements, launches the backend on `http://localhost:8000`, the frontend on `http://localhost:5173`, and opens your browser.
 
+#### First Run: Setting a Master Passphrase
+
+There is no default password. Authentication is fail-closed, so with nothing
+configured the app starts normally and then rejects every API call.
+
+On first run `dev.ps1` prompts for a master passphrase, bcrypt-hashes it locally,
+and writes only the hash to `backend/.env`, which is gitignored. Subsequent runs
+pick it up automatically.
+
+```powershell
+.\dev.ps1 -SetPassword   # change the passphrase
+.\dev.ps1 -NoAuth        # start without it (every request will return 401)
+```
+
+`-Clean` wipes the database and uploads but leaves the passphrase alone: it is
+configuration, not data.
+
+To generate a hash yourself -- for `docker-compose`, or to set
+`FOLIO_MASTER_PASSWORD_HASH` by hand -- the helper reads the passphrase from
+stdin so it never reaches your shell history:
+
+```powershell
+python backend\scripts\hash_password.py
+```
+
 #### Database Migrations
 
 The schema is managed by Alembic and upgraded automatically on startup. A database
