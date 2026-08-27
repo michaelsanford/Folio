@@ -112,9 +112,10 @@ python backend\scripts\hash_password.py
 
 #### Database Migrations
 
-The schema is managed by Alembic and upgraded automatically on startup. A database
-created before migrations existed is stamped at the baseline and upgraded in place, so
-no manual step is needed.
+The schema is managed by Alembic and upgraded automatically on startup, so a fresh
+database is created on first boot with no manual step. The current schema is a single
+initial revision -- there was no deployed database to migrate from when Alembic was
+introduced, so there is no upgrade history to replay.
 
 ```powershell
 cd backend
