@@ -132,7 +132,13 @@ def test_csp_pins_exact_cognito_hosts_rather_than_an_invalid_wildcard():
         }
         connect_src = directives["connect-src"]
 
-        assert "https://cognito-idp.ca-central-1.amazonaws.com" in connect_src
+        # list.count, not `in`: exact equality against whole directive tokens.
+        # `in` here would be list membership too, but it reads as a substring
+        # test -- which is the weak check this assertion exists to avoid.
+        cognito_host = "https://cognito-idp.ca-central-1.amazonaws.com"
+        assert connect_src.count(cognito_host) == 1, (
+            f"expected exactly one {cognito_host} source, got {connect_src}"
+        )
         # A wildcard is only valid in the leftmost label; elsewhere the whole
         # source is silently ignored by the browser.
         assert not any("*" in source.partition("//")[2][1:] for source in connect_src), (
