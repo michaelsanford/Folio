@@ -71,23 +71,95 @@ function ConvertFrom-SecureStringPlain {
 }
 
 
-# 0. Handle -Clean Flag (Reinitialize DB & Uploads)
+function Get-PortOwner {
+    <#
+        .SYNOPSIS
+        The process listening on a TCP port, or $null if the port is free.
+    #>
+    param([int]$Port)
+
+    $conn = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+    if (-not $conn) { return $null }
+    return Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
+}
+
+
+function Stop-ProcessTree {
+    <#
+        .SYNOPSIS
+        Kill a process and its descendants, children first.
+
+        .DESCRIPTION
+        uvicorn --reload runs the app in a child process. Stopping only the parent
+        leaves that child alive, still holding port 8000 and an open handle on
+        folio.db -- which then makes the next -Clean fail.
+    #>
+    param([int]$ProcessId)
+
+    $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$ProcessId" -ErrorAction SilentlyContinue)
+    foreach ($child in $children) { Stop-ProcessTree -ProcessId $child.ProcessId }
+    Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+}
+
+
+# 0. Refuse to start on top of a running instance.
+#    Without this the backend loses the race for port 8000 and exits, while the
+#    stale server keeps answering /api/health -- so the app looks up, against
+#    whatever code and data that older process was started with.
+foreach ($check in @(@{ Port = 8000; Name = "backend" }, @{ Port = 5173; Name = "frontend" })) {
+    $owner = Get-PortOwner -Port $check.Port
+    if ($owner) {
+        throw @"
+Port $($check.Port) is already in use by $($owner.ProcessName) (PID $($owner.Id)), started $($owner.StartTime).
+
+Folio's $($check.Name) cannot start while that process holds the port, and a stale
+instance also keeps a lock on the database that blocks -Clean. Stop it first:
+
+  Stop-Process -Id $($owner.Id) -Force
+
+An earlier run that was interrupted rather than closed with Ctrl+C is the usual cause.
+"@
+    }
+}
+
+# 1. Handle -Clean Flag (Reinitialize DB & Uploads)
 if ($Clean) {
     Write-Host "`n[-Clean] Reinitializing SQLite Database & Clearing Uploads..." -ForegroundColor Magenta
+
     Remove-Item -Force -Recurse (Join-Path $DataPath "folio.db*") -ErrorAction SilentlyContinue
     Remove-Item -Force -Recurse (Join-Path $DataPath "uploads\*") -ErrorAction SilentlyContinue
+
+    # Verify rather than announce. Remove-Item fails silently on a file another
+    # process holds open, and reporting a wipe that did not happen sends you on to
+    # test against the data you meant to discard.
+    $survivors = @(Get-ChildItem (Join-Path $DataPath "folio.db*") -ErrorAction SilentlyContinue)
+    if ($survivors.Count -gt 0) {
+        throw @"
+-Clean could not delete the database: $($survivors.Name -join ', ')
+
+Something still holds the file open. The ports were free, so it is not a running
+Folio server -- check for a DB browser, an IDE data source, or an orphaned python
+process:
+
+  Get-Process python | Select-Object Id, StartTime
+
+Nothing was wiped.
+"@
+    }
+
     Write-Host "Database wiped. A clean database will be initialized on boot." -ForegroundColor Green
     Write-Host "Your master passphrase is configuration, not data, and is unaffected." -ForegroundColor Gray
 }
 
-# 1. Check Python Virtual Environment
+# 2. Check Python Virtual Environment
 if (-not (Test-Path $PythonExe)) {
     Write-Host "Creating Python virtual environment in backend\.venv..." -ForegroundColor Yellow
     python -m venv (Join-Path $BackendPath ".venv")
     & $PythonExe -m pip install -r (Join-Path $BackendPath "requirements-dev.txt")
 }
 
-# 2. Ensure authentication is configured.
+# 3. Ensure authentication is configured.
 #    Folio is fail-closed: with no passphrase and no Cognito, the app starts
 #    normally and then rejects every API call, which reads as a broken build
 #    rather than an unconfigured one. Prompt instead of letting that happen.
@@ -180,7 +252,7 @@ else {
     Write-Host "`nAuthentication configured ($mode). Use -SetPassword to change it." -ForegroundColor Gray
 }
 
-# 3. Check Node modules
+# 4. Check Node modules
 if (-not (Test-Path (Join-Path $FrontendPath "node_modules"))) {
     Write-Host "Installing frontend dependencies..." -ForegroundColor Yellow
     Push-Location $FrontendPath
@@ -188,18 +260,68 @@ if (-not (Test-Path (Join-Path $FrontendPath "node_modules"))) {
     Pop-Location
 }
 
-# 4. Start Backend in Background
+# 5. Start Backend in Background
+#    Start-Process rather than Start-Job: it yields a real PID, so the shutdown
+#    below can kill uvicorn's reload child too instead of orphaning it.
 Write-Host "`n[1/2] Launching FastAPI Backend on http://localhost:8000..." -ForegroundColor Green
-$BackendJob = Start-Job -ScriptBlock {
-    param($Dir, $Py)
-    Set-Location $Dir
-    & $Py -m uvicorn app.main:app --reload --port 8000
-} -ArgumentList $BackendPath, $PythonExe
 
-# Wait a brief moment for backend to initialize
-Start-Sleep -Seconds 2
+$BackendOutLog = Join-Path $DataPath "dev-backend.out.log"
+$BackendErrLog = Join-Path $DataPath "dev-backend.err.log"
+New-Item -ItemType Directory -Force -Path $DataPath | Out-Null
 
-# 5. Start Vite Frontend in Foreground
+$BackendProc = Start-Process -FilePath $PythonExe `
+    -ArgumentList "-m", "uvicorn", "app.main:app", "--reload", "--port", "8000" `
+    -WorkingDirectory $BackendPath -PassThru -NoNewWindow `
+    -RedirectStandardOutput $BackendOutLog -RedirectStandardError $BackendErrLog
+
+function Show-BackendLog {
+    <#
+        .SYNOPSIS
+        Print the backend's own output. It is redirected to a file, so a startup
+        failure would otherwise be invisible.
+    #>
+    foreach ($log in @($BackendErrLog, $BackendOutLog)) {
+        if (-not (Test-Path $log)) { continue }
+        $tail = Get-Content $log -Tail 25 -ErrorAction SilentlyContinue
+        if ($tail) {
+            Write-Host "`n--- $(Split-Path $log -Leaf) ---" -ForegroundColor DarkGray
+            $tail | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+        }
+    }
+}
+
+# Wait for the backend to answer rather than guessing at a sleep, and fail loudly
+# if it never does. A dead backend used to leave the frontend up and apparently
+# working, right until every request 500'd.
+$Ready = $false
+$Deadline = (Get-Date).AddSeconds(60)
+while ((Get-Date) -lt $Deadline) {
+    if ($BackendProc.HasExited) {
+        Show-BackendLog
+        throw "The FastAPI backend exited with code $($BackendProc.ExitCode) during startup. Its output is above, and in backend\data\dev-backend.*.log."
+    }
+    try {
+        # 127.0.0.1, not localhost: uvicorn binds IPv4 only, and localhost
+        # resolves to ::1 first here -- every probe would fail against a
+        # perfectly healthy server.
+        $probe = Invoke-WebRequest -Uri "http://127.0.0.1:8000/api/health" -UseBasicParsing -TimeoutSec 2
+        if ($probe.StatusCode -eq 200) { $Ready = $true; break }
+    }
+    catch {
+        # Not up yet; fall through to the sleep below.
+    }
+    Start-Sleep -Milliseconds 400
+}
+
+if (-not $Ready) {
+    Show-BackendLog
+    Stop-ProcessTree -ProcessId $BackendProc.Id
+    throw "The FastAPI backend did not become healthy within 60 seconds. Its output is above, and in backend\data\dev-backend.*.log."
+}
+
+Write-Host "Backend healthy (PID $($BackendProc.Id)). Log: backend\data\dev-backend.err.log" -ForegroundColor Gray
+
+# 6. Start Vite Frontend in Foreground
 Write-Host "[2/2] Launching Vite Frontend on http://localhost:5173..." -ForegroundColor Green
 Write-Host "Press Ctrl+C to stop both backend and frontend." -ForegroundColor Gray
 
@@ -212,7 +334,16 @@ try {
 } finally {
     Pop-Location
     Write-Host "`nStopping FastAPI backend server..." -ForegroundColor Yellow
-    Stop-Job $BackendJob -ErrorAction SilentlyContinue
-    Remove-Job $BackendJob -ErrorAction SilentlyContinue
-    Write-Host "All development services stopped." -ForegroundColor Green
+    Stop-ProcessTree -ProcessId $BackendProc.Id
+
+    # Confirm it actually died. A surviving child keeps port 8000 and the database
+    # locked, which breaks the next run's -Clean in a way that is hard to spot.
+    $stillListening = Get-PortOwner -Port 8000
+    if ($stillListening) {
+        Write-Host "Warning: PID $($stillListening.Id) ($($stillListening.ProcessName)) still holds port 8000." -ForegroundColor Yellow
+        Write-Host "         Stop it before the next run: Stop-Process -Id $($stillListening.Id) -Force" -ForegroundColor Yellow
+    }
+    else {
+        Write-Host "All development services stopped." -ForegroundColor Green
+    }
 }
