@@ -233,11 +233,15 @@ def delete_statement_file(file_id: str, db: Session = Depends(get_db)):
     if not stmt_file:
         raise HTTPException(status_code=404, detail="Statement file not found")
 
-    # Only unlink inside the configured upload directory, so a tampered
-    # file_path row cannot be used to delete something else.
+    # Rebuild the target from the upload root and the stored basename, so a
+    # tampered file_path row cannot reach outside the directory by construction
+    # rather than only by validation. "../../etc/passwd" has basename
+    # "passwd", which lands harmlessly inside the upload root.
     try:
-        stored = Path(stmt_file.file_path).resolve()
         upload_root = settings.UPLOAD_DIR.resolve()
+        stored = (upload_root / Path(stmt_file.file_path).name).resolve()
+        # Second line of defence: symlinks resolve away, so a link planted in the
+        # upload directory still cannot point the unlink somewhere else.
         if stored.is_file() and stored.is_relative_to(upload_root):
             stored.unlink()
     except (OSError, ValueError):

@@ -1,9 +1,20 @@
+import hashlib
 import os
 from pathlib import Path
 
-# Placeholder for local development only. Startup refuses to run with this value
-# in production, because a known signing key means forgeable session tokens.
-DEFAULT_INSECURE_SECRET_KEY = "dev-insecure-secret-key-change-in-production-1234567890"
+
+def development_secret_key() -> str:
+    """The session signing key used when FOLIO_SECRET_KEY is unset.
+
+    Derived from the checkout path rather than written down: a literal committed
+    to a public repository is a signing key every reader of the source already
+    knows. Deriving it keeps the value stable across restarts -- so a dev session
+    survives uvicorn's reloads -- while differing between machines.
+
+    Production refuses to start on it; see validate_production_settings.
+    """
+    checkout = Path(__file__).resolve().parent.parent.parent
+    return hashlib.sha256(f"folio-development-signing-key|{checkout}".encode()).hexdigest()
 # `or` rather than a getenv default: an env var present but empty (a common
 # docker-compose pattern) must not leave the signing key blank.
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -48,7 +59,7 @@ class Settings(BaseSettings):
     AWS_REGION: str = os.getenv("AWS_DEFAULT_REGION", "ca-central-1")
     
     # Security & Local Vault Authentication
-    SECRET_KEY: str = os.getenv("FOLIO_SECRET_KEY") or DEFAULT_INSECURE_SECRET_KEY
+    SECRET_KEY: str = os.getenv("FOLIO_SECRET_KEY") or development_secret_key()
     FOLIO_MASTER_PASSWORD: str = os.getenv("FOLIO_MASTER_PASSWORD", "")
     FOLIO_MASTER_PASSWORD_HASH: str = os.getenv("FOLIO_MASTER_PASSWORD_HASH", "")
     SESSION_EXPIRE_DAYS: int = 30
@@ -112,10 +123,10 @@ def validate_production_settings(current: Settings = settings) -> list[str]:
 
     problems: list[str] = []
 
-    if current.SECRET_KEY == DEFAULT_INSECURE_SECRET_KEY:
+    if current.SECRET_KEY == development_secret_key():
         problems.append(
-            "FOLIO_SECRET_KEY is still the built-in development value. Anyone who has "
-            "read the source can forge a session token. Set it to a random secret."
+            "FOLIO_SECRET_KEY is unset, so sessions are signed with the derived "
+            "development key. Set it to a random secret."
         )
 
     if current.FOLIO_MASTER_PASSWORD and not current.FOLIO_MASTER_PASSWORD_HASH:
