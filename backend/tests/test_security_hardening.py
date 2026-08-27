@@ -2,8 +2,8 @@
 import pytest
 
 from app.core.config import (
-    DEFAULT_INSECURE_SECRET_KEY,
     Settings,
+    development_secret_key,
     validate_production_settings,
 )
 from app.core.rate_limit import SlidingWindowLimiter
@@ -14,12 +14,12 @@ from app.services.categorization.rules_engine import safe_regex_search
 # ----------------------------------------------------------- production config
 
 def test_development_tolerates_the_placeholder_secret():
-    dev = Settings(ENVIRONMENT="development", SECRET_KEY=DEFAULT_INSECURE_SECRET_KEY)
+    dev = Settings(ENVIRONMENT="development", SECRET_KEY=development_secret_key())
     assert validate_production_settings(dev) == []
 
 
 def test_production_rejects_the_placeholder_secret():
-    prod = Settings(ENVIRONMENT="production", SECRET_KEY=DEFAULT_INSECURE_SECRET_KEY)
+    prod = Settings(ENVIRONMENT="production", SECRET_KEY=development_secret_key())
     problems = validate_production_settings(prod)
     assert any("FOLIO_SECRET_KEY" in p for p in problems)
 
