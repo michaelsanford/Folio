@@ -13,6 +13,7 @@ from app.services.ingestion.deduplication import (
     check_existing_duplicates,
 )
 from app.services.ingestion.csv_parser import clean_amount_str
+from app.core.config import settings
 from app.services.categorization.normalizer import normalize_payee
 from app.services.categorization.rules_engine import evaluate_rules
 from app.services.categorization.transfer_matcher import find_potential_transfers
@@ -148,7 +149,7 @@ def parse_pdf_content(
             raw_payee=desc_raw,
             normalized_payee=norm_payee,
             amount=amount,
-            currency="USD",
+            currency=settings.DEFAULT_CURRENCY,
             suggested_category_id=suggested_cat_id,
             suggested_category_name=suggested_cat_name,
             suggested_category_color=suggested_cat_color,

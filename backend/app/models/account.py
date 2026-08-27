@@ -4,6 +4,7 @@ import enum
 from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime, Enum
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from app.core.config import settings
 from app.models.money_fields import with_money
 
 
@@ -45,7 +46,7 @@ class Account(Base):
     type = Column(Enum(AccountType), nullable=False)
     institution = Column(String(100), nullable=True)
     account_number_mask = Column(String(20), nullable=True)
-    currency = Column(String(3), nullable=False, default="USD")
+    currency = Column(String(3), nullable=False, default=settings.DEFAULT_CURRENCY)
     current_balance_cents = Column(Integer, nullable=False, default=0)
     
     # Credit Card specific

@@ -11,6 +11,7 @@ from app.services.ingestion.deduplication import (
     generate_transaction_hash,
     check_existing_duplicates,
 )
+from app.core.config import settings
 from app.services.categorization.normalizer import normalize_payee
 from app.services.categorization.rules_engine import evaluate_rules
 from app.services.categorization.transfer_matcher import find_potential_transfers
@@ -208,15 +209,20 @@ def parse_csv_content(
 
         # Calculate amount
         amount = 0.0
+        row_currency = settings.DEFAULT_CURRENCY
 
         # Special handling for RBC / multi-currency headers (CAD$, USD$)
         if "CAD$" in row or "USD$" in row:
             val_cad = row.get("CAD$", "").strip()
             val_usd = row.get("USD$", "").strip()
+            # Which column the amount came from *is* the row's currency; taking it
+            # from the statement beats defaulting when the statement tells us.
             if val_cad:
                 amount = clean_amount_str(val_cad)
+                row_currency = "CAD"
             elif val_usd:
                 amount = clean_amount_str(val_usd)
+                row_currency = "USD"
         elif mapping.amount_column and mapping.amount_column in row:
             amount = clean_amount_str(row[mapping.amount_column])
         elif mapping.debit_column and mapping.credit_column:
@@ -252,7 +258,7 @@ def parse_csv_content(
             raw_payee=raw_payee,
             normalized_payee=norm_payee,
             amount=amount,
-            currency="USD",
+            currency=row_currency,
             suggested_category_id=suggested_cat_id,
             suggested_category_name=suggested_cat_name,
             suggested_category_color=suggested_cat_color,

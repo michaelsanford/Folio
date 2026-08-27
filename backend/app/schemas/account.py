@@ -1,5 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
+from app.core.config import settings
 from app.models.account import AccountType, LoanCompounding
 
 
@@ -8,7 +9,7 @@ class AccountBase(BaseModel):
     type: AccountType
     institution: str | None = Field(None, max_length=100)
     account_number_mask: str | None = Field(None, max_length=20)
-    currency: str = Field("USD", min_length=3, max_length=3)
+    currency: str = Field(settings.DEFAULT_CURRENCY, min_length=3, max_length=3)
     current_balance: float = 0.0
     credit_limit: float | None = None
     interest_rate: float | None = None
