@@ -1,4 +1,5 @@
 """Production configuration and abuse-resistance guards."""
+import secrets
 import pytest
 
 from app.core.config import (
@@ -27,7 +28,7 @@ def test_production_rejects_the_placeholder_secret():
 def test_production_rejects_a_plaintext_master_password():
     prod = Settings(
         ENVIRONMENT="production",
-        SECRET_KEY="a-real-random-secret",
+        SECRET_KEY=secrets.token_hex(32),
         FOLIO_MASTER_PASSWORD="hunter2hunter2",
         FOLIO_MASTER_PASSWORD_HASH="",
     )
@@ -38,7 +39,7 @@ def test_production_rejects_a_plaintext_master_password():
 def test_production_accepts_a_hashed_password_and_real_secret():
     prod = Settings(
         ENVIRONMENT="production",
-        SECRET_KEY="a-real-random-secret",
+        SECRET_KEY=secrets.token_hex(32),
         FOLIO_MASTER_PASSWORD="",
         FOLIO_MASTER_PASSWORD_HASH=hash_password("CorrectHorseBattery1!"),
     )
@@ -155,7 +156,8 @@ def test_setup_endpoint_is_disabled_in_production(unauthenticated_client):
     original = settings.ENVIRONMENT
     settings.ENVIRONMENT = "production"
     try:
-        resp = unauthenticated_client.post("/api/auth/setup", json={"password": "LongEnough123"})
+        test_password = secrets.token_urlsafe(16)
+        resp = unauthenticated_client.post("/api/auth/setup", json={"password": test_password})
         assert resp.status_code == 403
         assert "disabled in production" in resp.json()["detail"]
     finally:

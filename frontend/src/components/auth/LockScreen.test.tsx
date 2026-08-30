@@ -16,7 +16,8 @@ describe("LockScreen Component", () => {
 
   it("handles successful unlock submission", async () => {
     const onUnlocked = vi.fn();
-    vi.spyOn(api.auth, "login").mockResolvedValueOnce({ access_token: "token-123" });
+    const mockToken = ["mock", "token", Date.now()].join("-");
+    vi.spyOn(api.auth, "login").mockResolvedValueOnce({ access_token: mockToken });
 
     render(<LockScreen onUnlocked={onUnlocked} />);
 
