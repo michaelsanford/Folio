@@ -116,7 +116,7 @@ export const InstitutionAutocomplete: React.FC<InstitutionAutocompleteProps> = (
             setHighlightedIndex(-1);
           }}
           onKeyDown={handleKeyDown}
-          className="w-full pl-3.5 pr-8 py-2.5 bg-slate-800/90 border border-slate-700 hover:border-slate-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl text-slate-100 text-xs transition-all placeholder:text-slate-500"
+          className="w-full pl-3.5 pr-8 py-2.5 bg-slate-800/90 border border-slate-700 hover:border-slate-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl text-slate-100 text-sm transition-all placeholder:text-slate-500"
         />
 
         <div className="absolute right-2 flex items-center gap-1">
@@ -129,7 +129,7 @@ export const InstitutionAutocomplete: React.FC<InstitutionAutocompleteProps> = (
               }}
               className="p-1 text-slate-400 hover:text-slate-200 rounded-md"
             >
-              <X className="w-3 h-3" />
+              <X className="w-3.5 h-3.5" />
             </button>
           ) : (
             <button
@@ -137,7 +137,7 @@ export const InstitutionAutocomplete: React.FC<InstitutionAutocompleteProps> = (
               onClick={() => setIsOpen(!isOpen)}
               className="p-1 text-slate-400 hover:text-slate-200 rounded-md"
             >
-              <ChevronDown className="w-3.5 h-3.5" />
+              <ChevronDown className="w-4 h-4" />
             </button>
           )}
         </div>
@@ -161,7 +161,7 @@ export const InstitutionAutocomplete: React.FC<InstitutionAutocompleteProps> = (
                 width: `${popoverStyle.width}px`,
                 maxHeight: `${popoverStyle.maxHeight}px`,
               }}
-              className="z-[101] rounded-xl bg-slate-900 border border-slate-700 shadow-2xl overflow-y-auto p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 text-xs"
+              className="z-[101] rounded-xl bg-slate-900 border border-slate-700 shadow-2xl overflow-y-auto p-2 space-y-1 animate-in fade-in zoom-in-95 text-sm"
             >
               {filtered.length > 0 ? (
                 filtered.map((inst, index) => {
@@ -179,31 +179,31 @@ export const InstitutionAutocomplete: React.FC<InstitutionAutocompleteProps> = (
                         handleSelect(inst);
                       }}
                       onMouseEnter={() => setHighlightedIndex(index)}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-all ${
+                      className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-left transition-all ${
                         isHighlighted || isSelected
                           ? "bg-indigo-950/60 text-indigo-200 border border-indigo-700/40"
                           : "text-slate-300 hover:bg-slate-800/80 hover:text-white"
                       }`}
                     >
-                      <div className="flex items-center gap-2.5 truncate">
-                        <Landmark className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                      <div className="flex items-center gap-3 truncate">
+                        <Landmark className="w-4 h-4 text-indigo-400 shrink-0" />
                         <div className="truncate">
-                          <span className="font-semibold text-xs text-slate-100">
+                          <span className="font-semibold text-sm text-slate-100">
                             {inst.shortName}
                           </span>
-                          <span className="text-[10px] text-slate-400 ml-2 truncate">
+                          <span className="text-xs text-slate-400 ml-2 truncate">
                             {inst.name !== inst.shortName ? inst.name : ""}
                           </span>
                         </div>
                       </div>
 
-                      {isSelected && <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0 ml-1" />}
+                      {isSelected && <Check className="w-4 h-4 text-indigo-400 shrink-0 ml-1" />}
                     </button>
                   );
                 })
               ) : (
-                <div className="p-3 text-center text-xs text-slate-500">
-                  Press enter to use &quot;<span className="text-slate-300">{value}</span>&quot;
+                <div className="p-4 text-center text-sm text-slate-400">
+                  Press enter to use &quot;<span className="text-slate-200 font-semibold">{value}</span>&quot;
                 </div>
               )}
             </div>
