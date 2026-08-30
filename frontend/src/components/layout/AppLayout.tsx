@@ -51,13 +51,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
   const navItems = [
     { id: "dashboard" as NavTab, label: "Dashboard", icon: LayoutDashboard },
+    { id: "accounts" as NavTab, label: "Accounts", icon: Wallet },
     { id: "ledger" as NavTab, label: "Ledger", icon: ReceiptText },
     { id: "budgeting" as NavTab, label: "Budget", icon: PiggyBank },
     { id: "investments" as NavTab, label: "Investments", icon: TrendingUp },
-    { id: "loans" as NavTab, label: "Loans", icon: Landmark },
     { id: "ingestion" as NavTab, label: "Import", icon: UploadCloud },
-    { id: "rules" as NavTab, label: "Auto-Rules", icon: Sliders },
-    { id: "accounts" as NavTab, label: "Accounts", icon: Wallet },
+    { id: "rules" as NavTab, label: "Auto / Settings", icon: Sliders },
   ];
 
   return (
