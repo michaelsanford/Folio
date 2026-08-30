@@ -641,9 +641,10 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                   <select
                     value={split.category_id}
                     onChange={(e) => {
-                      const next = [...modalSplits];
-                      next[idx].category_id = e.target.value;
-                      setModalSplits(next);
+                      const val = e.target.value;
+                      setModalSplits((prev) =>
+                        prev.map((s, i) => (i === idx ? { ...s, category_id: val } : s))
+                      );
                     }}
                     className="flex-1 px-2.5 py-1.5 bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg"
                   >
@@ -661,9 +662,10 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                     placeholder="Amount"
                     value={split.amount}
                     onChange={(e) => {
-                      const next = [...modalSplits];
-                      next[idx].amount = parseFloat(e.target.value) || 0;
-                      setModalSplits(next);
+                      const val = parseFloat(e.target.value) || 0;
+                      setModalSplits((prev) =>
+                        prev.map((s, i) => (i === idx ? { ...s, amount: val } : s))
+                      );
                     }}
                     className="w-24 px-2.5 py-1.5 bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg font-mono text-right"
                   />

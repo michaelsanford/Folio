@@ -1,3 +1,4 @@
+import secrets
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
@@ -51,7 +52,7 @@ def test_login_and_protected_routes_with_master_password(unauthenticated_client)
     # Real auth dependency, isolated database -- this test reaches a protected
     # route that actually queries, so it must not run against the developer DB.
     client = unauthenticated_client
-    test_password = "SecretPassword123!"
+    test_password = f"SecretPass-{secrets.token_urlsafe(16)}"
     settings.FOLIO_MASTER_PASSWORD_HASH = hash_password(test_password)
     
     # 1. Check status (should require auth and identify master_password mode)
@@ -66,7 +67,8 @@ def test_login_and_protected_routes_with_master_password(unauthenticated_client)
     assert unauth_resp.status_code == 401
 
     # 3. Attempt login with wrong password -> 401
-    bad_login = client.post("/api/auth/login", json={"password": "WrongPassword"})
+    wrong_password = f"Wrong-{secrets.token_urlsafe(16)}"
+    bad_login = client.post("/api/auth/login", json={"password": wrong_password})
     assert bad_login.status_code == 401
 
     # 4. Login with correct password -> 200 + token
@@ -82,8 +84,10 @@ def test_login_and_protected_routes_with_master_password(unauthenticated_client)
 
 def test_origin_header_verification():
     client = TestClient(app)
-    settings.FOLIO_ORIGIN_VERIFY_SECRET = "super-secret-origin-token"
-    settings.FOLIO_MASTER_PASSWORD_HASH = hash_password("VaultPass123!")
+    origin_token = secrets.token_hex(16)
+    vault_password = f"Vault-{secrets.token_urlsafe(16)}"
+    settings.FOLIO_ORIGIN_VERIFY_SECRET = origin_token
+    settings.FOLIO_MASTER_PASSWORD_HASH = hash_password(vault_password)
 
     # 1. Request without origin header -> 403 Forbidden
     resp_no_header = client.get("/api/accounts")
@@ -95,7 +99,7 @@ def test_origin_header_verification():
     assert resp_bad_header.status_code == 403
 
     # 3. Request with valid origin header -> Passes origin check (fails on auth token -> 401)
-    resp_valid_origin = client.get("/api/accounts", headers={"X-Folio-Origin-Verify": "super-secret-origin-token"})
+    resp_valid_origin = client.get("/api/accounts", headers={"X-Folio-Origin-Verify": origin_token})
     assert resp_valid_origin.status_code == 401
 
 
