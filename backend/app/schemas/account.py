@@ -9,6 +9,8 @@ class AccountBase(BaseModel):
     type: AccountType
     institution: str | None = Field(None, max_length=100)
     account_number_mask: str | None = Field(None, max_length=20)
+    icon: str | None = Field(None, max_length=50)
+    color: str | None = Field(None, max_length=20)
     currency: str = Field(settings.DEFAULT_CURRENCY, min_length=3, max_length=3)
     current_balance: float = 0.0
     credit_limit: float | None = None
@@ -31,6 +33,8 @@ class AccountUpdate(BaseModel):
     type: AccountType | None = None
     institution: str | None = None
     account_number_mask: str | None = None
+    icon: str | None = None
+    color: str | None = None
     currency: str | None = None
     current_balance: float | None = None
     credit_limit: float | None = None

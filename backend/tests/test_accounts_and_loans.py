@@ -46,3 +46,66 @@ def test_loan_split_suggestion(client, sample_mortgage_account):
     assert round(data["interest_amount"], 2) == 1895.83
     assert data["escrow_amount"] == 450.0
     assert data["principal_amount"] > 0
+
+
+def test_create_canadian_registered_accounts(client):
+    # Test TFSA creation with custom glyph and color
+    tfsa_resp = client.post(
+        "/api/accounts",
+        json={
+            "name": "Wealthsimple TFSA",
+            "type": AccountType.TFSA.value,
+            "institution": "Wealthsimple",
+            "icon": "sparkles",
+            "color": "#10B981",
+            "current_balance": 45000.0,
+        },
+    )
+    assert tfsa_resp.status_code == 201
+    tfsa = tfsa_resp.json()
+    assert tfsa["type"] == "TFSA"
+    assert tfsa["icon"] == "sparkles"
+    assert tfsa["color"] == "#10B981"
+    assert tfsa["current_balance"] == 45000.0
+
+    # Test FHSA creation
+    fhsa_resp = client.post(
+        "/api/accounts",
+        json={
+            "name": "Questrade FHSA",
+            "type": AccountType.FHSA.value,
+            "institution": "Questrade",
+            "icon": "home",
+            "color": "#6366F1",
+            "current_balance": 16000.0,
+        },
+    )
+    assert fhsa_resp.status_code == 201
+    assert fhsa_resp.json()["type"] == "FHSA"
+
+
+def test_student_loan_amortization(client):
+    loan_resp = client.post(
+        "/api/accounts",
+        json={
+            "name": "Canada Student Loan",
+            "type": AccountType.STUDENT_LOAN.value,
+            "institution": "NSLSC",
+            "icon": "book-open",
+            "color": "#8B5CF6",
+            "loan_original_principal": 25000.0,
+            "current_balance": -20000.0,
+            "interest_rate": 0.0,
+            "loan_term_months": 120,
+            "monthly_payment": 208.33,
+        },
+    )
+    assert loan_resp.status_code == 201
+    loan_id = loan_resp.json()["id"]
+
+    amort_resp = client.get(f"/api/accounts/{loan_id}/amortization")
+    assert amort_resp.status_code == 200
+    schedule = amort_resp.json()
+    assert schedule["account_name"] == "Canada Student Loan"
+    assert len(schedule["schedule"]) == 120
+

@@ -45,14 +45,30 @@ def _get_or_create_security(db: Session, symbol: str, name: str | None = None, a
     return security
 
 
+INVESTMENT_ACCOUNT_TYPES = {
+    AccountType.INVESTMENT,
+    AccountType.TFSA,
+    AccountType.RRSP,
+    AccountType.FHSA,
+    AccountType.RESP,
+    AccountType.RDSP,
+    AccountType.RRIF,
+    AccountType.LIRA,
+    AccountType.LIF,
+    AccountType.IPP,
+    AccountType.NON_REGISTERED,
+    AccountType.CRYPTO,
+}
+
+
 def _require_investment_account(db: Session, account_id: str) -> Account:
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
-    if account.type != AccountType.INVESTMENT:
+    if account.type not in INVESTMENT_ACCOUNT_TYPES:
         raise HTTPException(
             status_code=400,
-            detail="Holdings and investment activity apply only to INVESTMENT accounts",
+            detail="Holdings and investment activity apply only to INVESTMENT and registered accounts",
         )
     return account
 
@@ -335,7 +351,7 @@ def revalue_investment_accounts(
     """
     from app.services.snapshots.balance_history import record_snapshot
 
-    accounts = db.query(Account).filter(Account.type == AccountType.INVESTMENT).all()
+    accounts = db.query(Account).filter(Account.type.in_(INVESTMENT_ACCOUNT_TYPES)).all()
     unpriced: list[str] = []
     revalued = 0
 

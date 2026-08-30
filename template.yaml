@@ -76,16 +76,16 @@ Resources:
         AllowAdminCreateUserOnly: true  # Prevents public sign-ups (Owner-only private vault)
       AutoVerifiedAttributes:
         - email
-      MfaConfiguration: "OPTIONAL"     # Supports TOTP Authenticator apps (Google Authenticator, 1Password, Apple Keychain)
+      MfaConfiguration: "ON"     # Supports TOTP Authenticator apps (Google Authenticator, 1Password, Apple Keychain)
       EnabledMfas:
         - SOFTWARE_TOKEN_MFA
       Policies:
         PasswordPolicy:
-          MinimumLength: 12
+          MinimumLength: 20
           RequireLowercase: true
-          RequireNumbers: true
-          RequireSymbols: true
-          RequireUppercase: true
+          RequireNumbers: false
+          RequireSymbols: false
+          RequireUppercase: false
       AccountRecoverySetting:
         RecoveryMechanisms:
           - Name: verified_email

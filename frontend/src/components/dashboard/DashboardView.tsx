@@ -8,6 +8,8 @@ import {
   ArrowDownRight,
 } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
+import { AccountIcon } from "../common/AccountIcon";
+import { isAssetAccount } from "../../constants/canadianAccountTypes";
 import type { Account, DashboardAnalyticsResponse } from "../../types";
 
 interface DashboardViewProps {
@@ -307,43 +309,47 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <div className="space-y-3 overflow-y-auto max-h-64 pr-1">
-            {accounts.map((acc) => (
-              <div
-                key={acc.id}
-                className="p-3 rounded-xl bg-slate-800/40 border border-slate-700/40 flex items-center justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-slate-700/50 text-slate-300">
-                    {acc.type.includes("CARD") ? (
-                      <CreditCard className="w-4 h-4 text-amber-400" />
-                    ) : acc.type.includes("MORTGAGE") || acc.type.includes("LOAN") ? (
-                      <Building2 className="w-4 h-4 text-violet-400" />
-                    ) : (
-                      <PiggyBank className="w-4 h-4 text-emerald-400" />
-                    )}
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold text-slate-200">{acc.name}</div>
-                    <div className="text-[10px] text-slate-400">
-                      {acc.institution} {acc.account_number_mask ? `(${acc.account_number_mask})` : ""}
+            {accounts.map((acc) => {
+              const isAsset = isAssetAccount(acc.type);
+              return (
+                <div
+                  key={acc.id}
+                  className="p-3 rounded-xl bg-slate-800/40 border border-slate-700/40 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <AccountIcon
+                      type={acc.type}
+                      icon={acc.icon}
+                      color={acc.color}
+                      size="md"
+                    />
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-slate-200 truncate">{acc.name}</div>
+                      <div className="text-[10px] text-slate-400 truncate">
+                        {acc.institution} {acc.account_number_mask ? `(${acc.account_number_mask})` : ""}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="text-right">
-                  <div
-                    className={`text-xs font-bold ${
-                      acc.current_balance >= 0 ? "text-emerald-400" : "text-rose-400"
-                    }`}
-                  >
-                    ${acc.current_balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <div className="text-right shrink-0">
+                    <div
+                      className={`text-xs font-bold font-mono ${
+                        isAsset
+                          ? "text-emerald-400"
+                          : acc.current_balance < 0
+                          ? "text-rose-400"
+                          : "text-slate-200"
+                      }`}
+                    >
+                      ${acc.current_balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                    {acc.interest_rate ? (
+                      <div className="text-[10px] text-slate-400">{acc.interest_rate}% APR</div>
+                    ) : null}
                   </div>
-                  {acc.interest_rate ? (
-                    <div className="text-[10px] text-slate-400">{acc.interest_rate}% APR</div>
-                  ) : null}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

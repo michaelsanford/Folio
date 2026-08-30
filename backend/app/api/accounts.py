@@ -86,7 +86,14 @@ def get_loan_amortization(account_id: str, db: Session = Depends(get_db)):
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
-    if account.type not in (AccountType.MORTGAGE, AccountType.VEHICLE_LOAN, AccountType.OTHER_LIABILITY):
+    if account.type not in (
+        AccountType.MORTGAGE,
+        AccountType.VEHICLE_LOAN,
+        AccountType.LINE_OF_CREDIT,
+        AccountType.STUDENT_LOAN,
+        AccountType.PERSONAL_LOAN,
+        AccountType.OTHER_LIABILITY,
+    ):
         raise HTTPException(status_code=400, detail="Amortization only available for loan/mortgage accounts")
 
     return generate_amortization_schedule(account)

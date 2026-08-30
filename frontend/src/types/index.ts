@@ -1,12 +1,35 @@
 export type AccountType =
+  // Banking / Cash
   | "CHECKING"
   | "SAVINGS"
+  | "HISA"
+  | "CASH"
+  // Registered Accounts (Canada)
+  | "TFSA"
+  | "RRSP"
+  | "FHSA"
+  | "RESP"
+  | "RDSP"
+  | "RRIF"
+  | "LIRA"
+  | "LIF"
+  | "IPP"
+  // Non-Registered Investments
+  | "INVESTMENT"
+  | "NON_REGISTERED"
+  | "CRYPTO"
+  // Credit & Debt / Liabilities
   | "CREDIT_CARD"
+  | "LINE_OF_CREDIT"
   | "MORTGAGE"
   | "VEHICLE_LOAN"
-  | "INVESTMENT"
-  | "OTHER_ASSET"
-  | "OTHER_LIABILITY";
+  | "STUDENT_LOAN"
+  | "PERSONAL_LOAN"
+  | "OTHER_LIABILITY"
+  // Real & Other Assets
+  | "REAL_ESTATE"
+  | "VEHICLE_ASSET"
+  | "OTHER_ASSET";
 
 export interface Account {
   id: string;
@@ -14,6 +37,8 @@ export interface Account {
   type: AccountType;
   institution?: string;
   account_number_mask?: string;
+  icon?: string | null;
+  color?: string | null;
   currency: string;
   current_balance: number;
   credit_limit?: number;

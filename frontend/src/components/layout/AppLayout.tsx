@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import type { Account } from "../../types";
+import { isAssetAccount } from "../../constants/canadianAccountTypes";
 
 export type NavTab =
   | "dashboard"
@@ -39,11 +40,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
   const totalAssets = accounts
-    .filter((a) => ["CHECKING", "SAVINGS", "INVESTMENT", "OTHER_ASSET"].includes(a.type))
+    .filter((a) => isAssetAccount(a.type))
     .reduce((sum, a) => sum + a.current_balance, 0);
 
   const totalLiabilities = accounts
-    .filter((a) => ["CREDIT_CARD", "MORTGAGE", "VEHICLE_LOAN", "OTHER_LIABILITY"].includes(a.type))
+    .filter((a) => !isAssetAccount(a.type))
     .reduce((sum, a) => sum + Math.abs(a.current_balance), 0);
 
   const netWorth = totalAssets - totalLiabilities;

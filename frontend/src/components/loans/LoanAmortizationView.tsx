@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Landmark } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
+import { isLoanAccount } from "../../constants/canadianAccountTypes";
 import type { Account, AmortizationScheduleResponse } from "../../types";
 import { api } from "../../services/api";
 
@@ -9,9 +10,7 @@ interface LoanAmortizationViewProps {
 }
 
 export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ accounts }) => {
-  const loanAccounts = accounts.filter((a) =>
-    ["MORTGAGE", "VEHICLE_LOAN", "OTHER_LIABILITY"].includes(a.type)
-  );
+  const loanAccounts = accounts.filter((a) => isLoanAccount(a.type));
 
   const [selectedLoanId, setSelectedLoanId] = useState<string>(
     loanAccounts[0]?.id || ""

@@ -20,14 +20,32 @@ from app.schemas.analytics import (
 ASSET_TYPES = {
     AccountType.CHECKING,
     AccountType.SAVINGS,
+    AccountType.HISA,
+    AccountType.CASH,
+    AccountType.TFSA,
+    AccountType.RRSP,
+    AccountType.FHSA,
+    AccountType.RESP,
+    AccountType.RDSP,
+    AccountType.RRIF,
+    AccountType.LIRA,
+    AccountType.LIF,
+    AccountType.IPP,
     AccountType.INVESTMENT,
+    AccountType.NON_REGISTERED,
+    AccountType.CRYPTO,
+    AccountType.REAL_ESTATE,
+    AccountType.VEHICLE_ASSET,
     AccountType.OTHER_ASSET,
 }
 
 LIABILITY_TYPES = {
     AccountType.CREDIT_CARD,
+    AccountType.LINE_OF_CREDIT,
     AccountType.MORTGAGE,
     AccountType.VEHICLE_LOAN,
+    AccountType.STUDENT_LOAN,
+    AccountType.PERSONAL_LOAN,
     AccountType.OTHER_LIABILITY,
 }
 
