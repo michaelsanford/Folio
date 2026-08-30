@@ -19,6 +19,7 @@ import { AccountIcon } from "../common/AccountIcon";
 import { AccountTypePicker } from "./AccountTypePicker";
 import { AccountIconPickerModal } from "./AccountIconPickerModal";
 import { CanadianRulesModal } from "./CanadianRulesModal";
+import { InstitutionAutocomplete } from "./InstitutionAutocomplete";
 
 interface AccountsManagerViewProps {
   accounts: Account[];
@@ -510,12 +511,9 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
               <div className="grid grid-cols-2 gap-3.5">
                 <div>
                   <label className="block text-slate-400 mb-1.5 font-medium">Institution</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Wealthsimple, RBC, TD"
+                  <InstitutionAutocomplete
                     value={formData.institution}
-                    onChange={(e) => setFormData({ ...formData, institution: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-800/90 border border-slate-700 rounded-xl text-slate-200"
+                    onChange={(val) => setFormData({ ...formData, institution: val })}
                   />
                 </div>
                 <div>
@@ -527,7 +525,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                     onChange={(e) =>
                       setFormData({ ...formData, account_number_mask: e.target.value })
                     }
-                    className="w-full px-3 py-2 bg-slate-800/90 border border-slate-700 rounded-xl text-slate-200"
+                    className="w-full px-3.5 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-slate-200 text-xs"
                   />
                 </div>
               </div>
