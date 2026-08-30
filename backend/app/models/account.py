@@ -21,14 +21,41 @@ class LoanCompounding(str, enum.Enum):
 
 
 class AccountType(str, enum.Enum):
+    # Banking / Cash
     CHECKING = "CHECKING"
     SAVINGS = "SAVINGS"
+    HISA = "HISA"
+    CASH = "CASH"
+
+    # Registered Accounts (Canada)
+    TFSA = "TFSA"
+    RRSP = "RRSP"
+    FHSA = "FHSA"
+    RESP = "RESP"
+    RDSP = "RDSP"
+    RRIF = "RRIF"
+    LIRA = "LIRA"
+    LIF = "LIF"
+    IPP = "IPP"
+
+    # Non-Registered Investments
+    INVESTMENT = "INVESTMENT"
+    NON_REGISTERED = "NON_REGISTERED"
+    CRYPTO = "CRYPTO"
+
+    # Credit & Debt / Liabilities
     CREDIT_CARD = "CREDIT_CARD"
+    LINE_OF_CREDIT = "LINE_OF_CREDIT"
     MORTGAGE = "MORTGAGE"
     VEHICLE_LOAN = "VEHICLE_LOAN"
-    INVESTMENT = "INVESTMENT"
-    OTHER_ASSET = "OTHER_ASSET"
+    STUDENT_LOAN = "STUDENT_LOAN"
+    PERSONAL_LOAN = "PERSONAL_LOAN"
     OTHER_LIABILITY = "OTHER_LIABILITY"
+
+    # Real & Other Assets
+    REAL_ESTATE = "REAL_ESTATE"
+    VEHICLE_ASSET = "VEHICLE_ASSET"
+    OTHER_ASSET = "OTHER_ASSET"
 
 
 @with_money(
@@ -46,6 +73,8 @@ class Account(Base):
     type = Column(Enum(AccountType), nullable=False)
     institution = Column(String(100), nullable=True)
     account_number_mask = Column(String(20), nullable=True)
+    icon = Column(String(50), nullable=True)
+    color = Column(String(20), nullable=True)
     currency = Column(String(3), nullable=False, default=settings.DEFAULT_CURRENCY)
     current_balance_cents = Column(Integer, nullable=False, default=0)
     

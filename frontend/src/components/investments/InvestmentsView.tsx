@@ -8,6 +8,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
+import { isInvestmentAccount } from "../../constants/canadianAccountTypes";
 import type { Account, HoldingValuation, PerformanceResponse } from "../../types";
 import { api } from "../../services/api";
 
@@ -36,7 +37,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
   onDataModified,
 }) => {
   const investmentAccounts = useMemo(
-    () => accounts.filter((a) => a.type === "INVESTMENT"),
+    () => accounts.filter((a) => isInvestmentAccount(a.type)),
     [accounts]
   );
 
