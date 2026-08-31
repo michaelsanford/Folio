@@ -1,30 +1,556 @@
 @import 'tailwindcss';
 
+:root {
+  /* Default: Folio Emerald Dark */
+  --bg-canvas: #090d16;
+  --bg-surface: #0f172a;
+  --bg-surface-subtle: #131e33;
+  --bg-surface-hover: #1e293b;
+  --bg-sidebar: #0c1322;
+  --bg-input: #0f172a;
+  --border-subtle: rgba(51, 65, 85, 0.4);
+  --border-default: rgba(51, 65, 85, 0.7);
+  --border-strong: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --accent-primary: #10b981;
+  --accent-primary-hover: #059669;
+  --accent-subtle: rgba(16, 185, 129, 0.12);
+  --accent-subtle-text: #34d399;
+  --accent-contrast: #ffffff;
+  --fin-positive: #10b981;
+  --fin-positive-subtle: rgba(16, 185, 129, 0.15);
+  --fin-negative: #f43f5e;
+  --fin-negative-subtle: rgba(244, 63, 94, 0.15);
+  --fin-neutral: #64748b;
+  --scrollbar-track: rgba(15, 23, 42, 0.6);
+  --scrollbar-thumb: rgba(71, 85, 105, 0.6);
+}
+
+/* =========================================================
+   1. Folio Emerald
+   ========================================================= */
+[data-theme="folio-emerald"][data-mode="dark"] {
+  --bg-canvas: #090d16;
+  --bg-surface: #0f172a;
+  --bg-surface-subtle: #131e33;
+  --bg-surface-hover: #1e293b;
+  --bg-sidebar: #0c1322;
+  --bg-input: #0f172a;
+  --border-subtle: rgba(51, 65, 85, 0.4);
+  --border-default: rgba(51, 65, 85, 0.7);
+  --border-strong: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --accent-primary: #10b981;
+  --accent-primary-hover: #059669;
+  --accent-subtle: rgba(16, 185, 129, 0.12);
+  --accent-subtle-text: #34d399;
+  --accent-contrast: #ffffff;
+  --fin-positive: #10b981;
+  --fin-positive-subtle: rgba(16, 185, 129, 0.15);
+  --fin-negative: #f43f5e;
+  --fin-negative-subtle: rgba(244, 63, 94, 0.15);
+  --fin-neutral: #64748b;
+  --scrollbar-track: rgba(15, 23, 42, 0.6);
+  --scrollbar-thumb: rgba(71, 85, 105, 0.6);
+}
+
+[data-theme="folio-emerald"][data-mode="light"] {
+  --bg-canvas: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-surface-subtle: #f1f5f9;
+  --bg-surface-hover: #e2e8f0;
+  --bg-sidebar: #ffffff;
+  --bg-input: #ffffff;
+  --border-subtle: #e2e8f0;
+  --border-default: #cbd5e1;
+  --border-strong: #94a3b8;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --accent-primary: #059669;
+  --accent-primary-hover: #047857;
+  --accent-subtle: rgba(5, 150, 105, 0.1);
+  --accent-subtle-text: #047857;
+  --accent-contrast: #ffffff;
+  --fin-positive: #059669;
+  --fin-positive-subtle: rgba(5, 150, 105, 0.12);
+  --fin-negative: #e11d48;
+  --fin-negative-subtle: rgba(225, 29, 72, 0.12);
+  --fin-neutral: #64748b;
+  --scrollbar-track: #f1f5f9;
+  --scrollbar-thumb: #cbd5e1;
+}
+
+/* =========================================================
+   2. Bloomberg Terminal (Obsidian & Amber Gold)
+   ========================================================= */
+[data-theme="bloomberg"][data-mode="dark"] {
+  --bg-canvas: #090a0f;
+  --bg-surface: #11131a;
+  --bg-surface-subtle: #181b24;
+  --bg-surface-hover: #202430;
+  --bg-sidebar: #0e1017;
+  --bg-input: #11131a;
+  --border-subtle: rgba(71, 85, 105, 0.35);
+  --border-default: rgba(71, 85, 105, 0.65);
+  --border-strong: #f59e0b;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #64748b;
+  --accent-primary: #f59e0b;
+  --accent-primary-hover: #d97706;
+  --accent-subtle: rgba(245, 158, 11, 0.15);
+  --accent-subtle-text: #fbbf24;
+  --accent-contrast: #000000;
+  --fin-positive: #10b981;
+  --fin-positive-subtle: rgba(16, 185, 129, 0.15);
+  --fin-negative: #f43f5e;
+  --fin-negative-subtle: rgba(244, 63, 94, 0.15);
+  --fin-neutral: #64748b;
+  --scrollbar-track: #0e1017;
+  --scrollbar-thumb: #334155;
+}
+
+[data-theme="bloomberg"][data-mode="light"] {
+  --bg-canvas: #faf8f5;
+  --bg-surface: #ffffff;
+  --bg-surface-subtle: #f3efe6;
+  --bg-surface-hover: #e8e2d5;
+  --bg-sidebar: #ffffff;
+  --bg-input: #ffffff;
+  --border-subtle: #e5dec9;
+  --border-default: #d8cdb2;
+  --border-strong: #b45309;
+  --text-primary: #1c1917;
+  --text-secondary: #57534e;
+  --text-muted: #78716c;
+  --accent-primary: #b45309;
+  --accent-primary-hover: #92400e;
+  --accent-subtle: rgba(180, 83, 9, 0.12);
+  --accent-subtle-text: #92400e;
+  --accent-contrast: #ffffff;
+  --fin-positive: #059669;
+  --fin-positive-subtle: rgba(5, 150, 105, 0.12);
+  --fin-negative: #e11d48;
+  --fin-negative-subtle: rgba(225, 29, 72, 0.12);
+  --fin-neutral: #78716c;
+  --scrollbar-track: #f3efe6;
+  --scrollbar-thumb: #d8cdb2;
+}
+
+/* =========================================================
+   3. Financial Times (Broadsheet Ink & Warm Paper)
+   ========================================================= */
+[data-theme="editorial"][data-mode="dark"] {
+  --bg-canvas: #141210;
+  --bg-surface: #1c1917;
+  --bg-surface-subtle: #262320;
+  --bg-surface-hover: #332e2a;
+  --bg-sidebar: #171513;
+  --bg-input: #1c1917;
+  --border-subtle: rgba(120, 113, 108, 0.35);
+  --border-default: rgba(120, 113, 108, 0.6);
+  --border-strong: #78716c;
+  --text-primary: #f5f5f4;
+  --text-secondary: #a8a29e;
+  --text-muted: #78716c;
+  --accent-primary: #fb7185;
+  --accent-primary-hover: #f43f5e;
+  --accent-subtle: rgba(251, 113, 133, 0.15);
+  --accent-subtle-text: #fda4af;
+  --accent-contrast: #141210;
+  --fin-positive: #34d399;
+  --fin-positive-subtle: rgba(52, 211, 153, 0.15);
+  --fin-negative: #f43f5e;
+  --fin-negative-subtle: rgba(244, 63, 94, 0.15);
+  --fin-neutral: #a8a29e;
+  --scrollbar-track: #141210;
+  --scrollbar-thumb: #44403c;
+}
+
+[data-theme="editorial"][data-mode="light"] {
+  --bg-canvas: #fff1e5;
+  --bg-surface: #ffffff;
+  --bg-surface-subtle: #fae6d8;
+  --bg-surface-hover: #f2d8c5;
+  --bg-sidebar: #fbf0ea;
+  --bg-input: #ffffff;
+  --border-subtle: #ebd5c4;
+  --border-default: #dcc2ae;
+  --border-strong: #990f3d;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+  --accent-primary: #990f3d;
+  --accent-primary-hover: #7a0c30;
+  --accent-subtle: rgba(153, 15, 61, 0.1);
+  --accent-subtle-text: #990f3d;
+  --accent-contrast: #ffffff;
+  --fin-positive: #006644;
+  --fin-positive-subtle: rgba(0, 102, 68, 0.12);
+  --fin-negative: #cc0000;
+  --fin-negative-subtle: rgba(204, 0, 0, 0.12);
+  --fin-neutral: #6b7280;
+  --scrollbar-track: #fae6d8;
+  --scrollbar-thumb: #dcc2ae;
+}
+
+/* =========================================================
+   4. Catppuccin (Mocha & Latte)
+   ========================================================= */
+[data-theme="catppuccin"][data-mode="dark"] {
+  --bg-canvas: #11111b;
+  --bg-surface: #181825;
+  --bg-surface-subtle: #1e1e2e;
+  --bg-surface-hover: #313244;
+  --bg-sidebar: #11111b;
+  --bg-input: #181825;
+  --border-subtle: #313244;
+  --border-default: #45475a;
+  --border-strong: #585b70;
+  --text-primary: #cdd6f4;
+  --text-secondary: #a6adc8;
+  --text-muted: #6c7086;
+  --accent-primary: #94e2d5;
+  --accent-primary-hover: #81c8be;
+  --accent-subtle: rgba(148, 226, 213, 0.15);
+  --accent-subtle-text: #94e2d5;
+  --accent-contrast: #11111b;
+  --fin-positive: #a6e3a1;
+  --fin-positive-subtle: rgba(166, 227, 161, 0.15);
+  --fin-negative: #f38ba8;
+  --fin-negative-subtle: rgba(243, 139, 168, 0.15);
+  --fin-neutral: #9399b2;
+  --scrollbar-track: #11111b;
+  --scrollbar-thumb: #45475a;
+}
+
+[data-theme="catppuccin"][data-mode="light"] {
+  --bg-canvas: #eff1f5;
+  --bg-surface: #ffffff;
+  --bg-surface-subtle: #e6e9ef;
+  --bg-surface-hover: #dce0e8;
+  --bg-sidebar: #ffffff;
+  --bg-input: #ffffff;
+  --border-subtle: #ccd0da;
+  --border-default: #bcc0cc;
+  --border-strong: #acb0be;
+  --text-primary: #4c4f69;
+  --text-secondary: #5c5f77;
+  --text-muted: #6c6f85;
+  --accent-primary: #179299;
+  --accent-primary-hover: #13787e;
+  --accent-subtle: rgba(23, 146, 153, 0.12);
+  --accent-subtle-text: #179299;
+  --accent-contrast: #ffffff;
+  --fin-positive: #40a02b;
+  --fin-positive-subtle: rgba(64, 160, 43, 0.12);
+  --fin-negative: #d20f39;
+  --fin-negative-subtle: rgba(210, 15, 57, 0.12);
+  --fin-neutral: #7c7f93;
+  --scrollbar-track: #e6e9ef;
+  --scrollbar-thumb: #bcc0cc;
+}
+
+/* =========================================================
+   5. Nord (Arctic Frost & Polar Night)
+   ========================================================= */
+[data-theme="nord"][data-mode="dark"] {
+  --bg-canvas: #242933;
+  --bg-surface: #2e3440;
+  --bg-surface-subtle: #3b4252;
+  --bg-surface-hover: #434c5e;
+  --bg-sidebar: #242933;
+  --bg-input: #2e3440;
+  --border-subtle: rgba(76, 86, 106, 0.5);
+  --border-default: #4c566a;
+  --border-strong: #88c0d0;
+  --text-primary: #eceff4;
+  --text-secondary: #d8dee9;
+  --text-muted: #9da5b4;
+  --accent-primary: #88c0d0;
+  --accent-primary-hover: #81a1c1;
+  --accent-subtle: rgba(136, 192, 208, 0.15);
+  --accent-subtle-text: #88c0d0;
+  --accent-contrast: #2e3440;
+  --fin-positive: #a3be8c;
+  --fin-positive-subtle: rgba(163, 190, 140, 0.15);
+  --fin-negative: #bf616a;
+  --fin-negative-subtle: rgba(191, 97, 106, 0.15);
+  --fin-neutral: #81a1c1;
+  --scrollbar-track: #242933;
+  --scrollbar-thumb: #4c566a;
+}
+
+[data-theme="nord"][data-mode="light"] {
+  --bg-canvas: #eceff4;
+  --bg-surface: #ffffff;
+  --bg-surface-subtle: #e5e9f0;
+  --bg-surface-hover: #d8dee9;
+  --bg-sidebar: #ffffff;
+  --bg-input: #ffffff;
+  --border-subtle: #d8dee9;
+  --border-default: #c0c8d4;
+  --border-strong: #5e81ac;
+  --text-primary: #2e3440;
+  --text-secondary: #4c566a;
+  --text-muted: #707e94;
+  --accent-primary: #5e81ac;
+  --accent-primary-hover: #4c6b96;
+  --accent-subtle: rgba(94, 129, 172, 0.12);
+  --accent-subtle-text: #5e81ac;
+  --accent-contrast: #ffffff;
+  --fin-positive: #4c7a34;
+  --fin-positive-subtle: rgba(76, 122, 52, 0.12);
+  --fin-negative: #a83e47;
+  --fin-negative-subtle: rgba(168, 62, 71, 0.12);
+  --fin-neutral: #4c566a;
+  --scrollbar-track: #e5e9f0;
+  --scrollbar-thumb: #c0c8d4;
+}
+
+/* =========================================================
+   6. Gruvbox (Retro Ledger)
+   ========================================================= */
+[data-theme="gruvbox"][data-mode="dark"] {
+  --bg-canvas: #1d2021;
+  --bg-surface: #282828;
+  --bg-surface-subtle: #32302f;
+  --bg-surface-hover: #3c3836;
+  --bg-sidebar: #1d2021;
+  --bg-input: #282828;
+  --border-subtle: #504945;
+  --border-default: #665c54;
+  --border-strong: #7c6f64;
+  --text-primary: #ebdbb2;
+  --text-secondary: #d5c4a1;
+  --text-muted: #928374;
+  --accent-primary: #689d6a;
+  --accent-primary-hover: #8ec07c;
+  --accent-subtle: rgba(104, 157, 106, 0.15);
+  --accent-subtle-text: #8ec07c;
+  --accent-contrast: #1d2021;
+  --fin-positive: #b8bb26;
+  --fin-positive-subtle: rgba(184, 187, 38, 0.15);
+  --fin-negative: #fb4934;
+  --fin-negative-subtle: rgba(251, 73, 52, 0.15);
+  --fin-neutral: #928374;
+  --scrollbar-track: #1d2021;
+  --scrollbar-thumb: #504945;
+}
+
+[data-theme="gruvbox"][data-mode="light"] {
+  --bg-canvas: #fbf1c7;
+  --bg-surface: #f2e5bc;
+  --bg-surface-subtle: #ebdbb2;
+  --bg-surface-hover: #d5c4a1;
+  --bg-sidebar: #f2e5bc;
+  --bg-input: #fbf1c7;
+  --border-subtle: #d5c4a1;
+  --border-default: #bdae93;
+  --border-strong: #427b58;
+  --text-primary: #282828;
+  --text-secondary: #3c3836;
+  --text-muted: #7c6f64;
+  --accent-primary: #427b58;
+  --accent-primary-hover: #336145;
+  --accent-subtle: rgba(66, 123, 88, 0.12);
+  --accent-subtle-text: #427b58;
+  --accent-contrast: #ffffff;
+  --fin-positive: #79740e;
+  --fin-positive-subtle: rgba(121, 116, 14, 0.12);
+  --fin-negative: #9d0006;
+  --fin-negative-subtle: rgba(157, 0, 6, 0.12);
+  --fin-neutral: #7c6f64;
+  --scrollbar-track: #ebdbb2;
+  --scrollbar-thumb: #bdae93;
+}
+
+/* =========================================================
+   7. Tokyo Night
+   ========================================================= */
+[data-theme="tokyo-night"][data-mode="dark"] {
+  --bg-canvas: #16161e;
+  --bg-surface: #1a1b26;
+  --bg-surface-subtle: #1f2335;
+  --bg-surface-hover: #292e42;
+  --bg-sidebar: #16161e;
+  --bg-input: #1a1b26;
+  --border-subtle: #292e42;
+  --border-default: #3b4261;
+  --border-strong: #565f89;
+  --text-primary: #c0caf5;
+  --text-secondary: #9aa5ce;
+  --text-muted: #565f89;
+  --accent-primary: #7dcfff;
+  --accent-primary-hover: #2ac3de;
+  --accent-subtle: rgba(125, 207, 255, 0.15);
+  --accent-subtle-text: #7dcfff;
+  --accent-contrast: #16161e;
+  --fin-positive: #73daca;
+  --fin-positive-subtle: rgba(115, 218, 202, 0.15);
+  --fin-negative: #f7768e;
+  --fin-negative-subtle: rgba(247, 118, 142, 0.15);
+  --fin-neutral: #565f89;
+  --scrollbar-track: #16161e;
+  --scrollbar-thumb: #3b4261;
+}
+
+[data-theme="tokyo-night"][data-mode="light"] {
+  --bg-canvas: #e1e2e7;
+  --bg-surface: #ffffff;
+  --bg-surface-subtle: #d5d6db;
+  --bg-surface-hover: #c8c9ce;
+  --bg-sidebar: #ffffff;
+  --bg-input: #ffffff;
+  --border-subtle: #c8c9ce;
+  --border-default: #b4b5b9;
+  --border-strong: #006cb8;
+  --text-primary: #3760bf;
+  --text-secondary: #343b58;
+  --text-muted: #565a6e;
+  --accent-primary: #006cb8;
+  --accent-primary-hover: #005694;
+  --accent-subtle: rgba(0, 108, 184, 0.12);
+  --accent-subtle-text: #006cb8;
+  --accent-contrast: #ffffff;
+  --fin-positive: #38a89d;
+  --fin-positive-subtle: rgba(56, 168, 157, 0.12);
+  --fin-negative: #8c4351;
+  --fin-negative-subtle: rgba(140, 67, 81, 0.12);
+  --fin-neutral: #565a6e;
+  --scrollbar-track: #d5d6db;
+  --scrollbar-thumb: #b4b5b9;
+}
+
+/* =========================================================
+   8. Dracula
+   ========================================================= */
+[data-theme="dracula"][data-mode="dark"] {
+  --bg-canvas: #1e1f29;
+  --bg-surface: #282a36;
+  --bg-surface-subtle: #343746;
+  --bg-surface-hover: #44475a;
+  --bg-sidebar: #1e1f29;
+  --bg-input: #282a36;
+  --border-subtle: #44475a;
+  --border-default: #6272a4;
+  --border-strong: #50fa7b;
+  --text-primary: #f8f8f2;
+  --text-secondary: #c5c8d4;
+  --text-muted: #6272a4;
+  --accent-primary: #50fa7b;
+  --accent-primary-hover: #5af78e;
+  --accent-subtle: rgba(80, 250, 123, 0.15);
+  --accent-subtle-text: #50fa7b;
+  --accent-contrast: #282a36;
+  --fin-positive: #50fa7b;
+  --fin-positive-subtle: rgba(80, 250, 123, 0.15);
+  --fin-negative: #ff5555;
+  --fin-negative-subtle: rgba(255, 85, 85, 0.15);
+  --fin-neutral: #6272a4;
+  --scrollbar-track: #1e1f29;
+  --scrollbar-thumb: #44475a;
+}
+
+[data-theme="dracula"][data-mode="light"] {
+  --bg-canvas: #f8f8f2;
+  --bg-surface: #ffffff;
+  --bg-surface-subtle: #e8e8e2;
+  --bg-surface-hover: #d8d8d2;
+  --bg-sidebar: #ffffff;
+  --bg-input: #ffffff;
+  --border-subtle: #d8d8d2;
+  --border-default: #b8b8b0;
+  --border-strong: #28a745;
+  --text-primary: #282a36;
+  --text-secondary: #44475a;
+  --text-muted: #6272a4;
+  --accent-primary: #28a745;
+  --accent-primary-hover: #218838;
+  --accent-subtle: rgba(40, 167, 69, 0.12);
+  --accent-subtle-text: #28a745;
+  --accent-contrast: #ffffff;
+  --fin-positive: #28a745;
+  --fin-positive-subtle: rgba(40, 167, 69, 0.12);
+  --fin-negative: #dc3545;
+  --fin-negative-subtle: rgba(220, 53, 69, 0.12);
+  --fin-neutral: #6272a4;
+  --scrollbar-track: #e8e8e2;
+  --scrollbar-thumb: #b8b8b0;
+}
+
+/* =========================================================
+   Global Root & Body Elements
+   ========================================================= */
 html,
 body {
-  @apply bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500 selection:text-white;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum";
   min-height: 100vh;
   width: 100%;
   overflow-x: hidden;
   max-width: 100vw;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* Custom scrollbar for high-density tables and mobile */
+/* Selection */
+::selection {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+}
+
+/* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(71, 85, 105, 0.6);
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.8);
+  filter: brightness(1.2);
 }
+
+/* =========================================================
+   Semantic CSS Utility Classes
+   ========================================================= */
+.bg-canvas { background-color: var(--bg-canvas); }
+.bg-surface { background-color: var(--bg-surface); }
+.bg-surface-subtle { background-color: var(--bg-surface-subtle); }
+.bg-surface-hover:hover { background-color: var(--bg-surface-hover); }
+.bg-sidebar { background-color: var(--bg-sidebar); }
+.bg-input { background-color: var(--bg-input); }
+
+.border-subtle { border-color: var(--border-subtle); }
+.border-default { border-color: var(--border-default); }
+.border-strong { border-color: var(--border-strong); }
+
+.text-main { color: var(--text-primary); }
+.text-sub { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+
+.bg-accent-main { background-color: var(--accent-primary); }
+.hover\:bg-accent-main:hover { background-color: var(--accent-primary-hover); }
+.text-accent-main { color: var(--accent-primary); }
+.bg-accent-subtle { background-color: var(--accent-subtle); }
+.text-accent-subtle { color: var(--accent-subtle-text); }
+.text-accent-contrast { color: var(--accent-contrast); }
+
+.text-positive { color: var(--fin-positive); }
+.bg-positive-subtle { background-color: var(--fin-positive-subtle); }
+.text-negative { color: var(--fin-negative); }
+.bg-negative-subtle { background-color: var(--fin-negative-subtle); }
+.text-neutral { color: var(--fin-neutral); }

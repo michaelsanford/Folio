@@ -29,7 +29,7 @@ export const AccountIcon: React.FC<AccountIconProps> = ({
 }) => {
   const meta = getAccountTypeMeta(type);
   const effectiveIconId = icon || meta.defaultIcon || "wallet";
-  const effectiveColorHex = color || meta.defaultColor || "#6366F1";
+  const effectiveColorHex = color || meta.defaultColor || "#10B981";
   const swatch = getColorSwatch(effectiveColorHex);
 
   const IconComponent = ICON_MAP[effectiveIconId] || Wallet;
@@ -67,7 +67,7 @@ export const AccountIcon: React.FC<AccountIconProps> = ({
         sizeClasses.container
       } ${swatch.twBg} ${swatch.twBorder} ${
         onClick || editable
-          ? "cursor-pointer group-hover:scale-105 group-hover:ring-2 group-hover:ring-indigo-500/50"
+          ? "cursor-pointer group-hover:scale-105 group-hover:ring-2 group-hover:ring-accent-main/40"
           : ""
       }`}
       style={{
@@ -81,7 +81,7 @@ export const AccountIcon: React.FC<AccountIconProps> = ({
       />
       {editable && (
         <div
-          className="absolute -bottom-1 -right-1 rounded-full bg-slate-900 border border-slate-700 text-indigo-400 p-0.5 shadow-xs transition-colors group-hover:bg-indigo-600 group-hover:text-white"
+          className="absolute -bottom-1 -right-1 rounded-full bg-surface border border-default text-accent-main p-0.5 shadow-xs transition-colors group-hover:bg-accent-main group-hover:text-accent-contrast"
           title="Customize glyph & color"
         >
           <Palette className="w-2.5 h-2.5" />

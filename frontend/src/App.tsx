@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { ThemeProvider } from "./context/ThemeContext";
 import { AppLayout } from "./components/layout/AppLayout";
 import type { NavTab } from "./components/layout/AppLayout";
 import { DashboardView } from "./components/dashboard/DashboardView";
@@ -12,9 +13,9 @@ import { AccountsManagerView } from "./components/accounts/AccountsManagerView";
 import { LockScreen } from "./components/auth/LockScreen";
 import type { Account, Category, DashboardAnalyticsResponse } from "./types";
 import { api, setOnUnauthorized } from "./services/api";
-import { Sparkles } from "lucide-react";
+import { Landmark, ArrowRight } from "lucide-react";
 
-export function App() {
+function AppContent() {
   const [activeTab, setActiveTab] = useState<NavTab>("dashboard");
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -55,7 +56,6 @@ export function App() {
       });
     }
   };
-
 
   const loadAllData = async () => {
     try {
@@ -132,9 +132,6 @@ export function App() {
         escrow_payment: 0.0,
       });
 
-      // Seed a few merchant rules. Each slug below exists in the default category
-      // seed -- an unknown slug would silently create a rule with an empty
-      // category_id, which is exactly what the old "coffee" entry did.
       const demoRules: Array<{
         slug: string;
         pattern: string;
@@ -174,8 +171,8 @@ export function App() {
   // Auth Loading
   if (authStatus.is_loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mr-3"></div>
+      <div className="min-h-screen bg-canvas flex items-center justify-center text-muted">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-main mr-3"></div>
         Authenticating session...
       </div>
     );
@@ -194,30 +191,31 @@ export function App() {
     >
       {/* Empty State Banner if no accounts configured */}
       {accounts.length === 0 && !isLoading && (
-        <div className="mb-6 p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400">
-              <Sparkles className="w-5 h-5" />
+            <div className="p-2.5 rounded-xl bg-accent-subtle text-accent-subtle">
+              <Landmark className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-sm font-semibold text-slate-100">Welcome to Folio!</div>
-              <div className="text-xs text-slate-400">
-                Get started by creating your bank accounts or load standard demo accounts.
+              <div className="text-sm font-bold text-main">Welcome to Folio</div>
+              <div className="text-xs text-muted mt-0.5">
+                Get started by creating your financial accounts or load sample data.
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               onClick={() => setActiveTab("accounts")}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
+              className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-surface-subtle hover:bg-surface-hover border border-default text-sub text-xs font-semibold transition-all"
             >
               Add Custom Account
             </button>
             <button
               onClick={handleSeedDemoData}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-500/20"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs transition-all"
             >
-              Load Demo Accounts
+              <span>Load Demo Accounts</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -271,6 +269,14 @@ export function App() {
         />
       )}
     </AppLayout>
+  );
+}
+
+export function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }
 
