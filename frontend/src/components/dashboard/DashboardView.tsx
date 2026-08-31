@@ -2,14 +2,14 @@ import React from "react";
 import {
   PiggyBank,
   DollarSign,
-  CreditCard,
-  Building2,
   ArrowUpRight,
   ArrowDownRight,
+  Wallet,
 } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
 import { AccountIcon } from "../common/AccountIcon";
 import { isAssetAccount } from "../../constants/canadianAccountTypes";
+import { useChartTheme } from "../../hooks/useChartTheme";
 import type { Account, DashboardAnalyticsResponse } from "../../types";
 
 interface DashboardViewProps {
@@ -23,10 +23,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   accounts,
   onNavigate,
 }) => {
+  const chartTheme = useChartTheme();
+
   if (!analytics) {
     return (
-      <div className="flex items-center justify-center h-64 text-slate-400">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mr-3"></div>
+      <div className="flex items-center justify-center h-64 text-muted">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-main mr-3"></div>
         Loading dashboard metrics...
       </div>
     );
@@ -40,6 +42,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     tooltip: {
       trigger: "item",
       triggerOn: "mousemove",
+      backgroundColor: chartTheme.tooltipBg,
+      borderColor: chartTheme.tooltipBorder,
+      textStyle: { color: chartTheme.tooltipText, fontSize: 12 },
       formatter: (params: any) => {
         if (params.dataType === "edge") {
           return `${params.data.source} → ${params.data.target}: <b>$${Number(params.data.value).toLocaleString()}</b>`;
@@ -60,7 +65,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         })),
         lineStyle: { color: "gradient", curveness: 0.5, opacity: 0.45 },
         label: {
-          color: "#94a3b8",
+          color: chartTheme.textColor,
           fontSize: 12,
           fontWeight: 500,
         },
@@ -77,13 +82,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     backgroundColor: "transparent",
     tooltip: {
       trigger: "axis",
-      backgroundColor: "#0f172a",
-      borderColor: "#334155",
-      textStyle: { color: "#f8fafc", fontSize: 12 },
+      backgroundColor: chartTheme.tooltipBg,
+      borderColor: chartTheme.tooltipBorder,
+      textStyle: { color: chartTheme.tooltipText, fontSize: 12 },
       formatter: (params: any[]) => {
         const item = params[0];
         if (!item) return "";
-        return `<div class="font-medium text-slate-300">${item.name}</div><div class="text-indigo-400 mt-1 font-bold">Net Worth: $${Number(item.value).toLocaleString()}</div>`;
+        return `<div><div style="font-weight: 500; color: ${chartTheme.subtleTextColor};">${item.name}</div><div style="color: ${chartTheme.accentColor}; margin-top: 4px; font-weight: bold; font-family: monospace;">Net Worth: $${Number(item.value).toLocaleString()}</div></div>`;
       },
     },
     grid: {
@@ -96,16 +101,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     xAxis: {
       type: "category",
       data: net_worth_history.map((h) => h.date),
-      axisLine: { lineStyle: { color: "#334155" } },
-      axisLabel: { color: "#64748b", fontSize: 11 },
+      axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
+      axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11 },
       boundaryGap: false,
     },
     yAxis: {
       type: "value",
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: "#334155", opacity: 0.3 } },
+      splitLine: { lineStyle: { color: chartTheme.gridLineColor } },
       axisLabel: {
-        color: "#64748b",
+        color: chartTheme.subtleTextColor,
         fontSize: 11,
         formatter: (val: number) => `$${Math.round(val / 1000)}k`,
       },
@@ -117,8 +122,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         smooth: true,
         showSymbol: false,
         data: net_worth_history.map((h) => h.net_worth),
-        itemStyle: { color: "#6366f1" },
-        lineStyle: { width: 2.5, color: "#6366f1" },
+        itemStyle: { color: chartTheme.accentColor },
+        lineStyle: { width: 2.5, color: chartTheme.accentColor },
         areaStyle: {
           color: {
             type: "linear",
@@ -127,8 +132,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: "rgba(99, 102, 241, 0.4)" },
-              { offset: 1, color: "rgba(99, 102, 241, 0.0)" },
+              { offset: 0, color: chartTheme.accentGradient.start },
+              { offset: 1, color: chartTheme.accentGradient.end },
             ],
           },
         },
@@ -141,75 +146,79 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Top Banner KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Net Worth */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg relative overflow-hidden">
+        <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
               Net Worth
             </span>
-            <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
+            <div className="p-2 rounded-xl bg-accent-subtle text-accent-subtle">
               <DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
-          <div className="mt-2 sm:mt-3 text-xl sm:text-2xl font-bold text-slate-100">
+          <div className="mt-2 sm:mt-3 text-xl sm:text-2xl font-bold font-mono tracking-tight text-main">
             ${analytics.current_net_worth.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-          <div className="mt-1.5 flex flex-wrap items-center text-xs text-slate-400 gap-1.5 sm:gap-2">
-            <span className="text-emerald-400 font-medium">Assets: ${analytics.total_assets.toLocaleString()}</span>
+          <div className="mt-1.5 flex flex-wrap items-center text-xs font-mono text-muted gap-1.5 sm:gap-2">
+            <span className="text-positive font-medium">Assets: ${analytics.total_assets.toLocaleString()}</span>
             <span>•</span>
-            <span className="text-rose-400 font-medium">Debt: ${analytics.total_liabilities.toLocaleString()}</span>
+            <span className="text-negative font-medium">Debt: ${analytics.total_liabilities.toLocaleString()}</span>
           </div>
         </div>
 
         {/* Monthly Income */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+        <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
               Monthly Income
             </span>
-            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+            <div className="p-2 rounded-xl bg-positive-subtle text-positive">
               <ArrowUpRight className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
-          <div className="mt-2 sm:mt-3 text-xl sm:text-2xl font-bold text-emerald-400">
+          <div className="mt-2 sm:mt-3 text-xl sm:text-2xl font-bold font-mono text-positive">
             +${monthly_cash_flow.total_income.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-          <div className="mt-1.5 text-xs text-slate-400">Current calendar month</div>
+          <div className="mt-1.5 text-xs text-muted">Current calendar month</div>
         </div>
 
         {/* Monthly Expenses */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+        <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
               Monthly Expenses
             </span>
-            <div className="p-2 rounded-xl bg-rose-500/10 text-rose-400">
+            <div className="p-2 rounded-xl bg-negative-subtle text-negative">
               <ArrowDownRight className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
-          <div className="mt-2 sm:mt-3 text-xl sm:text-2xl font-bold text-rose-400">
+          <div className="mt-2 sm:mt-3 text-xl sm:text-2xl font-bold font-mono text-negative">
             -${monthly_cash_flow.total_expenses.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-          <div className="mt-1.5 text-xs text-slate-400">Fixed + Variable Outflows</div>
+          <div className="mt-1.5 text-xs text-muted">Fixed + Variable Outflows</div>
         </div>
 
         {/* Net Savings & Rate */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+        <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
               Net Savings
             </span>
-            <div className="p-2 rounded-xl bg-violet-500/10 text-violet-400">
+            <div className="p-2 rounded-xl bg-accent-subtle text-accent-subtle">
               <PiggyBank className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
-          <div className="mt-2 sm:mt-3 text-xl sm:text-2xl font-bold text-violet-300">
+          <div
+            className={`mt-2 sm:mt-3 text-xl sm:text-2xl font-bold font-mono ${
+              monthly_cash_flow.net_savings >= 0 ? "text-positive" : "text-negative"
+            }`}
+          >
             ${monthly_cash_flow.net_savings.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           <div className="mt-1.5 flex items-center gap-1.5 text-xs">
-            <span className="px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 font-semibold">
+            <span className="px-2 py-0.5 rounded bg-accent-subtle text-accent-subtle font-mono font-semibold">
               {monthly_cash_flow.savings_rate}%
             </span>
-            <span className="text-slate-400">Savings Rate</span>
+            <span className="text-muted">Savings Rate</span>
           </div>
         </div>
       </div>
@@ -217,11 +226,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Sankey Flow & Net Worth Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Cash Flow Sankey Diagram (2 cols) */}
-        <div className="lg:col-span-2 p-4 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-xl">
+        <div className="lg:col-span-2 p-4 sm:p-6 rounded-2xl bg-surface border border-default shadow-xs">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-sm sm:text-base font-semibold text-slate-200">Cash Flow Stream (Sankey)</h2>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <h2 className="text-sm sm:text-base font-bold text-main">Cash Flow Stream (Sankey)</h2>
+              <p className="text-xs text-muted mt-0.5">
                 Visual flow of income into category expenditures and net savings
               </p>
             </div>
@@ -230,11 +239,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {sankey.links.length > 0 ? (
             <LazyChart option={sankeyOptions} className="h-72" />
           ) : (
-            <div className="h-72 flex flex-col items-center justify-center text-slate-500 text-sm">
+            <div className="h-72 flex flex-col items-center justify-center text-muted text-sm">
               <p>No income/expense flow recorded yet for this month.</p>
               <button
                 onClick={() => onNavigate("ingestion")}
-                className="mt-3 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium"
+                className="mt-3 px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs"
               >
                 Import Bank Statements
               </button>
@@ -243,9 +252,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Category Spending Breakdown (1 col) */}
-        <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-xl flex flex-col">
-          <h2 className="text-base font-semibold text-slate-200 mb-1">Top Expenses by Category</h2>
-          <p className="text-xs text-slate-400 mb-4">Current month spending distribution</p>
+        <div className="p-6 rounded-2xl bg-surface border border-default shadow-xs flex flex-col">
+          <h2 className="text-base font-bold text-main mb-1">Top Expenses by Category</h2>
+          <p className="text-xs text-muted mb-4">Current month spending distribution</p>
 
           <div className="flex-1 space-y-3 overflow-y-auto max-h-72 pr-1">
             {category_spending.length > 0 ? (
@@ -254,19 +263,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
                       <span
-                        className="w-2.5 h-2.5 rounded-full"
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
                         style={{ backgroundColor: cat.category_color }}
                       ></span>
-                      <span className="font-medium text-slate-300">{cat.category_name}</span>
+                      <span className="font-medium text-main truncate">{cat.category_name}</span>
                     </div>
-                    <div className="font-semibold text-slate-200">
+                    <div className="font-semibold font-mono text-sub shrink-0">
                       ${cat.amount.toLocaleString()}{" "}
-                      <span className="text-[10px] text-slate-400 font-normal">
+                      <span className="text-[10px] text-muted font-normal">
                         ({cat.percentage}%)
                       </span>
                     </div>
                   </div>
-                  <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                  <div className="w-full h-1.5 rounded-full bg-surface-subtle overflow-hidden">
                     <div
                       className="h-full rounded-full transition-all duration-500"
                       style={{
@@ -278,7 +287,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               ))
             ) : (
-              <div className="h-full flex items-center justify-center text-slate-500 text-xs">
+              <div className="h-full flex items-center justify-center text-muted text-xs">
                 No expense transactions this month.
               </div>
             )}
@@ -289,32 +298,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Net Worth Progression & Accounts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Net Worth Chart */}
-        <div className="lg:col-span-2 p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-xl">
-          <h2 className="text-base font-semibold text-slate-200 mb-1">Net Worth Progression</h2>
-          <p className="text-xs text-slate-400 mb-4">Historical trajectory of assets vs liabilities</p>
+        <div className="lg:col-span-2 p-6 rounded-2xl bg-surface border border-default shadow-xs">
+          <h2 className="text-base font-bold text-main mb-1">Net Worth Progression</h2>
+          <p className="text-xs text-muted mb-4">Historical trajectory of assets vs liabilities</p>
 
           <LazyChart option={netWorthOptions} className="h-64" />
         </div>
 
         {/* Managed Accounts Summary */}
-        <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-xl flex flex-col">
+        <div className="p-6 rounded-2xl bg-surface border border-default shadow-xs flex flex-col">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-slate-200">Your Accounts</h2>
+            <h2 className="text-base font-bold text-main">Your Accounts</h2>
             <button
               onClick={() => onNavigate("accounts")}
-              className="text-xs text-indigo-400 hover:text-indigo-300 font-medium"
+              className="text-xs text-accent-main hover:underline font-semibold"
             >
               View All
             </button>
           </div>
 
-          <div className="space-y-3 overflow-y-auto max-h-64 pr-1">
+          <div className="space-y-2.5 overflow-y-auto max-h-64 pr-1">
             {accounts.map((acc) => {
               const isAsset = isAssetAccount(acc.type);
               return (
                 <div
                   key={acc.id}
-                  className="p-3 rounded-xl bg-slate-800/40 border border-slate-700/40 flex items-center justify-between"
+                  className="p-3 rounded-xl bg-surface-subtle border border-subtle flex items-center justify-between transition-colors hover:border-default"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <AccountIcon
@@ -324,8 +333,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       size="md"
                     />
                     <div className="min-w-0">
-                      <div className="text-xs font-semibold text-slate-200 truncate">{acc.name}</div>
-                      <div className="text-[10px] text-slate-400 truncate">
+                      <div className="text-xs font-semibold text-main truncate">{acc.name}</div>
+                      <div className="text-[10px] text-muted truncate">
                         {acc.institution} {acc.account_number_mask ? `(${acc.account_number_mask})` : ""}
                       </div>
                     </div>
@@ -335,16 +344,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <div
                       className={`text-xs font-bold font-mono ${
                         isAsset
-                          ? "text-emerald-400"
+                          ? "text-positive"
                           : acc.current_balance < 0
-                          ? "text-rose-400"
-                          : "text-slate-200"
+                          ? "text-negative"
+                          : "text-main"
                       }`}
                     >
                       ${acc.current_balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                     {acc.interest_rate ? (
-                      <div className="text-[10px] text-slate-400">{acc.interest_rate}% APR</div>
+                      <div className="text-[10px] text-muted font-mono">{acc.interest_rate}% APR</div>
                     ) : null}
                   </div>
                 </div>

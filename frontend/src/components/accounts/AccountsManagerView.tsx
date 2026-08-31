@@ -38,7 +38,6 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
     AccountCategoryGroup | "ALL" | "ASSETS" | "LIABILITIES"
   >("ALL");
 
-  // State for direct glyph customization from card
   const [directCustomizingAccount, setDirectCustomizingAccount] = useState<Account | null>(null);
 
   const [formData, setFormData] = useState<{
@@ -61,7 +60,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
     institution: "",
     account_number_mask: "",
     icon: "wallet",
-    color: "#3B82F6",
+    color: "#10B981",
     current_balance: 0.0,
     credit_limit: 0.0,
     interest_rate: 0.0,
@@ -123,63 +122,96 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
     }));
   };
 
-  const handleDirectGlyphSave = async (icon: string, color: string) => {
-    if (!directCustomizingAccount) return;
-    try {
-      await api.updateAccount(directCustomizingAccount.id, { icon, color });
-      setDirectCustomizingAccount(null);
-      onAccountsModified();
-    } catch (err: any) {
-      alert(`Failed to update glyph: ${err.message}`);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload: Partial<Account> = {
-        name: formData.name,
-        type: formData.type,
-        institution: formData.institution || undefined,
-        account_number_mask: formData.account_number_mask || undefined,
-        icon: formData.icon || undefined,
-        color: formData.color || undefined,
-        current_balance: Number(formData.current_balance),
-        credit_limit:
-          formData.type === "CREDIT_CARD" ? Number(formData.credit_limit) : undefined,
-        interest_rate: Number(formData.interest_rate) || undefined,
-        loan_term_months: Number(formData.loan_term_months) || undefined,
-        loan_original_principal:
-          Number(formData.loan_original_principal) || undefined,
-        monthly_payment: Number(formData.monthly_payment) || undefined,
-        escrow_payment: Number(formData.escrow_payment) || undefined,
-      };
-
       if (editingAccount) {
-        await api.updateAccount(editingAccount.id, payload);
+        await api.updateAccount(editingAccount.id, {
+          name: formData.name,
+          institution: formData.institution || undefined,
+          account_number_mask: formData.account_number_mask || undefined,
+          icon: formData.icon || null,
+          color: formData.color || null,
+          current_balance: Number(formData.current_balance),
+          credit_limit:
+            formData.type === "CREDIT_CARD" ? Number(formData.credit_limit) : undefined,
+          interest_rate: isLoanAccount(formData.type)
+            ? Number(formData.interest_rate)
+            : undefined,
+          loan_term_months: isLoanAccount(formData.type)
+            ? Number(formData.loan_term_months)
+            : undefined,
+          loan_original_principal: isLoanAccount(formData.type)
+            ? Number(formData.loan_original_principal)
+            : undefined,
+          monthly_payment: isLoanAccount(formData.type)
+            ? Number(formData.monthly_payment)
+            : undefined,
+          escrow_payment:
+            formData.type === "MORTGAGE" ? Number(formData.escrow_payment) : undefined,
+        });
       } else {
-        await api.createAccount(payload);
+        await api.createAccount({
+          name: formData.name,
+          type: formData.type,
+          institution: formData.institution || undefined,
+          account_number_mask: formData.account_number_mask || undefined,
+          currency: "CAD",
+          icon: formData.icon || null,
+          color: formData.color || null,
+          current_balance: Number(formData.current_balance),
+          credit_limit:
+            formData.type === "CREDIT_CARD" ? Number(formData.credit_limit) : undefined,
+          interest_rate: isLoanAccount(formData.type)
+            ? Number(formData.interest_rate)
+            : undefined,
+          loan_term_months: isLoanAccount(formData.type)
+            ? Number(formData.loan_term_months)
+            : undefined,
+          loan_original_principal: isLoanAccount(formData.type)
+            ? Number(formData.loan_original_principal)
+            : undefined,
+          monthly_payment: isLoanAccount(formData.type)
+            ? Number(formData.monthly_payment)
+            : undefined,
+          escrow_payment:
+            formData.type === "MORTGAGE" ? Number(formData.escrow_payment) : undefined,
+        });
       }
-
       setIsModalOpen(false);
       onAccountsModified();
     } catch (err: any) {
-      alert(`Operation failed: ${err.message}`);
+      alert(`Error saving account: ${err.message}`);
+    }
+  };
+
+  const handleDirectGlyphSave = async (newIcon: string, newColor: string) => {
+    if (!directCustomizingAccount) return;
+    try {
+      await api.updateAccount(directCustomizingAccount.id, {
+        icon: newIcon,
+        color: newColor,
+      });
+      setDirectCustomizingAccount(null);
+      onAccountsModified();
+    } catch (err: any) {
+      alert(`Error saving customized glyph: ${err.message}`);
     }
   };
 
   const handleDelete = async (id: string) => {
     if (
       !confirm(
-        "Are you sure you want to delete this account and all associated transactions?"
+        "Are you sure you want to delete this account? Transactions associated may be affected."
       )
-    )
+    ) {
       return;
+    }
     try {
       await api.deleteAccount(id);
       onAccountsModified();
     } catch (err: any) {
-      alert(`Delete failed: ${err.message}`);
+      alert(`Failed to delete account: ${err.message}`);
     }
   };
 
@@ -198,29 +230,49 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
   }> = [
     { id: "ALL", label: "All Accounts", count: accounts.length },
     {
+      id: "ASSETS",
+      label: "Assets",
+      count: accounts.filter((a) => isAssetAccount(a.type)).length,
+    },
+    {
+      id: "LIABILITIES",
+      label: "Liabilities",
+      count: accounts.filter((a) => !isAssetAccount(a.type)).length,
+    },
+    {
       id: "REGISTERED",
-      label: "Registered (CRA)",
-      count: accounts.filter((a) => getAccountTypeMeta(a.type).category === "REGISTERED").length,
+      label: "Registered (TFSA/RRSP)",
+      count: accounts.filter(
+        (a) => getAccountTypeMeta(a.type).category === "REGISTERED"
+      ).length,
+    },
+    {
+      id: "INVESTMENT",
+      label: "Non-Reg Investments",
+      count: accounts.filter(
+        (a) => getAccountTypeMeta(a.type).category === "INVESTMENT"
+      ).length,
     },
     {
       id: "CASH",
       label: "Cash & Banking",
-      count: accounts.filter((a) => getAccountTypeMeta(a.type).category === "CASH").length,
-    },
-    {
-      id: "INVESTMENT",
-      label: "Investments",
-      count: accounts.filter((a) => getAccountTypeMeta(a.type).category === "INVESTMENT").length,
+      count: accounts.filter(
+        (a) => getAccountTypeMeta(a.type).category === "CASH"
+      ).length,
     },
     {
       id: "DEBT",
       label: "Loans & Debt",
-      count: accounts.filter((a) => getAccountTypeMeta(a.type).category === "DEBT").length,
+      count: accounts.filter(
+        (a) => getAccountTypeMeta(a.type).category === "DEBT"
+      ).length,
     },
     {
       id: "ASSET",
       label: "Physical Assets",
-      count: accounts.filter((a) => getAccountTypeMeta(a.type).category === "ASSET").length,
+      count: accounts.filter(
+        (a) => getAccountTypeMeta(a.type).category === "ASSET"
+      ).length,
     },
   ];
 
@@ -234,20 +286,20 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header & Net Worth Overview */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-surface border border-default shadow-xs">
         <div>
-          <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-3">
-            <Wallet className="w-6 h-6 text-indigo-400" />
+          <h1 className="text-2xl font-bold text-main flex items-center gap-3">
+            <Wallet className="w-6 h-6 text-accent-main" />
             Accounts & Portfolios
           </h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="text-sm text-muted mt-1">
             Manage Canadian registered accounts (TFSA, RRSP, FHSA, RESP), deposit accounts, mortgages, and loans.
           </p>
         </div>
 
         <button
           onClick={handleOpenCreate}
-          className="flex items-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-500/20 transition-all hover:scale-[1.02]"
+          className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-semibold shadow-xs transition-all cursor-pointer"
         >
           <Plus className="w-4 h-4" /> Add Account
         </button>
@@ -255,23 +307,23 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
-          <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Total Assets</span>
-          <div className="text-2xl font-bold text-emerald-400 font-mono mt-1.5">
+        <div className="p-5 rounded-2xl bg-surface border border-default shadow-xs">
+          <span className="text-xs text-muted font-semibold uppercase tracking-wider">Total Assets</span>
+          <div className="text-2xl font-bold text-positive font-mono mt-1.5">
             ${totalAssets.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
-          <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Total Liabilities & Debt</span>
-          <div className="text-2xl font-bold text-rose-400 font-mono mt-1.5">
+        <div className="p-5 rounded-2xl bg-surface border border-default shadow-xs">
+          <span className="text-xs text-muted font-semibold uppercase tracking-wider">Total Liabilities & Debt</span>
+          <div className="text-2xl font-bold text-negative font-mono mt-1.5">
             ${totalLiabilities.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
-          <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Net Position</span>
+        <div className="p-5 rounded-2xl bg-surface border border-default shadow-xs">
+          <span className="text-xs text-muted font-semibold uppercase tracking-wider">Net Position</span>
           <div
             className={`text-2xl font-bold font-mono mt-1.5 ${
-              totalAssets - totalLiabilities >= 0 ? "text-indigo-400" : "text-rose-400"
+              totalAssets - totalLiabilities >= 0 ? "text-positive" : "text-negative"
             }`}
           >
             ${(totalAssets - totalLiabilities).toLocaleString("en-US", {
@@ -283,23 +335,23 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
       </div>
 
       {/* Filter Category Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1.5 no-scrollbar border-b border-slate-800/80">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1.5 no-scrollbar border-b border-subtle">
         {filterTabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveFilterCategory(tab.id)}
-            className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
               activeFilterCategory === tab.id
-                ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20"
-                : "bg-slate-900/50 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800/80"
+                ? "bg-accent-subtle text-accent-subtle border border-accent-main/40 shadow-xs"
+                : "bg-surface hover:bg-surface-hover text-sub border border-default"
             }`}
           >
             <span>{tab.label}</span>
             <span
-              className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+              className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
                 activeFilterCategory === tab.id
-                  ? "bg-indigo-700/80 text-white"
-                  : "bg-slate-800 text-slate-400"
+                  ? "bg-accent-main text-accent-contrast"
+                  : "bg-surface-subtle text-muted"
               }`}
             >
               {tab.count}
@@ -319,12 +371,11 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
             return (
               <div
                 key={acc.id}
-                className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 shadow-lg flex flex-col justify-between transition-all group"
+                className="p-5 rounded-2xl bg-surface border border-default hover:border-strong shadow-xs flex flex-col justify-between transition-all group"
               >
                 <div>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3.5 min-w-0">
-                      {/* Built-in Clickable Glyph */}
                       <AccountIcon
                         type={acc.type}
                         icon={acc.icon}
@@ -335,36 +386,36 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                         title="Click glyph to customize icon & color"
                       />
                       <div className="min-w-0">
-                        <h3 className="text-base font-bold text-slate-100 truncate">
+                        <h3 className="text-base font-bold text-main truncate">
                           {acc.name}
                         </h3>
-                        <p className="text-sm text-slate-400 truncate mt-0.5">
+                        <p className="text-xs text-muted truncate mt-0.5">
                           {acc.institution || meta.shortName}{" "}
                           {acc.account_number_mask ? `(${acc.account_number_mask})` : ""}
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         type="button"
                         title="View Canadian Rules"
                         onClick={() => setRuleModalType(acc.type)}
-                        className="p-1.5 text-slate-400 hover:text-indigo-400 rounded-lg transition-colors"
+                        className="p-1.5 text-muted hover:text-accent-main rounded-lg transition-colors cursor-pointer"
                       >
                         <Info className="w-4 h-4" />
                       </button>
                       <button
                         type="button"
                         onClick={() => handleOpenEdit(acc)}
-                        className="p-1.5 text-slate-400 hover:text-indigo-400 rounded-lg transition-colors"
+                        className="p-1.5 text-muted hover:text-accent-main rounded-lg transition-colors cursor-pointer"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDelete(acc.id)}
-                        className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg transition-colors"
+                        className="p-1.5 text-muted hover:text-negative rounded-lg transition-colors cursor-pointer"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -374,7 +425,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                   {/* Badge */}
                   <div className="mt-3.5 flex items-center gap-2 flex-wrap">
                     <span
-                      className="px-2.5 py-0.5 rounded-md text-xs font-semibold border truncate max-w-full"
+                      className="px-2.5 py-0.5 rounded-md text-xs font-semibold border truncate max-w-full font-mono"
                       style={{
                         backgroundColor: `${effectiveColor}15`,
                         color: effectiveColor,
@@ -383,23 +434,23 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                     >
                       {meta.badge}
                     </span>
-                    <span className="text-xs text-slate-400 font-medium">
+                    <span className="text-xs text-muted font-medium">
                       {ACCOUNT_CATEGORY_LABELS[meta.category]}
                     </span>
                   </div>
                 </div>
 
                 {/* Balance & Financial Details */}
-                <div className="mt-5 pt-4 border-t border-slate-800/80 space-y-2">
+                <div className="mt-5 pt-4 border-t border-subtle space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-400 font-medium">Current Balance</span>
+                    <span className="text-xs text-muted font-medium">Current Balance</span>
                     <span
-                      className={`text-xl font-bold font-mono ${
+                      className={`text-lg font-bold font-mono ${
                         isAsset
-                          ? "text-emerald-400"
+                          ? "text-positive"
                           : acc.current_balance < 0
-                          ? "text-rose-400"
-                          : "text-slate-100"
+                          ? "text-negative"
+                          : "text-main"
                       }`}
                     >
                       ${acc.current_balance.toLocaleString("en-US", {
@@ -410,16 +461,16 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                   </div>
 
                   {acc.interest_rate ? (
-                    <div className="flex items-center justify-between text-xs text-slate-400">
+                    <div className="flex items-center justify-between text-xs text-muted">
                       <span>Interest Rate (APR)</span>
-                      <span className="font-semibold text-amber-400 text-sm">{acc.interest_rate}%</span>
+                      <span className="font-semibold font-mono text-accent-main text-xs">{acc.interest_rate}%</span>
                     </div>
                   ) : null}
 
                   {acc.credit_limit ? (
-                    <div className="flex items-center justify-between text-xs text-slate-400">
+                    <div className="flex items-center justify-between text-xs text-muted">
                       <span>Credit Limit</span>
-                      <span className="font-mono text-slate-300 text-sm font-semibold">
+                      <span className="font-mono text-sub text-xs font-semibold">
                         ${acc.credit_limit.toLocaleString()}
                       </span>
                     </div>
@@ -430,11 +481,11 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
           })}
         </div>
       ) : (
-        <div className="p-12 rounded-2xl bg-slate-900/40 border border-slate-800 text-center space-y-3">
-          <p className="text-slate-400 text-sm">No accounts found in this category.</p>
+        <div className="p-12 rounded-2xl bg-surface border border-default text-center space-y-3">
+          <p className="text-muted text-sm">No accounts found in this category.</p>
           <button
             onClick={handleOpenCreate}
-            className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold inline-flex items-center gap-2"
+            className="px-5 py-2.5 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold inline-flex items-center gap-2 cursor-pointer shadow-xs"
           >
             <Plus className="w-4 h-4" /> Create Account
           </button>
@@ -443,17 +494,17 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
 
       {/* Create / Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <form
             onSubmit={handleSubmit}
-            className="w-full max-w-xl rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-5 max-h-[92vh] overflow-y-auto"
+            className="w-full max-w-xl rounded-2xl bg-surface border border-default shadow-2xl p-6 space-y-5 max-h-[92vh] overflow-y-auto"
           >
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div className="flex items-center justify-between border-b border-subtle pb-4">
               <div>
-                <h3 className="text-lg font-bold text-slate-100">
+                <h3 className="text-lg font-bold text-main">
                   {editingAccount ? "Edit Account" : "Add New Account"}
                 </h3>
-                <p className="text-sm text-slate-400 mt-0.5">
+                <p className="text-xs text-muted mt-0.5">
                   Configure Canadian account type, details, and click the glyph to customize its palette
                 </p>
               </div>
@@ -461,7 +512,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1"
+                className="text-muted hover:text-main p-1"
               >
                 ✕
               </button>
@@ -470,7 +521,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
             <div className="space-y-4 text-sm">
               {/* Account Type Picker */}
               <div>
-                <label className="block text-slate-300 mb-1.5 font-semibold text-xs uppercase tracking-wider">
+                <label className="block text-muted mb-1.5 font-semibold text-xs uppercase tracking-wider">
                   Canadian Account Type
                 </label>
                 <AccountTypePicker
@@ -481,7 +532,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
 
               {/* Account Name with Integrated Glyph Trigger */}
               <div>
-                <label className="block text-slate-300 mb-1.5 font-semibold text-xs uppercase tracking-wider">
+                <label className="block text-muted mb-1.5 font-semibold text-xs uppercase tracking-wider">
                   Account Name & Custom Glyph
                 </label>
                 <div className="flex items-center gap-3.5">
@@ -500,7 +551,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                       placeholder="e.g. Wealthsimple TFSA or RBC Chequing"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-800/90 border border-slate-700 rounded-xl text-slate-100 text-sm focus:outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                      className="w-full px-4 py-2.5 bg-input border border-default rounded-xl text-main text-sm focus:outline-hidden focus:ring-1 focus:ring-accent-main"
                       required
                     />
                   </div>
@@ -510,7 +561,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
               {/* Institution & Account Mask */}
               <div className="grid grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-slate-300 mb-1.5 font-semibold text-xs uppercase tracking-wider">
+                  <label className="block text-muted mb-1.5 font-semibold text-xs uppercase tracking-wider">
                     Institution
                   </label>
                   <InstitutionAutocomplete
@@ -519,7 +570,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-300 mb-1.5 font-semibold text-xs uppercase tracking-wider">
+                  <label className="block text-muted mb-1.5 font-semibold text-xs uppercase tracking-wider">
                     Account Mask
                   </label>
                   <input
@@ -529,14 +580,14 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                     onChange={(e) =>
                       setFormData({ ...formData, account_number_mask: e.target.value })
                     }
-                    className="w-full px-4 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-slate-100 text-sm"
+                    className="w-full px-4 py-2 bg-input border border-default rounded-xl text-main text-sm font-mono"
                   />
                 </div>
               </div>
 
               {/* Balance */}
               <div>
-                <label className="block text-slate-300 mb-1.5 font-semibold text-xs uppercase tracking-wider">
+                <label className="block text-muted mb-1.5 font-semibold text-xs uppercase tracking-wider">
                   Current Balance ($)
                 </label>
                 <input
@@ -549,14 +600,14 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                       current_balance: parseFloat(e.target.value) || 0,
                     })
                   }
-                  className="w-full px-4 py-3 bg-slate-800/90 border border-slate-700 rounded-xl text-slate-100 text-sm font-mono"
+                  className="w-full px-4 py-2.5 bg-input border border-default rounded-xl text-main text-sm font-mono"
                 />
               </div>
 
               {/* Credit Limit for Credit Cards */}
               {formData.type === "CREDIT_CARD" && (
                 <div>
-                  <label className="block text-slate-300 mb-1.5 font-semibold text-xs uppercase tracking-wider">
+                  <label className="block text-muted mb-1.5 font-semibold text-xs uppercase tracking-wider">
                     Credit Limit ($)
                   </label>
                   <input
@@ -570,7 +621,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                         credit_limit: parseFloat(e.target.value) || 0,
                       })
                     }
-                    className="w-full px-4 py-3 bg-slate-800/90 border border-slate-700 rounded-xl text-slate-100 text-sm font-mono"
+                    className="w-full px-4 py-2.5 bg-input border border-default rounded-xl text-main text-sm font-mono"
                   />
                 </div>
               )}
@@ -580,7 +631,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                 <>
                   <div className="grid grid-cols-2 gap-3.5">
                     <div>
-                      <label className="block text-slate-300 mb-1.5 font-semibold text-xs uppercase tracking-wider">
+                      <label className="block text-muted mb-1.5 font-semibold text-xs uppercase tracking-wider">
                         Interest Rate (APR %)
                       </label>
                       <input
@@ -594,11 +645,11 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                             interest_rate: parseFloat(e.target.value) || 0,
                           })
                         }
-                        className="w-full px-4 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-slate-100 text-sm font-mono"
+                        className="w-full px-4 py-2 bg-input border border-default rounded-xl text-main text-sm font-mono"
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-300 mb-1.5 font-semibold text-xs uppercase tracking-wider">
+                      <label className="block text-muted mb-1.5 font-semibold text-xs uppercase tracking-wider">
                         Loan Term (Months)
                       </label>
                       <input
@@ -611,14 +662,14 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                             loan_term_months: parseInt(e.target.value) || 360,
                           })
                         }
-                        className="w-full px-4 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-slate-100 text-sm font-mono"
+                        className="w-full px-4 py-2 bg-input border border-default rounded-xl text-main text-sm font-mono"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3.5">
                     <div>
-                      <label className="block text-slate-300 mb-1.5 font-semibold text-xs uppercase tracking-wider">
+                      <label className="block text-muted mb-1.5 font-semibold text-xs uppercase tracking-wider">
                         Original Principal ($)
                       </label>
                       <input
@@ -632,11 +683,11 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                             loan_original_principal: parseFloat(e.target.value) || 0,
                           })
                         }
-                        className="w-full px-4 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-slate-100 text-sm font-mono"
+                        className="w-full px-4 py-2 bg-input border border-default rounded-xl text-main text-sm font-mono"
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-300 mb-1.5 font-semibold text-xs uppercase tracking-wider">
+                      <label className="block text-muted mb-1.5 font-semibold text-xs uppercase tracking-wider">
                         Monthly Payment ($)
                       </label>
                       <input
@@ -650,14 +701,14 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                             monthly_payment: parseFloat(e.target.value) || 0,
                           })
                         }
-                        className="w-full px-4 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-slate-100 text-sm font-mono"
+                        className="w-full px-4 py-2 bg-input border border-default rounded-xl text-main text-sm font-mono"
                       />
                     </div>
                   </div>
 
                   {formData.type === "MORTGAGE" && (
                     <div>
-                      <label className="block text-slate-300 mb-1.5 font-semibold text-xs uppercase tracking-wider">
+                      <label className="block text-muted mb-1.5 font-semibold text-xs uppercase tracking-wider">
                         Escrow Payment (Taxes & Insurance $)
                       </label>
                       <input
@@ -671,7 +722,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                             escrow_payment: parseFloat(e.target.value) || 0,
                           })
                         }
-                        className="w-full px-4 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-slate-100 text-sm font-mono"
+                        className="w-full px-4 py-2 bg-input border border-default rounded-xl text-main text-sm font-mono"
                       />
                     </div>
                   )}
@@ -679,17 +730,17 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
               )}
             </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+            <div className="flex justify-end gap-3 pt-4 border-t border-subtle">
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="px-5 py-2.5 rounded-xl border border-slate-700 text-slate-300 text-sm font-semibold hover:bg-slate-800 transition-colors"
+                className="px-5 py-2.5 rounded-xl border border-default text-sub text-xs font-semibold hover:bg-surface-hover transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-500/20 transition-all"
+                className="px-6 py-2.5 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs transition-all cursor-pointer"
               >
                 {editingAccount ? "Update Account" : "Create Account"}
               </button>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Landmark } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
 import { isLoanAccount } from "../../constants/canadianAccountTypes";
+import { useChartTheme } from "../../hooks/useChartTheme";
 import type { Account, AmortizationScheduleResponse } from "../../types";
 import { api } from "../../services/api";
 
@@ -10,6 +11,7 @@ interface LoanAmortizationViewProps {
 }
 
 export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ accounts }) => {
+  const chartTheme = useChartTheme();
   const loanAccounts = accounts.filter((a) => isLoanAccount(a.type));
 
   const [selectedLoanId, setSelectedLoanId] = useState<string>(
@@ -38,10 +40,10 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
 
   if (loanAccounts.length === 0) {
     return (
-      <div className="p-12 text-center rounded-2xl bg-slate-900/60 border border-slate-800">
-        <Landmark className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-        <h3 className="text-base font-medium text-slate-300">No Liability Accounts Found</h3>
-        <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+      <div className="p-12 text-center rounded-2xl bg-surface border border-default shadow-xs">
+        <Landmark className="w-12 h-12 text-muted mx-auto mb-3" />
+        <h3 className="text-base font-bold text-main">No Liability Accounts Found</h3>
+        <p className="text-xs text-muted max-w-sm mx-auto mt-1">
           Add a Mortgage, Vehicle Loan, or Liability account under Accounts to compute amortization schedules.
         </p>
       </div>
@@ -65,20 +67,20 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
-      backgroundColor: "#0f172a",
-      borderColor: "#334155",
-      textStyle: { color: "#f8fafc", fontSize: 12 },
+      backgroundColor: chartTheme.tooltipBg,
+      borderColor: chartTheme.tooltipBorder,
+      textStyle: { color: chartTheme.tooltipText, fontSize: 12 },
       formatter: (params: any[]) => {
         let total = 0;
-        let content = `<div class="font-semibold text-slate-200 mb-1">${params[0]?.name}</div>`;
+        let content = `<div style="font-weight: bold; color: ${chartTheme.tooltipText}; margin-bottom: 4px;">${params[0]?.name}</div>`;
         params.forEach((p) => {
           total += Number(p.value || 0);
-          content += `<div class="flex items-center justify-between gap-4 text-xs">
+          content += `<div style="display: flex; justify-content: space-between; gap: 16px; font-size: 12px; font-family: monospace;">
             <span style="color:${p.color}">● ${p.seriesName}:</span>
             <b>$${Number(p.value).toFixed(2)}</b>
           </div>`;
         });
-        content += `<div class="border-t border-slate-700 mt-1 pt-1 flex justify-between font-bold text-xs text-slate-100">
+        content += `<div style="border-top: 1px solid ${chartTheme.gridLineColor}; margin-top: 4px; padding-top: 4px; display: flex; justify-content: space-between; font-weight: bold; font-size: 12px; font-family: monospace;">
           <span>Total Payment:</span>
           <span>$${total.toFixed(2)}</span>
         </div>`;
@@ -88,7 +90,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
     legend: {
       top: "0%",
       right: "4%",
-      textStyle: { color: "#94a3b8", fontSize: 11 },
+      textStyle: { color: chartTheme.textColor, fontSize: 11 },
     },
     grid: {
       left: "2%",
@@ -100,15 +102,15 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
     xAxis: {
       type: "category",
       data: next12Months.map((m) => m.date),
-      axisLine: { lineStyle: { color: "#334155" } },
-      axisLabel: { color: "#64748b", fontSize: 11 },
+      axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
+      axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11 },
     },
     yAxis: {
       type: "value",
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: "#334155", opacity: 0.3 } },
+      splitLine: { lineStyle: { color: chartTheme.gridLineColor } },
       axisLabel: {
-        color: "#64748b",
+        color: chartTheme.subtleTextColor,
         fontSize: 11,
         formatter: (val: number) => `$${val}`,
       },
@@ -118,14 +120,14 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
         name: "Principal",
         type: "bar",
         stack: "total",
-        itemStyle: { color: "#3b82f6" },
+        itemStyle: { color: chartTheme.accentColor },
         data: next12Months.map((m) => m.Principal),
       },
       {
         name: "Interest",
         type: "bar",
         stack: "total",
-        itemStyle: { color: "#ef4444" },
+        itemStyle: { color: chartTheme.negativeColor },
         data: next12Months.map((m) => m.Interest),
       },
       ...(hasEscrow
@@ -134,7 +136,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
               name: "Escrow",
               type: "bar",
               stack: "total",
-              itemStyle: { color: "#8b5cf6" },
+              itemStyle: { color: chartTheme.neutralColor },
               data: next12Months.map((m) => m.Escrow),
             },
           ]
@@ -145,15 +147,15 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Account Selector Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-800">
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-subtle">
         {loanAccounts.map((acc) => (
           <button
             key={acc.id}
             onClick={() => setSelectedLoanId(acc.id)}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-2 ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer ${
               selectedLoanId === acc.id
-                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                : "bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-slate-800"
+                ? "bg-accent-main text-accent-contrast shadow-xs"
+                : "bg-surface text-sub hover:text-main border border-default hover:bg-surface-hover"
             }`}
           >
             <Landmark className="w-3.5 h-3.5" />
@@ -163,63 +165,63 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
       </div>
 
       {isLoading ? (
-        <div className="py-20 text-center text-slate-400">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto mb-3"></div>
+        <div className="py-20 text-center text-muted">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-main mx-auto mb-3"></div>
           Calculating amortization schedule...
         </div>
       ) : scheduleData ? (
         <>
           {/* Key Loan Metrics */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
-              <span className="text-xs text-slate-400 font-medium uppercase">Current Balance</span>
-              <div className="mt-2 text-xl sm:text-2xl font-bold text-slate-100">
+            <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs">
+              <span className="text-xs text-muted font-semibold uppercase tracking-wider">Current Balance</span>
+              <div className="mt-2 text-xl sm:text-2xl font-bold font-mono text-main">
                 ${(scheduleData.current_balance ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
               </div>
-              <div className="text-[11px] text-slate-400 mt-1">
+              <div className="text-[11px] text-muted font-mono mt-1">
                 Orig. Principal: ${(scheduleData.original_principal ?? 0).toLocaleString()}
               </div>
             </div>
 
-            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
-              <span className="text-xs text-slate-400 font-medium uppercase">Interest Rate (APR)</span>
-              <div className="mt-2 text-xl sm:text-2xl font-bold text-amber-400">
+            <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs">
+              <span className="text-xs text-muted font-semibold uppercase tracking-wider">Interest Rate (APR)</span>
+              <div className="mt-2 text-xl sm:text-2xl font-bold font-mono text-accent-main">
                 {scheduleData.interest_rate ?? 0}%
               </div>
-              <div className="text-[11px] text-slate-400 mt-1">
+              <div className="text-[11px] text-muted font-mono mt-1">
                 Total Interest: ${(scheduleData.total_interest ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}
               </div>
             </div>
 
-            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
-              <span className="text-xs text-slate-400 font-medium uppercase">Monthly Payment</span>
-              <div className="mt-2 text-xl sm:text-2xl font-bold text-emerald-400">
+            <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs">
+              <span className="text-xs text-muted font-semibold uppercase tracking-wider">Monthly Payment</span>
+              <div className="mt-2 text-xl sm:text-2xl font-bold font-mono text-positive">
                 ${(scheduleData.monthly_payment ?? 0).toFixed(2)}
               </div>
-              <div className="text-[11px] text-slate-400 mt-1">
+              <div className="text-[11px] text-muted mt-1">
                 {(scheduleData.escrow_payment ?? 0) > 0
                   ? `Incl. $${scheduleData.escrow_payment.toFixed(0)} escrow/taxes`
                   : "Principal + Interest"}
               </div>
             </div>
 
-            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
-              <span className="text-xs text-slate-400 font-medium uppercase">Projected Payoff</span>
-              <div className="mt-2 text-xl sm:text-2xl font-bold text-indigo-400">
+            <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs">
+              <span className="text-xs text-muted font-semibold uppercase tracking-wider">Projected Payoff</span>
+              <div className="mt-2 text-xl sm:text-2xl font-bold font-mono text-main">
                 {scheduleData.payoff_date || "-"}
               </div>
-              <div className="text-[11px] text-slate-400 mt-1">
+              <div className="text-[11px] text-muted mt-1">
                 {scheduleData.loan_term_months || scheduleData.schedule?.length || 0} total payments
               </div>
             </div>
           </div>
 
           {/* Payment Breakdown Chart */}
-          <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-xl">
-            <h2 className="text-sm sm:text-base font-semibold text-slate-200 mb-1">
+          <div className="p-4 sm:p-6 rounded-2xl bg-surface border border-default shadow-xs">
+            <h2 className="text-sm sm:text-base font-bold text-main mb-1">
               Payment Composition (Upcoming 12 Months)
             </h2>
-            <p className="text-xs text-slate-400 mb-4">
+            <p className="text-xs text-muted mb-4">
               Breakdown of Principal reduction, Interest cost, and Escrow
             </p>
 
@@ -227,34 +229,34 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
           </div>
 
           {/* Full Schedule */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden shadow-xl">
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-200">Full Amortization Schedule</h2>
-              <span className="text-xs text-slate-400 font-mono">
+          <div className="rounded-2xl border border-default bg-surface overflow-hidden shadow-xs">
+            <div className="p-4 border-b border-subtle bg-surface-subtle flex items-center justify-between">
+              <h2 className="text-sm font-bold text-main">Full Amortization Schedule</h2>
+              <span className="text-xs text-muted font-mono">
                 {scheduleData.schedule.length} Periods
               </span>
             </div>
 
             {/* Mobile Schedule Feed (< md) */}
-            <div className="block md:hidden divide-y divide-slate-800/60 font-mono text-xs max-h-96 overflow-y-auto">
+            <div className="block md:hidden divide-y divide-subtle font-mono text-xs max-h-96 overflow-y-auto">
               {scheduleData.schedule.map((row) => (
-                <div key={row.period} className="p-3 space-y-1.5 hover:bg-slate-800/30">
+                <div key={row.period} className="p-3 space-y-1.5 hover:bg-surface-hover">
                   <div className="flex items-center justify-between font-bold">
-                    <span className="text-slate-400">Period #{row.period} • {row.payment_date}</span>
-                    <span className="text-slate-100">${row.total_payment.toFixed(2)}</span>
+                    <span className="text-muted">Period #{row.period} • {row.payment_date}</span>
+                    <span className="text-main">${row.total_payment.toFixed(2)}</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-1 text-[11px] text-slate-400">
+                  <div className="grid grid-cols-3 gap-1 text-[11px] text-muted">
                     <div>
-                      <span className="text-[9px] uppercase block text-slate-500">Principal</span>
-                      <span className="text-blue-400 font-medium">${row.principal.toFixed(2)}</span>
+                      <span className="text-[9px] uppercase block text-muted font-sans font-semibold">Principal</span>
+                      <span className="text-accent-main font-medium">${row.principal.toFixed(2)}</span>
                     </div>
                     <div>
-                      <span className="text-[9px] uppercase block text-slate-500">Interest</span>
-                      <span className="text-rose-400 font-medium">${row.interest.toFixed(2)}</span>
+                      <span className="text-[9px] uppercase block text-muted font-sans font-semibold">Interest</span>
+                      <span className="text-negative font-medium">${row.interest.toFixed(2)}</span>
                     </div>
                     <div>
-                      <span className="text-[9px] uppercase block text-slate-500">Balance</span>
-                      <span className="text-slate-200 font-medium">${row.remaining_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                      <span className="text-[9px] uppercase block text-muted font-sans font-semibold">Balance</span>
+                      <span className="text-main font-medium">${row.remaining_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
                     </div>
                   </div>
                 </div>
@@ -264,29 +266,29 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
             {/* Desktop Schedule Table (>= md) */}
             <div className="hidden md:block overflow-x-auto max-h-96">
               <table className="w-full text-left text-xs font-mono">
-                <thead className="bg-slate-950/60 text-slate-400 sticky top-0 border-b border-slate-800">
+                <thead className="bg-surface-subtle text-muted sticky top-0 border-b border-subtle font-semibold">
                   <tr>
                     <th className="py-2.5 px-4">Period</th>
                     <th className="py-2.5 px-4">Date</th>
                     <th className="py-2.5 px-4">Total Payment</th>
-                    <th className="py-2.5 px-4 text-blue-400">Principal</th>
-                    <th className="py-2.5 px-4 text-rose-400">Interest</th>
-                    <th className="py-2.5 px-4 text-violet-400">Escrow</th>
+                    <th className="py-2.5 px-4 text-accent-main">Principal</th>
+                    <th className="py-2.5 px-4 text-negative">Interest</th>
+                    <th className="py-2.5 px-4 text-muted">Escrow</th>
                     <th className="py-2.5 px-4">Remaining Balance</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/40 text-slate-300">
+                <tbody className="divide-y divide-subtle text-sub">
                   {scheduleData.schedule.map((row) => (
-                    <tr key={row.period} className="hover:bg-slate-800/30 transition-colors">
-                      <td className="py-2 px-4 text-slate-500">#{row.period}</td>
+                    <tr key={row.period} className="hover:bg-surface-hover transition-colors">
+                      <td className="py-2 px-4 text-muted">#{row.period}</td>
                       <td className="py-2 px-4">{row.payment_date}</td>
-                      <td className="py-2 px-4 font-semibold text-slate-100">
+                      <td className="py-2 px-4 font-semibold text-main">
                         ${row.total_payment.toFixed(2)}
                       </td>
-                      <td className="py-2 px-4 text-blue-400">${row.principal.toFixed(2)}</td>
-                      <td className="py-2 px-4 text-rose-400">${row.interest.toFixed(2)}</td>
-                      <td className="py-2 px-4 text-violet-400">${row.escrow.toFixed(2)}</td>
-                      <td className="py-2 px-4 font-bold text-slate-200">
+                      <td className="py-2 px-4 text-accent-main">${row.principal.toFixed(2)}</td>
+                      <td className="py-2 px-4 text-negative">${row.interest.toFixed(2)}</td>
+                      <td className="py-2 px-4 text-muted">${row.escrow.toFixed(2)}</td>
+                      <td className="py-2 px-4 font-bold text-main">
                         ${row.remaining_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                       </td>
                     </tr>

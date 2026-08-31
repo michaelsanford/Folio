@@ -20,6 +20,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
+import { useChartTheme } from "../../hooks/useChartTheme";
 import type { Budget, BudgetItem, Category, Transaction } from "../../types";
 import { api } from "../../services/api";
 
@@ -33,23 +34,25 @@ type SortField = "NAME" | "PLANNED" | "ACTUAL" | "REMAINING" | "PERCENT";
 type SortDirection = "ASC" | "DESC";
 
 const PRESET_COLORS = [
-  "#6366F1", // Indigo
   "#10B981", // Emerald
+  "#059669", // Dark Emerald
   "#F59E0B", // Amber
   "#EF4444", // Rose
   "#3B82F6", // Blue
-  "#8B5CF6", // Purple
-  "#EC4899", // Pink
   "#06B6D4", // Cyan
   "#14B8A6", // Teal
   "#F97316", // Orange
   "#64748B", // Slate
+  "#8B5CF6", // Purple
+  "#EC4899", // Pink
 ];
 
 export const BudgetingView: React.FC<BudgetingViewProps> = ({
   categories,
   onCategoriesModified,
 }) => {
+  const chartTheme = useChartTheme();
+
   const [currentDate, setCurrentDate] = useState(new Date());
   const [budget, setBudget] = useState<Budget | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -103,13 +106,8 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
     try {
       const data = await api.getBudget(year, month);
       setBudget(data);
-    } catch {
-      try {
-        const data = await api.getCurrentBudget();
-        setBudget(data);
-      } catch (err) {
-        console.error("Budget load error:", err);
-      }
+    } catch (err) {
+      console.error("Failed to load budget:", err);
     } finally {
       setIsLoading(false);
     }
@@ -117,7 +115,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
   useEffect(() => {
     loadBudget();
-  }, [currentDate]);
+  }, [year, month]);
 
   const handlePrevMonth = () => {
     setCurrentDate(new Date(year, month - 2, 1));
@@ -127,72 +125,61 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
     setCurrentDate(new Date(year, month, 1));
   };
 
-  const handleSavePlannedAmount = async (categoryId: string, amount: number) => {
-    if (!budget) return;
+  // Inline Planned Amount Update
+  const handleSavePlannedAmount = async (categoryId: string, plannedAmount: number) => {
     try {
-      const updated = await api.upsertBudgetItem(year, month, {
+      await api.upsertBudgetItem(year, month, {
         category_id: categoryId,
-        planned_amount: amount,
+        planned_amount: plannedAmount,
       });
-      setBudget(updated);
       setEditingTargetId(null);
+      await loadBudget();
     } catch (err: any) {
-      alert(`Update failed: ${err.message}`);
+      alert(`Failed to update budget target: ${err.message}`);
     }
   };
 
-  const handleRemoveCategoryFromBudget = async (categoryId: string) => {
-    if (!budget) return;
-    if (!confirm("Are you sure you want to remove this category target from the budget?")) return;
-    try {
-      const updated = await api.deleteBudgetItem(budget.id, categoryId);
-      setBudget(updated);
-    } catch (err: any) {
-      alert(`Remove failed: ${err.message}`);
-    }
-  };
-
+  // Add existing category to budget
   const handleAddExistingCategory = async () => {
     if (!selectedExistingCatId) return;
     setIsSubmittingCat(true);
     try {
-      const updated = await api.upsertBudgetItem(year, month, {
+      await api.upsertBudgetItem(year, month, {
         category_id: selectedExistingCatId,
         planned_amount: existingCatTarget,
       });
-      setBudget(updated);
       setIsAddModalOpen(false);
-      setSelectedExistingCatId("");
+      await loadBudget();
       if (onCategoriesModified) onCategoriesModified();
     } catch (err: any) {
-      alert(`Failed to add category: ${err.message}`);
+      alert(`Failed to add category to budget: ${err.message}`);
     } finally {
       setIsSubmittingCat(false);
     }
   };
 
+  // Create brand new category and budget it
   const handleCreateNewCategory = async () => {
     if (!newCatName.trim()) return;
     setIsSubmittingCat(true);
     try {
       const created = await api.createCategory({
         name: newCatName.trim(),
+        type: "EXPENSE",
         parent_id: newCatParentId || null,
         color: newCatColor,
-        type: "EXPENSE",
         is_budgeted: true,
       });
 
-      const updated = await api.upsertBudgetItem(year, month, {
+      await api.upsertBudgetItem(year, month, {
         category_id: created.id,
         planned_amount: newCatTarget,
       });
 
-      setBudget(updated);
       setIsAddModalOpen(false);
       setNewCatName("");
       setNewCatParentId("");
-      setNewCatTarget(100);
+      await loadBudget();
       if (onCategoriesModified) onCategoriesModified();
     } catch (err: any) {
       alert(`Failed to create category: ${err.message}`);
@@ -201,31 +188,47 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
     }
   };
 
+  // Delete category from budget
+  const handleRemoveCategoryFromBudget = async (categoryId: string) => {
+    if (!confirm("Are you sure you want to remove this target from your monthly budget?")) return;
+    try {
+      if (budget?.id) {
+        await api.deleteBudgetItem(budget.id, categoryId);
+      } else {
+        await api.upsertBudgetItem(year, month, {
+          category_id: categoryId,
+          planned_amount: 0,
+        });
+      }
+      await loadBudget();
+    } catch (err: any) {
+      alert(`Failed to remove category: ${err.message}`);
+    }
+  };
+
+  // Drilldown to transactions
   const handleOpenDrilldown = async (cat: Category) => {
     setDrilldownCategory(cat);
     setIsLoadingTransactions(true);
     try {
       const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-      const lastDay = new Date(year, month, 0).getDate();
-      const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
-
+      const endDate = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
       const res = await api.getTransactions({
         category_id: cat.id,
         start_date: startDate,
         end_date: endDate,
         page_size: 100,
       });
-      setDrilldownTransactions(res.items || []);
+      setDrilldownTransactions(res.items);
     } catch (err) {
-      console.error("Drilldown fetch error:", err);
-      setDrilldownTransactions([]);
+      console.error(err);
     } finally {
       setIsLoadingTransactions(false);
     }
   };
 
-  // KPIs
-  const totalPlannedExpenses = budget?.items.reduce((sum, it) => sum + it.planned_amount, 0) || 0;
+  // KPI Computations
+  const totalPlannedExpenses = budget?.total_expense_target || 0;
   const totalActualExpenses = budget?.total_actual_expense || 0;
   const remainingBudget = totalPlannedExpenses - totalActualExpenses;
   const overallPercentSpent =
@@ -233,8 +236,8 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       ? Math.round((totalActualExpenses / totalPlannedExpenses) * 100)
       : 0;
 
-  const daysRemainingInMonth = Math.max(1, daysInMonth - currentDay);
-  const dailySafeSpend = Math.max(0, remainingBudget) / daysRemainingInMonth;
+  const daysRemaining = Math.max(1, daysInMonth - currentDay);
+  const dailySafeSpend = Math.max(0, remainingBudget / daysRemaining);
 
   // Filtered & Sorted Budget Items
   const filteredAndSortedItems = useMemo(() => {
@@ -308,13 +311,16 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
   // Overall Donut Gauge Chart Options
   const overallGaugeOptions = useMemo(() => {
     const isOver = totalActualExpenses > totalPlannedExpenses && totalPlannedExpenses > 0;
-    const spentColor = isOver ? "#ef4444" : overallPercentSpent > 80 ? "#f59e0b" : "#10b981";
+    const spentColor = isOver ? chartTheme.negativeColor : overallPercentSpent > 80 ? "#f59e0b" : chartTheme.positiveColor;
     const remainingVal = Math.max(0, totalPlannedExpenses - totalActualExpenses);
 
     return {
       backgroundColor: "transparent",
       tooltip: {
         trigger: "item",
+        backgroundColor: chartTheme.tooltipBg,
+        borderColor: chartTheme.tooltipBorder,
+        textStyle: { color: chartTheme.tooltipText, fontSize: 12 },
         formatter: "{b}: <b>${c}</b> ({d}%)",
       },
       series: [
@@ -324,9 +330,9 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
           radius: ["65%", "85%"],
           avoidLabelOverlap: false,
           itemStyle: {
-            borderRadius: 6,
-            borderColor: "#0f172a",
-            borderWidth: 3,
+            borderRadius: 4,
+            borderColor: chartTheme.tooltipBg,
+            borderWidth: 2,
           },
           label: {
             show: false,
@@ -344,14 +350,14 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             },
             {
               value: Number(remainingVal.toFixed(2)),
-              name: "Remaining Target",
-              itemStyle: { color: "#334155" },
+              name: "Remaining Cushion",
+              itemStyle: { color: chartTheme.gridLineColor },
             },
           ],
         },
       ],
     };
-  }, [totalActualExpenses, totalPlannedExpenses, overallPercentSpent]);
+  }, [totalActualExpenses, totalPlannedExpenses, overallPercentSpent, chartTheme]);
 
   // Category Target vs Actual Comparison Bar Chart Options
   const categoryBarChartOptions = useMemo(() => {
@@ -360,7 +366,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
         const cat = categories.find((c) => c.id === it.category_id);
         return {
           name: cat?.name || "Other",
-          color: cat?.color || "#6366f1",
+          color: cat?.color || chartTheme.accentColor,
           planned: it.planned_amount,
           actual: it.actual_amount,
           percent: it.planned_amount > 0 ? (it.actual_amount / it.planned_amount) * 100 : 0,
@@ -368,11 +374,9 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       })
       .filter((it) => it.planned > 0 || it.actual > 0);
 
-    // Sort by highest actual spend
     rawItems.sort((a, b) => b.actual - a.actual);
     const displayItems = chartMode === "top8" ? rawItems.slice(0, 8) : rawItems;
 
-    // Reverse for horizontal bottom-up display
     const names = displayItems.map((i) => i.name).reverse();
     const plannedData = displayItems.map((i) => i.planned).reverse();
     const actualData = displayItems.map((i) => i.actual).reverse();
@@ -382,7 +386,10 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
-        formatter: (params: any) => {
+        backgroundColor: chartTheme.tooltipBg,
+        borderColor: chartTheme.tooltipBorder,
+        textStyle: { color: chartTheme.tooltipText, fontSize: 12 },
+        formatter: (params: any[]) => {
           let str = `<b>${params[0].name}</b><br/>`;
           params.forEach((p: any) => {
             str += `${p.marker} ${p.seriesName}: <b>$${Number(p.value).toLocaleString("en-US", {
@@ -394,7 +401,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       },
       legend: {
         data: ["Target (Planned)", "Actual Spent"],
-        textStyle: { color: "#94a3b8", fontSize: 11 },
+        textStyle: { color: chartTheme.textColor, fontSize: 11 },
         top: 0,
         right: 10,
       },
@@ -408,22 +415,22 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       xAxis: {
         type: "value",
         axisLabel: {
-          color: "#64748b",
+          color: chartTheme.subtleTextColor,
           fontSize: 10,
           formatter: (v: number) => `$${v}`,
         },
-        splitLine: { lineStyle: { color: "#1e293b" } },
+        splitLine: { lineStyle: { color: chartTheme.gridLineColor } },
       },
       yAxis: {
         type: "category",
         data: names,
         axisLabel: {
-          color: "#cbd5e1",
+          color: chartTheme.textColor,
           fontSize: 11,
           formatter: (value: string) =>
             value.length > 18 ? `${value.substring(0, 18)}...` : value,
         },
-        axisLine: { lineStyle: { color: "#334155" } },
+        axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
       },
       series: [
         {
@@ -431,7 +438,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
           type: "bar",
           data: plannedData,
           itemStyle: {
-            color: "#475569",
+            color: chartTheme.neutralColor,
             borderRadius: [0, 4, 4, 0],
           },
           barMaxWidth: 14,
@@ -445,9 +452,9 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
               const idx = displayItems.length - 1 - params.dataIndex;
               const it = displayItems[idx];
               if (it && it.actual > it.planned && it.planned > 0) {
-                return "#f43f5e"; // Rose overspent
+                return chartTheme.negativeColor;
               }
-              return it?.color || "#6366f1";
+              return it?.color || chartTheme.accentColor;
             },
             borderRadius: [0, 4, 4, 0],
           },
@@ -455,7 +462,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
         },
       ],
     };
-  }, [budget?.items, categories, chartMode]);
+  }, [budget?.items, categories, chartMode, chartTheme]);
 
   // Unbudgeted expense categories available to add
   const unbudgetedCategories = useMemo(() => {
@@ -490,16 +497,16 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Header & Month Navigator */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-slate-900/70 border border-slate-800/80 shadow-xl backdrop-blur-xs">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-surface border border-default shadow-xs">
         <div className="flex items-center gap-3">
-          <div className="p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+          <div className="p-3 rounded-2xl bg-accent-subtle border border-accent-main/30 text-accent-subtle">
             <PiggyBank className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-100 flex items-center gap-2">
+            <h1 className="text-xl font-bold text-main flex items-center gap-2">
               Monthly Budget & Expense Envelopes
             </h1>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-muted mt-0.5">
               Set monthly spending ceilings, visualize burn pace, and track live category actuals.
             </p>
           </div>
@@ -514,27 +521,27 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                 setSelectedExistingCatId(unbudgetedCategories[0].id);
               }
             }}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/25 transition-all"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Add Category</span>
           </button>
 
           {/* Month Switcher */}
-          <div className="flex items-center bg-slate-800/90 p-1 rounded-xl border border-slate-700/80 shadow-inner">
+          <div className="flex items-center bg-surface-subtle p-1 rounded-xl border border-default">
             <button
               onClick={handlePrevMonth}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+              className="p-1.5 rounded-lg text-muted hover:text-main hover:bg-surface transition-colors cursor-pointer"
               title="Previous Month"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-xs font-bold text-slate-200 px-3.5 min-w-[130px] text-center">
+            <span className="text-xs font-bold font-mono text-main px-3.5 min-w-[130px] text-center">
               {monthName}
             </span>
             <button
               onClick={handleNextMonth}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+              className="p-1.5 rounded-lg text-muted hover:text-main hover:bg-surface transition-colors cursor-pointer"
               title="Next Month"
             >
               <ChevronRight className="w-4 h-4" />
@@ -546,19 +553,19 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       {/* Analytics Graphics & Burn Rate Overview */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Burn Rate & Radial Gauge Card */}
-        <div className="lg:col-span-4 p-6 rounded-2xl bg-slate-900/70 border border-slate-800/80 shadow-xl flex flex-col justify-between">
+        <div className="lg:col-span-4 p-6 rounded-2xl bg-surface border border-default shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted">
                 Overall Budget Health
               </span>
               <span
-                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono ${
                   overallPercentSpent > 100
-                    ? "bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                    ? "bg-negative-subtle text-negative border border-rose-500/30"
                     : overallPercentSpent > monthElapsedPercent
-                    ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
-                    : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                    ? "bg-amber-500/15 text-amber-500 border border-amber-500/30"
+                    : "bg-positive-subtle text-positive border border-emerald-500/30"
                 }`}
               >
                 {overallPercentSpent > 100
@@ -573,26 +580,26 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             <div className="relative h-44 my-2 flex items-center justify-center">
               <LazyChart option={overallGaugeOptions} className="h-full" />
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-2xl font-black text-slate-100">
+                <span className="text-2xl font-black font-mono text-main">
                   {overallPercentSpent}%
                 </span>
-                <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
+                <span className="text-[10px] font-medium text-muted uppercase tracking-wider">
                   Used
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="space-y-2.5 pt-3 border-t border-slate-800/80 text-xs">
+          <div className="space-y-2.5 pt-3 border-t border-subtle text-xs">
             <div className="flex items-center justify-between">
-              <span className="text-slate-400">Month Timeline:</span>
-              <span className="text-slate-200 font-medium">
+              <span className="text-muted">Month Timeline:</span>
+              <span className="text-main font-medium">
                 Day {currentDay} of {daysInMonth} ({monthElapsedPercent}%)
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-slate-400">Daily Allowance:</span>
-              <span className="text-emerald-400 font-bold font-mono">
+              <span className="text-muted">Daily Allowance:</span>
+              <span className="text-positive font-bold font-mono">
                 ${dailySafeSpend.toFixed(2)} / day
               </span>
             </div>
@@ -600,31 +607,31 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
         </div>
 
         {/* Category Breakdown Bar Chart */}
-        <div className="lg:col-span-8 p-6 rounded-2xl bg-slate-900/70 border border-slate-800/80 shadow-xl flex flex-col">
+        <div className="lg:col-span-8 p-6 rounded-2xl bg-surface border border-default shadow-xs flex flex-col">
           <div className="flex items-center justify-between pb-2">
             <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-indigo-400" />
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              <BarChart3 className="w-4 h-4 text-accent-main" />
+              <span className="text-xs font-bold uppercase tracking-wider text-muted">
                 Category Spending vs. Target Comparison
               </span>
             </div>
-            <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700/60 text-[11px]">
+            <div className="flex items-center gap-1 bg-surface-subtle p-0.5 rounded-lg border border-default text-[11px]">
               <button
                 onClick={() => setChartMode("top8")}
-                className={`px-2.5 py-1 rounded-md transition-all ${
+                className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
                   chartMode === "top8"
-                    ? "bg-indigo-600 text-white font-semibold"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? "bg-accent-main text-accent-contrast font-semibold shadow-xs"
+                    : "text-muted hover:text-main"
                 }`}
               >
                 Top Spenders
               </button>
               <button
                 onClick={() => setChartMode("all")}
-                className={`px-2.5 py-1 rounded-md transition-all ${
+                className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
                   chartMode === "all"
-                    ? "bg-indigo-600 text-white font-semibold"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? "bg-accent-main text-accent-contrast font-semibold shadow-xs"
+                    : "text-muted hover:text-main"
                 }`}
               >
                 All
@@ -636,7 +643,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             {budget?.items && budget.items.length > 0 ? (
               <LazyChart option={categoryBarChartOptions} className="h-full" />
             ) : (
-              <div className="flex items-center justify-center h-full text-slate-500 text-xs">
+              <div className="flex items-center justify-center h-full text-muted text-xs">
                 No budget targets or expenses recorded for this month.
               </div>
             )}
@@ -646,64 +653,64 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
       {/* KPI Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+        <div className="p-5 rounded-2xl bg-surface border border-default shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400 font-medium uppercase">Total Planned Target</span>
-            <DollarSign className="w-4 h-4 text-indigo-400" />
+            <span className="text-xs text-muted font-semibold uppercase tracking-wider">Total Planned Target</span>
+            <DollarSign className="w-4 h-4 text-accent-main" />
           </div>
-          <div className="mt-2 text-2xl font-bold text-slate-100 font-mono">
+          <div className="mt-2 text-2xl font-bold text-main font-mono">
             ${totalPlannedExpenses.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">Sum of all category targets</div>
+          <div className="text-[11px] text-muted mt-1">Sum of all category targets</div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+        <div className="p-5 rounded-2xl bg-surface border border-default shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400 font-medium uppercase">Actual Spent So Far</span>
-            <TrendingDown className="w-4 h-4 text-rose-400" />
+            <span className="text-xs text-muted font-semibold uppercase tracking-wider">Actual Spent So Far</span>
+            <TrendingDown className="w-4 h-4 text-negative" />
           </div>
-          <div className="mt-2 text-2xl font-bold text-rose-400 font-mono">
+          <div className="mt-2 text-2xl font-bold text-negative font-mono">
             ${totalActualExpenses.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">
+          <div className="text-[11px] text-muted mt-1">
             {totalPlannedExpenses > 0
               ? `${overallPercentSpent}% of total planned envelope`
               : "No target set"}
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+        <div className="p-5 rounded-2xl bg-surface border border-default shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400 font-medium uppercase">Remaining Cushion</span>
+            <span className="text-xs text-muted font-semibold uppercase tracking-wider">Remaining Cushion</span>
             <TrendingUp
-              className={`w-4 h-4 ${remainingBudget >= 0 ? "text-emerald-400" : "text-rose-400"}`}
+              className={`w-4 h-4 ${remainingBudget >= 0 ? "text-positive" : "text-negative"}`}
             />
           </div>
           <div
             className={`mt-2 text-2xl font-bold font-mono ${
-              remainingBudget >= 0 ? "text-emerald-400" : "text-rose-400"
+              remainingBudget >= 0 ? "text-positive" : "text-negative"
             }`}
           >
             ${remainingBudget.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">
+          <div className="text-[11px] text-muted mt-1">
             {remainingBudget >= 0 ? "Within budget parameters" : "Over total planned budget"}
           </div>
         </div>
       </div>
 
       {/* Main Budget Ledger Section */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 overflow-hidden shadow-2xl backdrop-blur-xs">
+      <div className="rounded-2xl border border-default bg-surface overflow-hidden shadow-xs">
         {/* Controls Toolbar: Search, Filters, View Mode Toggle */}
-        <div className="p-5 border-b border-slate-800/90 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="p-4 sm:p-5 border-b border-subtle flex flex-col md:flex-row md:items-center justify-between gap-3 bg-surface-subtle/50">
           {/* Status Filter Pills */}
           <div className="flex items-center flex-wrap gap-1.5 text-xs">
             <button
               onClick={() => setStatusFilter("ALL")}
-              className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-xl font-semibold transition-all cursor-pointer ${
                 statusFilter === "ALL"
-                  ? "bg-slate-700 text-white shadow-sm"
-                  : "bg-slate-800/60 text-slate-400 hover:text-slate-200"
+                  ? "bg-accent-main text-accent-contrast shadow-xs"
+                  : "bg-surface text-sub border border-default hover:bg-surface-hover"
               }`}
             >
               All ({statusCounts.total})
@@ -711,10 +718,10 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             {statusCounts.over > 0 && (
               <button
                 onClick={() => setStatusFilter("OVER")}
-                className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
+                className={`px-3 py-1.5 rounded-xl font-semibold transition-all cursor-pointer ${
                   statusFilter === "OVER"
-                    ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
-                    : "bg-slate-800/60 text-rose-400 hover:bg-slate-800"
+                    ? "bg-negative-subtle text-negative border border-rose-500/40"
+                    : "bg-surface text-negative border border-default hover:bg-surface-hover"
                 }`}
               >
                 Over ({statusCounts.over})
@@ -723,10 +730,10 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             {statusCounts.warning > 0 && (
               <button
                 onClick={() => setStatusFilter("WARNING")}
-                className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
+                className={`px-3 py-1.5 rounded-xl font-semibold transition-all cursor-pointer ${
                   statusFilter === "WARNING"
-                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                    : "bg-slate-800/60 text-amber-400 hover:bg-slate-800"
+                    ? "bg-amber-500/20 text-amber-500 border border-amber-500/40"
+                    : "bg-surface text-amber-500 border border-default hover:bg-surface-hover"
                 }`}
               >
                 Near Limit ({statusCounts.warning})
@@ -734,20 +741,20 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             )}
             <button
               onClick={() => setStatusFilter("ON_TRACK")}
-              className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-xl font-semibold transition-all cursor-pointer ${
                 statusFilter === "ON_TRACK"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                  : "bg-slate-800/60 text-emerald-400 hover:bg-slate-800"
+                  ? "bg-positive-subtle text-positive border border-emerald-500/40"
+                  : "bg-surface text-positive border border-default hover:bg-surface-hover"
               }`}
             >
               On Track ({statusCounts.onTrack})
             </button>
             <button
               onClick={() => setStatusFilter("UNSPENT")}
-              className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-xl font-semibold transition-all cursor-pointer ${
                 statusFilter === "UNSPENT"
-                  ? "bg-slate-700 text-slate-200"
-                  : "bg-slate-800/60 text-slate-400 hover:bg-slate-800"
+                  ? "bg-surface-subtle text-main border border-default"
+                  : "bg-surface text-muted border border-default hover:bg-surface-hover"
               }`}
             >
               Unspent ({statusCounts.unspent})
@@ -757,18 +764,18 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
           {/* Search & Layout Switcher */}
           <div className="flex items-center gap-2">
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-3.5 h-3.5 text-muted absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 placeholder="Filter categories..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-950/70 border border-slate-700/80 text-slate-200 text-xs focus:outline-hidden focus:border-indigo-500 w-48 sm:w-56"
+                className="pl-8 pr-3 py-1.5 rounded-xl bg-input border border-default text-main text-xs focus:outline-hidden focus:border-accent-main w-48 sm:w-56"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-main"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -776,13 +783,13 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             </div>
 
             {/* Desktop / Mobile View Mode Switcher */}
-            <div className="flex items-center bg-slate-800 p-0.5 rounded-xl border border-slate-700/60">
+            <div className="flex items-center bg-surface-subtle p-0.5 rounded-xl border border-default">
               <button
                 onClick={() => setViewMode("table")}
-                className={`p-1.5 rounded-lg transition-all ${
+                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
                   viewMode === "table"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? "bg-accent-main text-accent-contrast shadow-xs"
+                    : "text-muted hover:text-main"
                 }`}
                 title="Tabular Ledger (Desktop view)"
               >
@@ -790,10 +797,10 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
               </button>
               <button
                 onClick={() => setViewMode("cards")}
-                className={`p-1.5 rounded-lg transition-all ${
+                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
                   viewMode === "cards"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? "bg-accent-main text-accent-contrast shadow-xs"
+                    : "text-muted hover:text-main"
                 }`}
                 title="Envelope Cards (Mobile view)"
               >
@@ -805,20 +812,20 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
         {/* Content Area */}
         {isLoading ? (
-          <div className="py-20 text-center text-slate-400">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto mb-3"></div>
+          <div className="py-20 text-center text-muted">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-main mx-auto mb-3"></div>
             Loading monthly budget ledger...
           </div>
         ) : filteredAndSortedItems.length === 0 ? (
-          <div className="py-16 text-center text-slate-400 px-4">
-            <PiggyBank className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-            <div className="text-sm font-semibold text-slate-200">No matching budget categories</div>
-            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+          <div className="py-16 text-center text-muted px-4">
+            <PiggyBank className="w-12 h-12 text-muted mx-auto mb-3 opacity-40" />
+            <div className="text-sm font-semibold text-main">No matching budget categories</div>
+            <p className="text-xs text-muted mt-1 max-w-sm mx-auto">
               Add your first budget target or clear active search filters to view your envelopes.
             </p>
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/20"
+              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               Add Category Target
@@ -829,9 +836,9 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-slate-800 bg-slate-950/40 text-slate-400 uppercase tracking-wider font-semibold">
+                <tr className="border-b border-subtle bg-surface-subtle text-muted uppercase tracking-wider font-semibold">
                   <th
-                    className="py-3.5 px-4 cursor-pointer hover:text-slate-200"
+                    className="py-3.5 px-4 cursor-pointer hover:text-main"
                     onClick={() => {
                       if (sortField === "NAME") setSortDirection((d) => (d === "ASC" ? "DESC" : "ASC"));
                       else {
@@ -847,7 +854,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   </th>
                   <th className="py-3.5 px-3">Status</th>
                   <th
-                    className="py-3.5 px-4 text-right cursor-pointer hover:text-slate-200"
+                    className="py-3.5 px-4 text-right cursor-pointer hover:text-main"
                     onClick={() => {
                       if (sortField === "PLANNED") setSortDirection((d) => (d === "ASC" ? "DESC" : "ASC"));
                       else {
@@ -862,7 +869,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                     </div>
                   </th>
                   <th
-                    className="py-3.5 px-4 text-right cursor-pointer hover:text-slate-200"
+                    className="py-3.5 px-4 text-right cursor-pointer hover:text-main"
                     onClick={() => {
                       if (sortField === "ACTUAL") setSortDirection((d) => (d === "ASC" ? "DESC" : "ASC"));
                       else {
@@ -877,7 +884,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                     </div>
                   </th>
                   <th
-                    className="py-3.5 px-4 text-right cursor-pointer hover:text-slate-200"
+                    className="py-3.5 px-4 text-right cursor-pointer hover:text-main"
                     onClick={() => {
                       if (sortField === "REMAINING") setSortDirection((d) => (d === "ASC" ? "DESC" : "ASC"));
                       else {
@@ -892,7 +899,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                     </div>
                   </th>
                   <th
-                    className="py-3.5 px-4 w-48 cursor-pointer hover:text-slate-200"
+                    className="py-3.5 px-4 w-48 cursor-pointer hover:text-main"
                     onClick={() => {
                       if (sortField === "PERCENT") setSortDirection((d) => (d === "ASC" ? "DESC" : "ASC"));
                       else {
@@ -909,7 +916,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   <th className="py-3.5 px-4 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 font-sans">
+              <tbody className="divide-y divide-subtle font-sans">
                 {filteredAndSortedItems.map((item) => {
                   const cat = item.category;
                   if (!cat) return null;
@@ -919,21 +926,21 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   return (
                     <tr
                       key={item.category_id}
-                      className="hover:bg-slate-800/40 transition-colors group"
+                      className="hover:bg-surface-hover transition-colors group"
                     >
                       {/* Category Name & Parent Group */}
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2.5">
                           <span
-                            className="w-3 h-3 rounded-full shrink-0 shadow-xs"
-                            style={{ backgroundColor: cat.color || "#6366f1" }}
+                            className="w-3 h-3 rounded-full shrink-0 shadow-2xs"
+                            style={{ backgroundColor: cat.color || chartTheme.accentColor }}
                           ></span>
                           <div>
-                            <div className="font-semibold text-slate-200 group-hover:text-indigo-300 transition-colors">
+                            <div className="font-semibold text-main">
                               {cat.name}
                             </div>
                             {parentCat && (
-                              <div className="text-[10px] text-slate-400 font-medium">
+                              <div className="text-[10px] text-muted font-medium">
                                 {parentCat.name}
                               </div>
                             )}
@@ -944,14 +951,14 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       {/* Status Badge */}
                       <td className="py-3 px-3">
                         <span
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold font-mono inline-flex items-center gap-1 ${
                             item.isOver
-                              ? "bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                              ? "bg-negative-subtle text-negative border border-rose-500/30"
                               : item.percentUsed >= 80
-                              ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                              ? "bg-amber-500/15 text-amber-500 border border-amber-500/30"
                               : item.actual_amount === 0
-                              ? "bg-slate-800 text-slate-400"
-                              : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                              ? "bg-surface-subtle text-muted"
+                              : "bg-positive-subtle text-positive border border-emerald-500/30"
                           }`}
                         >
                           {item.isOver
@@ -968,7 +975,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       <td className="py-3 px-4 text-right font-mono">
                         {isEditing ? (
                           <div className="flex items-center justify-end gap-1.5">
-                            <span className="text-slate-400">$</span>
+                            <span className="text-muted">$</span>
                             <input
                               type="number"
                               step="10"
@@ -979,18 +986,18 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                                 if (e.key === "Escape") setEditingTargetId(null);
                               }}
                               autoFocus
-                              className="w-20 px-1.5 py-0.5 bg-slate-950 border border-indigo-500 rounded text-slate-100 text-xs font-mono text-right"
+                              className="w-20 px-1.5 py-0.5 bg-input border border-accent-main rounded text-main text-xs font-mono text-right"
                             />
                             <button
                               onClick={() => handleSavePlannedAmount(item.category_id, targetInput)}
-                              className="p-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white"
+                              className="p-1 rounded bg-accent-main text-accent-contrast cursor-pointer"
                               title="Save Target"
                             >
                               <Save className="w-3 h-3" />
                             </button>
                             <button
                               onClick={() => setEditingTargetId(null)}
-                              className="p-1 rounded bg-slate-800 text-slate-400 hover:text-slate-200"
+                              className="p-1 rounded bg-surface text-muted hover:text-main cursor-pointer"
                               title="Cancel"
                             >
                               <X className="w-3 h-3" />
@@ -1002,23 +1009,23 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                               setEditingTargetId(item.category_id);
                               setTargetInput(item.planned_amount);
                             }}
-                            className="cursor-pointer hover:text-indigo-400 flex items-center justify-end gap-1.5 group/edit"
+                            className="cursor-pointer hover:text-accent-main flex items-center justify-end gap-1.5 group/edit"
                             title="Click to edit target"
                           >
-                            <span className="font-semibold text-slate-200">
+                            <span className="font-semibold text-main">
                               ${item.planned_amount.toFixed(2)}
                             </span>
-                            <Edit2 className="w-3 h-3 text-slate-500 opacity-0 group-hover/edit:opacity-100 transition-opacity" />
+                            <Edit2 className="w-3 h-3 text-muted opacity-0 group-hover/edit:opacity-100 transition-opacity" />
                           </div>
                         )}
                       </td>
 
                       {/* Actual Spent */}
                       <td className="py-3 px-4 text-right font-mono">
-                        <span className="font-semibold text-rose-300">
+                        <span className="font-semibold text-main">
                           ${item.actual_amount.toFixed(2)}
                         </span>
-                        <div className="text-[10px] text-slate-400 font-sans">
+                        <div className="text-[10px] text-muted font-sans">
                           {item.percentUsed}%
                         </div>
                       </td>
@@ -1027,7 +1034,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       <td className="py-3 px-4 text-right font-mono">
                         <span
                           className={`font-semibold ${
-                            item.remaining_amount >= 0 ? "text-emerald-400" : "text-rose-400"
+                            item.remaining_amount >= 0 ? "text-positive" : "text-negative"
                           }`}
                         >
                           {item.remaining_amount >= 0
@@ -1039,14 +1046,14 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       {/* Progress Bar Meter */}
                       <td className="py-3 px-4">
                         <div className="space-y-1">
-                          <div className="w-full h-2 rounded-full bg-slate-950 overflow-hidden border border-slate-800">
+                          <div className="w-full h-2 rounded-full bg-surface-subtle overflow-hidden border border-default">
                             <div
                               className={`h-full rounded-full transition-all duration-300 ${
                                 item.isOver
                                   ? "bg-rose-500"
                                   : item.percentUsed >= 80
                                   ? "bg-amber-400"
-                                  : "bg-emerald-400"
+                                  : "bg-emerald-500"
                               }`}
                               style={{ width: `${Math.min(100, item.percentUsed)}%` }}
                             ></div>
@@ -1059,14 +1066,14 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => handleOpenDrilldown(cat)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-400 hover:bg-slate-800 transition-colors"
+                            className="p-1.5 rounded-lg text-muted hover:text-accent-main hover:bg-surface transition-colors cursor-pointer"
                             title="View category transactions"
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => handleRemoveCategoryFromBudget(item.category_id)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                            className="p-1.5 rounded-lg text-muted hover:text-negative hover:bg-negative-subtle transition-colors cursor-pointer"
                             title="Remove category target from budget"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1081,7 +1088,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
           </div>
         ) : (
           /* Touch-Friendly Card / Envelope View for Mobile & Tablet */
-          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredAndSortedItems.map((item) => {
               const cat = item.category;
               if (!cat) return null;
@@ -1090,23 +1097,23 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
               return (
                 <div
                   key={item.category_id}
-                  className="p-4 rounded-2xl bg-slate-800/50 border border-slate-700/50 space-y-3 shadow-md flex flex-col justify-between"
+                  className="p-4 rounded-2xl bg-surface-subtle border border-subtle space-y-3 shadow-xs flex flex-col justify-between"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2.5">
                       <span
                         className="w-3.5 h-3.5 rounded-full shrink-0"
-                        style={{ backgroundColor: cat.color || "#6366f1" }}
+                        style={{ backgroundColor: cat.color || chartTheme.accentColor }}
                       ></span>
                       <div>
-                        <div className="text-sm font-semibold text-slate-100">{cat.name}</div>
+                        <div className="text-sm font-semibold text-main">{cat.name}</div>
                         <span
-                          className={`mt-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold inline-block ${
+                          className={`mt-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold font-mono inline-block ${
                             item.isOver
-                              ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                              ? "bg-negative-subtle text-negative border border-rose-500/30"
                               : item.percentUsed >= 80
-                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                              : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                              ? "bg-amber-500/20 text-amber-500 border border-amber-500/30"
+                              : "bg-positive-subtle text-positive border border-emerald-500/30"
                           }`}
                         >
                           {item.isOver ? "Over Budget" : `${item.percentUsed}% Spent`}
@@ -1117,14 +1124,14 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleOpenDrilldown(cat)}
-                        className="p-1 text-slate-400 hover:text-indigo-400"
+                        className="p-1 text-muted hover:text-accent-main cursor-pointer"
                         title="View transactions"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => handleRemoveCategoryFromBudget(item.category_id)}
-                        className="p-1 text-slate-400 hover:text-rose-400"
+                        className="p-1 text-muted hover:text-negative cursor-pointer"
                         title="Remove category"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -1134,15 +1141,15 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
                   {/* Numbers */}
                   <div className="space-y-1.5 text-xs font-mono">
-                    <div className="flex items-center justify-between text-slate-400">
+                    <div className="flex items-center justify-between text-muted">
                       <span>Spent:</span>
-                      <span className="font-bold text-rose-300">
+                      <span className="font-bold text-main">
                         ${item.actual_amount.toFixed(2)}
                       </span>
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Target:</span>
+                      <span className="text-muted">Target:</span>
                       {isEditing ? (
                         <div className="flex items-center gap-1">
                           <span>$</span>
@@ -1151,11 +1158,11 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                             step="10"
                             value={targetInput}
                             onChange={(e) => setTargetInput(parseFloat(e.target.value) || 0)}
-                            className="w-16 px-1 py-0.5 bg-slate-900 border border-indigo-500 rounded text-slate-100 text-xs font-mono text-right"
+                            className="w-16 px-1 py-0.5 bg-input border border-accent-main rounded text-main text-xs font-mono text-right"
                           />
                           <button
                             onClick={() => handleSavePlannedAmount(item.category_id, targetInput)}
-                            className="p-1 rounded bg-indigo-600 text-white"
+                            className="p-1 rounded bg-accent-main text-accent-contrast cursor-pointer"
                           >
                             <Save className="w-3 h-3" />
                           </button>
@@ -1166,19 +1173,19 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                             setEditingTargetId(item.category_id);
                             setTargetInput(item.planned_amount);
                           }}
-                          className="font-bold text-slate-200 hover:text-indigo-400 flex items-center gap-1"
+                          className="font-bold text-main hover:text-accent-main flex items-center gap-1 cursor-pointer"
                         >
                           <span>${item.planned_amount.toFixed(2)}</span>
-                          <Edit2 className="w-3 h-3 text-slate-500" />
+                          <Edit2 className="w-3 h-3 text-muted" />
                         </button>
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-700/50">
-                      <span className="text-slate-400">Remaining:</span>
+                    <div className="flex items-center justify-between pt-1 border-t border-subtle">
+                      <span className="text-muted">Remaining:</span>
                       <span
                         className={`font-bold ${
-                          item.remaining_amount >= 0 ? "text-emerald-400" : "text-rose-400"
+                          item.remaining_amount >= 0 ? "text-positive" : "text-negative"
                         }`}
                       >
                         {item.remaining_amount >= 0
@@ -1189,14 +1196,14 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   </div>
 
                   {/* Progress bar */}
-                  <div className="w-full h-2 rounded-full bg-slate-950 overflow-hidden border border-slate-700/60">
+                  <div className="w-full h-2 rounded-full bg-surface overflow-hidden border border-default">
                     <div
                       className={`h-full rounded-full transition-all duration-300 ${
                         item.isOver
                           ? "bg-rose-500"
                           : item.percentUsed >= 80
                           ? "bg-amber-400"
-                          : "bg-emerald-400"
+                          : "bg-emerald-500"
                       }`}
                       style={{ width: `${Math.min(100, item.percentUsed)}%` }}
                     ></div>
@@ -1212,47 +1219,47 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       {/* ADD / CREATE CATEGORY MODAL                                   */}
       {/* ------------------------------------------------------------- */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-scale-up">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-surface border border-default rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95">
             {/* Modal Header */}
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+            <div className="p-5 border-b border-subtle bg-surface-subtle flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
+                <div className="p-2 rounded-xl bg-accent-subtle text-accent-subtle">
                   <FolderPlus className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-100">Add Category to Budget</h3>
-                  <p className="text-xs text-slate-400">
+                  <h3 className="text-base font-bold text-main">Add Category to Budget</h3>
+                  <p className="text-xs text-muted">
                     Configure a monthly spending envelope for {monthName}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsAddModalOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                className="p-1.5 rounded-lg text-muted hover:text-main"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Tab Switcher */}
-            <div className="flex border-b border-slate-800 bg-slate-950/40 p-1.5 gap-2 text-xs">
+            <div className="flex border-b border-subtle bg-surface-subtle/50 p-1.5 gap-2 text-xs">
               <button
                 onClick={() => setAddModalTab("existing")}
-                className={`flex-1 py-2 rounded-xl font-semibold transition-all ${
+                className={`flex-1 py-2 rounded-xl font-semibold transition-all cursor-pointer ${
                   addModalTab === "existing"
-                    ? "bg-indigo-600 text-white shadow-sm"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? "bg-accent-main text-accent-contrast shadow-xs"
+                    : "text-muted hover:text-main"
                 }`}
               >
                 Existing Category ({unbudgetedCategories.length})
               </button>
               <button
                 onClick={() => setAddModalTab("new")}
-                className={`flex-1 py-2 rounded-xl font-semibold transition-all ${
+                className={`flex-1 py-2 rounded-xl font-semibold transition-all cursor-pointer ${
                   addModalTab === "new"
-                    ? "bg-indigo-600 text-white shadow-sm"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? "bg-accent-main text-accent-contrast shadow-xs"
+                    : "text-muted hover:text-main"
                 }`}
               >
                 + Create New Category
@@ -1265,20 +1272,20 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                 /* Tab 1: Pick Existing Category */
                 <div className="space-y-4">
                   {unbudgetedCategories.length === 0 ? (
-                    <div className="text-center py-6 text-slate-400 text-xs">
+                    <div className="text-center py-6 text-muted text-xs">
                       All existing expense categories are already in your budget. Switch to "Create
                       New Category" to add a new one.
                     </div>
                   ) : (
                     <>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                        <label className="block text-xs font-semibold text-muted mb-1.5">
                           Select Category
                         </label>
                         <select
                           value={selectedExistingCatId}
                           onChange={(e) => setSelectedExistingCatId(e.target.value)}
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-hidden focus:border-indigo-500"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-default text-main text-xs focus:outline-hidden focus:border-accent-main"
                         >
                           {unbudgetedCategories.map((c) => (
                             <option key={c.id} value={c.id}>
@@ -1289,11 +1296,11 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                        <label className="block text-xs font-semibold text-muted mb-1.5">
                           Monthly Planned Target ($)
                         </label>
                         <div className="relative">
-                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted text-xs">
                             $
                           </span>
                           <input
@@ -1302,7 +1309,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                             step="10"
                             value={existingCatTarget}
                             onChange={(e) => setExistingCatTarget(parseFloat(e.target.value) || 0)}
-                            className="w-full pl-8 pr-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs font-mono focus:outline-hidden focus:border-indigo-500"
+                            className="w-full pl-8 pr-3.5 py-2.5 rounded-xl bg-input border border-default text-main text-xs font-mono focus:outline-hidden focus:border-accent-main"
                           />
                         </div>
                       </div>
@@ -1313,7 +1320,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                 /* Tab 2: Create Brand New Category */
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    <label className="block text-xs font-semibold text-muted mb-1.5">
                       Category Name
                     </label>
                     <input
@@ -1321,18 +1328,18 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       placeholder="e.g. Pet Care, Gym & Fitness, House Cleaning"
                       value={newCatName}
                       onChange={(e) => setNewCatName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-hidden focus:border-indigo-500"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-default text-main text-xs focus:outline-hidden focus:border-accent-main"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    <label className="block text-xs font-semibold text-muted mb-1.5">
                       Parent Group (Optional)
                     </label>
                     <select
                       value={newCatParentId}
                       onChange={(e) => setNewCatParentId(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-hidden focus:border-indigo-500"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-default text-main text-xs focus:outline-hidden focus:border-accent-main"
                     >
                       <option value="">-- No Parent (Top-Level Category) --</option>
                       {parentCategories.map((p) => (
@@ -1344,7 +1351,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    <label className="block text-xs font-semibold text-muted mb-1.5">
                       Category Color
                     </label>
                     <div className="flex items-center flex-wrap gap-2">
@@ -1353,9 +1360,9 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                           key={color}
                           type="button"
                           onClick={() => setNewCatColor(color)}
-                          className={`w-6 h-6 rounded-full transition-transform ${
+                          className={`w-6 h-6 rounded-full transition-transform cursor-pointer ${
                             newCatColor === color
-                              ? "scale-125 ring-2 ring-white ring-offset-2 ring-offset-slate-900"
+                              ? "scale-125 ring-2 ring-accent-main ring-offset-2 ring-offset-surface"
                               : "hover:scale-110 opacity-80"
                           }`}
                           style={{ backgroundColor: color }}
@@ -1365,11 +1372,11 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    <label className="block text-xs font-semibold text-muted mb-1.5">
                       Monthly Planned Target ($)
                     </label>
                     <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted text-xs">
                         $
                       </span>
                       <input
@@ -1378,7 +1385,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                         step="10"
                         value={newCatTarget}
                         onChange={(e) => setNewCatTarget(parseFloat(e.target.value) || 0)}
-                        className="w-full pl-8 pr-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs font-mono focus:outline-hidden focus:border-indigo-500"
+                        className="w-full pl-8 pr-3.5 py-2.5 rounded-xl bg-input border border-default text-main text-xs font-mono focus:outline-hidden focus:border-accent-main"
                       />
                     </div>
                   </div>
@@ -1387,10 +1394,10 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             </div>
 
             {/* Modal Footer */}
-            <div className="p-5 border-t border-slate-800 bg-slate-950/40 flex items-center justify-end gap-2.5">
+            <div className="p-5 border-t border-subtle bg-surface-subtle flex items-center justify-end gap-2.5">
               <button
                 onClick={() => setIsAddModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                className="px-4 py-2 rounded-xl border border-default text-sub text-xs font-semibold hover:bg-surface-hover"
               >
                 Cancel
               </button>
@@ -1405,7 +1412,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   (addModalTab === "existing" && !selectedExistingCatId) ||
                   (addModalTab === "new" && !newCatName.trim())
                 }
-                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold shadow-lg shadow-indigo-600/25 flex items-center gap-2"
+                className="px-5 py-2 rounded-xl bg-accent-main hover:bg-accent-main disabled:opacity-50 text-accent-contrast text-xs font-semibold shadow-xs flex items-center gap-2 cursor-pointer"
               >
                 {isSubmittingCat && (
                   <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -1423,27 +1430,27 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       {/* TRANSACTION DRILLDOWN MODAL                                   */}
       {/* ------------------------------------------------------------- */}
       {drilldownCategory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-scale-up">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-surface border border-default rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95">
             {/* Header */}
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+            <div className="p-5 border-b border-subtle bg-surface-subtle flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <span
                   className="w-4 h-4 rounded-full"
-                  style={{ backgroundColor: drilldownCategory.color || "#6366f1" }}
+                  style={{ backgroundColor: drilldownCategory.color || chartTheme.accentColor }}
                 ></span>
                 <div>
-                  <h3 className="text-base font-bold text-slate-100">
+                  <h3 className="text-base font-bold text-main">
                     {drilldownCategory.name} Transactions
                   </h3>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-muted">
                     Actual charges in {monthName}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setDrilldownCategory(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                className="p-1.5 rounded-lg text-muted hover:text-main"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1452,33 +1459,33 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             {/* Transaction List */}
             <div className="p-5 flex-1 overflow-y-auto space-y-2">
               {isLoadingTransactions ? (
-                <div className="py-12 text-center text-slate-400 text-xs">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500 mx-auto mb-2"></div>
+                <div className="py-12 text-center text-muted text-xs">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent-main mx-auto mb-2"></div>
                   Fetching matching transactions...
                 </div>
               ) : drilldownTransactions.length === 0 ? (
-                <div className="py-12 text-center text-slate-500 text-xs">
+                <div className="py-12 text-center text-muted text-xs">
                   No transactions recorded for {drilldownCategory.name} in {monthName}.
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <div className="text-xs text-slate-400 font-semibold mb-2">
+                  <div className="text-xs text-muted font-semibold mb-2">
                     {drilldownTransactions.length} transaction(s) recorded:
                   </div>
                   {drilldownTransactions.map((t) => (
                     <div
                       key={t.id}
-                      className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/50 flex items-center justify-between text-xs"
+                      className="p-3 rounded-xl bg-surface-subtle border border-subtle flex items-center justify-between text-xs"
                     >
                       <div>
-                        <div className="font-semibold text-slate-200">
+                        <div className="font-semibold text-main">
                           {t.normalized_payee || t.raw_payee}
                         </div>
-                        <div className="text-[10px] text-slate-400 mt-0.5">
+                        <div className="text-[10px] text-muted mt-0.5 font-mono">
                           {t.transaction_date} • {t.raw_payee}
                         </div>
                       </div>
-                      <div className="font-bold font-mono text-rose-300 text-sm">
+                      <div className="font-bold font-mono text-main text-sm">
                         ${Math.abs(t.amount).toFixed(2)}
                       </div>
                     </div>
@@ -1488,10 +1495,10 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             </div>
 
             {/* Footer */}
-            <div className="p-4 border-t border-slate-800 bg-slate-950/40 flex justify-end">
+            <div className="p-4 border-t border-subtle bg-surface-subtle flex justify-end">
               <button
                 onClick={() => setDrilldownCategory(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
+                className="px-4 py-2 rounded-xl border border-default text-sub text-xs font-semibold hover:bg-surface-hover cursor-pointer"
               >
                 Close
               </button>

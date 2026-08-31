@@ -8,4 +8,10 @@
       </list>
     </option>
   </component>
+  <component name="toolkitConnectionManager">
+    <option name="activeConnectionId" value="sso-session:d-9d675e5641" />
+  </component>
+  <component name="toolkitExplorerToolWindow">
+    <option name="selectedTab" value="CloudFormation" />
+  </component>
 </project>

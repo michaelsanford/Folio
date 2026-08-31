@@ -152,20 +152,20 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header & Account Selection */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 shadow-lg">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 sm:p-6 rounded-2xl bg-surface border border-default shadow-xs">
         <div>
-          <h1 className="text-lg sm:text-xl font-bold text-slate-100">Statement Ingestion Engine</h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <h1 className="text-lg sm:text-xl font-bold text-main">Statement Ingestion Engine</h1>
+          <p className="text-xs text-muted mt-1">
             Upload CSV bank exports, PDF statements, or OFX/QFX downloads with intelligent deduplication.
           </p>
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 shrink-0">
-          <label className="text-xs font-semibold text-slate-300">Target Account:</label>
+          <label className="text-xs font-semibold text-muted">Target Account:</label>
           <select
             value={selectedAccountId}
             onChange={(e) => setSelectedAccountId(e.target.value)}
-            className="w-full sm:w-auto px-3.5 py-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+            className="w-full sm:w-auto px-3 py-2 bg-input border border-default text-main rounded-xl text-xs font-medium focus:ring-1 focus:ring-accent-main focus:outline-hidden"
           >
             {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
@@ -178,14 +178,14 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
 
       {/* Success Notification */}
       {successMessage && (
-        <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between text-emerald-300 text-xs animate-in fade-in">
+        <div className="p-4 rounded-xl bg-positive-subtle border border-emerald-500/30 flex items-center justify-between text-positive text-xs animate-in fade-in">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            <CheckCircle2 className="w-5 h-5 text-positive" />
             <span className="font-semibold">{successMessage}</span>
           </div>
           <button
             onClick={() => setSuccessMessage(null)}
-            className="text-emerald-400 hover:text-emerald-200 text-xs font-medium"
+            className="text-positive hover:underline text-xs font-medium cursor-pointer"
           >
             Dismiss
           </button>
@@ -201,8 +201,8 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
           onClick={() => fileInputRef.current?.click()}
           className={`relative cursor-pointer border-2 border-dashed rounded-3xl p-6 sm:p-12 text-center transition-all duration-200 ${
             isDragging
-              ? "border-indigo-500 bg-indigo-500/10 scale-[1.01]"
-              : "border-slate-800 hover:border-slate-700 bg-slate-900/40"
+              ? "border-accent-main bg-accent-subtle scale-[1.01]"
+              : "border-default hover:border-strong bg-surface hover:bg-surface-subtle"
           }`}
         >
           <input
@@ -218,7 +218,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
           />
 
           <div className="flex flex-col items-center justify-center space-y-4">
-            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-indigo-600/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-xl shadow-indigo-500/10">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-accent-subtle border border-accent-main/30 flex items-center justify-center text-accent-main shadow-xs">
               {isLoading ? (
                 <RefreshCw className="w-7 h-7 sm:w-8 sm:h-8 animate-spin" />
               ) : (
@@ -227,22 +227,22 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
             </div>
 
             <div className="space-y-1">
-              <p className="text-sm sm:text-base font-semibold text-slate-200">
+              <p className="text-sm sm:text-base font-bold text-main">
                 {isLoading ? "Parsing bank statement..." : "Drop your statement file here, or browse"}
               </p>
-              <p className="text-xs text-slate-400">
-                Supports <span className="text-indigo-400 font-medium">CSV</span>,{" "}
-                <span className="text-indigo-400 font-medium">PDF Statements</span>, and{" "}
-                <span className="text-indigo-400 font-medium">OFX / QFX / QBO</span>.
+              <p className="text-xs text-muted">
+                Supports <span className="text-accent-main font-medium">CSV</span>,{" "}
+                <span className="text-accent-main font-medium">PDF Statements</span>, and{" "}
+                <span className="text-accent-main font-medium">OFX / QFX / QBO</span>.
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 pt-2 text-[11px] text-slate-400">
+            <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 pt-2 text-[11px] text-muted">
               <span className="flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" /> Auto Deduplication
+                <ShieldCheck className="w-4 h-4 text-positive" /> Auto Deduplication
               </span>
               <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-indigo-400" /> AI / Rule Categorization
+                <CheckCircle2 className="w-4 h-4 text-accent-main" /> Rule Categorization
               </span>
             </div>
           </div>
@@ -253,21 +253,21 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
       {preview && (
         <div className="space-y-4 animate-in fade-in">
           {/* Summary Strip */}
-          <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 p-4 rounded-xl bg-slate-900/80 border border-slate-800">
+          <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 p-4 rounded-xl bg-surface border border-default shadow-xs">
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-indigo-400" />
-                <span className="text-xs sm:text-sm font-semibold text-slate-200 truncate max-w-[160px] sm:max-w-xs">{preview.filename}</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-slate-800 text-slate-300">
+                <FileText className="w-4 h-4 text-accent-main" />
+                <span className="text-xs sm:text-sm font-bold text-main truncate max-w-[160px] sm:max-w-xs">{preview.filename}</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-surface-subtle text-muted border border-subtle">
                   {preview.file_type}
                 </span>
               </div>
 
               <div className="flex items-center gap-2 text-xs">
-                <span className="text-slate-400">Total: <b className="text-slate-200">{preview.total_parsed}</b></span>
-                <span className="text-emerald-400">New: <b>{preview.new_count}</b></span>
+                <span className="text-muted">Total: <b className="text-main font-mono">{preview.total_parsed}</b></span>
+                <span className="text-positive">New: <b className="font-mono">{preview.new_count}</b></span>
                 {preview.duplicates_count > 0 && (
-                  <span className="text-amber-400">Dupes: <b>{preview.duplicates_count}</b></span>
+                  <span className="text-amber-500">Dupes: <b className="font-mono">{preview.duplicates_count}</b></span>
                 )}
               </div>
             </div>
@@ -275,14 +275,14 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
             <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
               <button
                 onClick={() => setPreview(null)}
-                className="flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg border border-slate-700 text-slate-400 hover:text-slate-200 text-xs font-medium"
+                className="flex-1 sm:flex-none px-3.5 py-1.5 rounded-xl border border-default text-sub hover:bg-surface-hover text-xs font-semibold"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCommit}
                 disabled={selectedHashes.size === 0 || isCommitting}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold shadow-lg shadow-indigo-500/20 transition-all"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main disabled:opacity-50 text-accent-contrast text-xs font-semibold shadow-xs transition-all cursor-pointer"
               >
                 {isCommitting ? (
                   <>
@@ -298,9 +298,9 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
           </div>
 
           {/* Review Container */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden shadow-xl">
+          <div className="rounded-2xl border border-default bg-surface overflow-hidden shadow-xs">
             {/* Mobile Cards Feed (< md) */}
-            <div className="block md:hidden divide-y divide-slate-800/60 font-medium">
+            <div className="block md:hidden divide-y divide-subtle font-medium">
               {preview.items.map((item) => {
                 const isChecked = selectedHashes.has(item.import_hash);
                 const assignedCat = rowCategories[item.import_hash] || item.suggested_category_id || "";
@@ -310,9 +310,9 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                     key={item.import_hash}
                     className={`p-3.5 flex items-start gap-3 transition-colors ${
                       item.is_duplicate
-                        ? "bg-rose-950/10 text-slate-400"
+                        ? "bg-negative-subtle/40 text-muted"
                         : isChecked
-                        ? "bg-slate-800/30"
+                        ? "bg-accent-subtle/30"
                         : "opacity-60"
                     }`}
                   >
@@ -320,22 +320,22 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                       type="checkbox"
                       checked={isChecked}
                       onChange={() => handleToggleHash(item.import_hash)}
-                      className="mt-1 rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500 shrink-0"
+                      className="mt-1 rounded border-default bg-input text-accent-main focus:ring-accent-main shrink-0"
                     />
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <div className="text-xs font-bold text-slate-100 truncate">
+                          <div className="text-xs font-bold text-main truncate">
                             {item.normalized_payee}
                           </div>
-                          <div className="text-[10px] text-slate-500 font-mono truncate">
+                          <div className="text-[10px] text-muted font-mono truncate">
                             {item.raw_payee}
                           </div>
                         </div>
                         <div
                           className={`font-mono font-bold text-xs shrink-0 ${
-                            item.amount >= 0 ? "text-emerald-400" : "text-slate-100"
+                            item.amount >= 0 ? "text-positive" : "text-main"
                           }`}
                         >
                           {item.amount >= 0 ? "+" : ""}${Math.abs(item.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -343,13 +343,13 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-1.5 mt-2 text-[10px]">
-                        <span className="text-slate-400 font-mono">{item.transaction_date}</span>
-                        <span className="text-slate-600">•</span>
+                        <span className="text-muted font-mono">{item.transaction_date}</span>
+                        <span className="text-muted">•</span>
 
                         <select
                           value={assignedCat}
                           onChange={(e) => handleCategoryChange(item.import_hash, e.target.value)}
-                          className="bg-slate-800 border border-slate-700 text-slate-200 text-[10px] rounded px-1.5 py-0.5 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden max-w-[130px] truncate"
+                          className="bg-input border border-default text-main text-[10px] rounded px-1.5 py-0.5 focus:ring-1 focus:ring-accent-main focus:outline-hidden max-w-[130px] truncate"
                         >
                           <option value="">Uncategorized</option>
                           {categories.map((c) => (
@@ -360,11 +360,11 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                         </select>
 
                         {item.is_duplicate ? (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-negative-subtle text-negative border border-rose-500/20">
                             <AlertTriangle className="w-2.5 h-2.5" /> Dupe
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-positive-subtle text-positive border border-emerald-500/20">
                             <CheckCircle2 className="w-2.5 h-2.5" /> New
                           </span>
                         )}
@@ -378,14 +378,14 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
             {/* Desktop Table (>= md) */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-900/90 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                <thead className="bg-surface-subtle text-muted uppercase text-[10px] tracking-wider border-b border-subtle font-semibold">
                   <tr>
                     <th className="p-3.5 w-10 text-center">
                       <input
                         type="checkbox"
                         checked={selectedHashes.size === preview.items.length && preview.items.length > 0}
                         onChange={handleToggleSelectAll}
-                        className="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500"
+                        className="rounded border-default bg-input text-accent-main focus:ring-accent-main"
                       />
                     </th>
                     <th className="p-3.5">Date</th>
@@ -396,7 +396,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                     <th className="p-3.5 text-right">Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 font-medium">
+                <tbody className="divide-y divide-subtle font-medium">
                   {preview.items.map((item) => {
                     const isChecked = selectedHashes.has(item.import_hash);
                     const assignedCat = rowCategories[item.import_hash] || item.suggested_category_id || "";
@@ -406,10 +406,10 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                         key={item.import_hash}
                         className={`transition-colors ${
                           item.is_duplicate
-                            ? "bg-rose-950/10 text-slate-400"
+                            ? "bg-negative-subtle/30 text-muted"
                             : isChecked
-                            ? "bg-slate-800/30 text-slate-200"
-                            : "text-slate-400 opacity-60"
+                            ? "bg-surface-hover text-main"
+                            : "text-muted opacity-60"
                         }`}
                       >
                         <td className="p-3.5 text-center">
@@ -417,23 +417,23 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                             type="checkbox"
                             checked={isChecked}
                             onChange={() => handleToggleHash(item.import_hash)}
-                            className="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500"
+                            className="rounded border-default bg-input text-accent-main focus:ring-accent-main"
                           />
                         </td>
-                        <td className="p-3.5 font-mono text-[11px] text-slate-300">
+                        <td className="p-3.5 font-mono text-[11px] text-muted">
                           {item.transaction_date}
                         </td>
-                        <td className="p-3.5 text-slate-400 font-mono text-[11px] max-w-xs truncate">
+                        <td className="p-3.5 text-muted font-mono text-[11px] max-w-xs truncate">
                           {item.raw_payee}
                         </td>
-                        <td className="p-3.5 text-slate-200 font-semibold">
+                        <td className="p-3.5 text-main font-semibold">
                           {item.normalized_payee}
                         </td>
                         <td className="p-3.5">
                           <select
                             value={assignedCat}
                             onChange={(e) => handleCategoryChange(item.import_hash, e.target.value)}
-                            className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+                            className="bg-input border border-default text-main text-xs rounded-lg px-2 py-1 focus:ring-1 focus:ring-accent-main focus:outline-hidden"
                           >
                             <option value="">Uncategorized</option>
                             {categories.map((c) => (
@@ -445,21 +445,21 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                         </td>
                         <td className="p-3.5">
                           {item.is_duplicate ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-negative-subtle text-negative border border-rose-500/20">
                               <AlertTriangle className="w-3 h-3" /> Duplicate
                             </span>
                           ) : item.potential_transfer_account_name ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-accent-subtle text-accent-subtle border border-accent-main/20">
                               Transfer: {item.potential_transfer_account_name}
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-positive-subtle text-positive border border-emerald-500/20">
                               <CheckCircle2 className="w-3 h-3" /> New
                             </span>
                           )}
                         </td>
                         <td className={`p-3.5 text-right font-mono font-bold text-sm ${
-                          item.amount >= 0 ? "text-emerald-400" : "text-slate-100"
+                          item.amount >= 0 ? "text-positive" : "text-main"
                         }`}>
                           {item.amount >= 0 ? "+" : ""}${Math.abs(item.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
