@@ -4,7 +4,6 @@ import {
   DollarSign,
   ArrowUpRight,
   ArrowDownRight,
-  Wallet,
 } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
 import { AccountIcon } from "../common/AccountIcon";
