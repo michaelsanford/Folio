@@ -56,8 +56,14 @@ def test_dashboard_analytics_breakdown(client, sample_checking_account, sample_m
         },
     )
 
-    # Fetch Analytics
-    anl_resp = client.get("/api/analytics/dashboard")
+    # Fetch Analytics for the month the transactions above are dated in.
+    # Without the explicit year/month the endpoint falls back to
+    # datetime.now(), so the Sankey assertions below depended on the wall
+    # clock: they passed only while the current month happened to be
+    # 2026-08, and started failing on 2026-09-01.
+    anl_resp = client.get(
+        "/api/analytics/dashboard", params={"year": 2026, "month": 8}
+    )
     assert anl_resp.status_code == 200
     data = anl_resp.json()
 
