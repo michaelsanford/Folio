@@ -371,19 +371,19 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
               <div className="mt-3 flex items-baseline justify-between">
                 <div className="text-2xl font-bold font-mono text-main">
-                  ${craSummary.tfsa_contributed.toLocaleString("en-CA", { minimumFractionDigits: 2 })}
+                  ${(craSummary.tfsa_contributed ?? 0).toLocaleString("en-CA", { minimumFractionDigits: 2 })}
                   <span className="text-xs font-sans text-muted ml-1">
-                    / ${craSummary.tfsa_annual_limit.toLocaleString("en-CA")} limit
+                    / ${(craSummary.tfsa_annual_limit ?? 7000).toLocaleString("en-CA")} limit
                   </span>
                 </div>
                 <div className="text-right">
                   <span
                     className={`text-xs font-mono font-bold ${
-                      craSummary.tfsa_remaining_room >= 0 ? "text-positive" : "text-negative"
+                      (craSummary.tfsa_remaining_room ?? 7000) >= 0 ? "text-positive" : "text-negative"
                     }`}
                   >
-                    ${Math.abs(craSummary.tfsa_remaining_room).toLocaleString("en-CA")}{" "}
-                    {craSummary.tfsa_remaining_room >= 0 ? "remaining" : "OVER LIMIT"}
+                    ${Math.abs(craSummary.tfsa_remaining_room ?? (craSummary.tfsa_annual_limit ?? 7000)).toLocaleString("en-CA")}{" "}
+                    {(craSummary.tfsa_remaining_room ?? 7000) >= 0 ? "remaining" : "OVER LIMIT"}
                   </span>
                 </div>
               </div>
@@ -443,19 +443,19 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
               <div className="mt-3 flex items-baseline justify-between">
                 <div className="text-2xl font-bold font-mono text-main">
-                  ${craSummary.fhsa_contributed.toLocaleString("en-CA", { minimumFractionDigits: 2 })}
+                  ${(craSummary.fhsa_contributed ?? 0).toLocaleString("en-CA", { minimumFractionDigits: 2 })}
                   <span className="text-xs font-sans text-muted ml-1">
-                    / ${craSummary.fhsa_annual_limit.toLocaleString("en-CA")} limit
+                    / ${(craSummary.fhsa_annual_limit ?? 8000).toLocaleString("en-CA")} limit
                   </span>
                 </div>
                 <div className="text-right">
                   <span
                     className={`text-xs font-mono font-bold ${
-                      craSummary.fhsa_remaining_room >= 0 ? "text-positive" : "text-negative"
+                      (craSummary.fhsa_remaining_room ?? 8000) >= 0 ? "text-positive" : "text-negative"
                     }`}
                   >
-                    ${Math.abs(craSummary.fhsa_remaining_room).toLocaleString("en-CA")}{" "}
-                    {craSummary.fhsa_remaining_room >= 0 ? "remaining" : "OVER LIMIT"}
+                    ${Math.abs(craSummary.fhsa_remaining_room ?? (craSummary.fhsa_annual_limit ?? 8000)).toLocaleString("en-CA")}{" "}
+                    {(craSummary.fhsa_remaining_room ?? 8000) >= 0 ? "remaining" : "OVER LIMIT"}
                   </span>
                 </div>
               </div>
@@ -624,13 +624,13 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                   <div className="mt-4 flex items-baseline justify-between">
                     <div>
                       <div className="text-xl font-bold font-mono text-main">
-                        ${g.effective_current_amount.toLocaleString("en-CA", {
+                        ${(g.effective_current_amount ?? g.current_amount ?? 0).toLocaleString("en-CA", {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}
                       </div>
                       <div className="text-[11px] text-muted">
-                        of ${g.target_amount.toLocaleString("en-CA", {
+                        of ${(g.target_amount ?? 0).toLocaleString("en-CA", {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}{" "}
@@ -647,7 +647,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                             <CheckCircle2 className="w-3 h-3" /> Reached!
                           </span>
                         ) : (
-                          `$${Math.max(0, g.target_amount - g.effective_current_amount).toLocaleString(
+                          `$${Math.max(0, (g.target_amount ?? 0) - (g.effective_current_amount ?? g.current_amount ?? 0)).toLocaleString(
                             "en-CA",
                             { maximumFractionDigits: 0 }
                           )} left`
@@ -673,7 +673,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                         <span className="font-semibold text-main">Linked Account:</span>
                         <span className="truncate">{g.linked_account.name}</span>
                         <span className="text-positive font-mono font-medium">
-                          (${g.linked_account.current_balance.toLocaleString("en-CA")})
+                          (${(g.linked_account.current_balance ?? 0).toLocaleString("en-CA")})
                         </span>
                       </div>
                     ) : (
@@ -780,7 +780,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                       Calculated {calcMonths}-Month Emergency Target
                     </div>
                     <div className="text-2xl font-bold font-mono text-main mt-0.5">
-                      ${calcData.suggested_target_amount.toLocaleString("en-CA", {
+                      ${(calcData.suggested_target_amount ?? calcData.suggested_target ?? 0).toLocaleString("en-CA", {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
@@ -788,10 +788,10 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                     <div className="text-[11px] text-muted mt-1">
                       Based on{" "}
                       <b>
-                        ${calcData.monthly_average_included_expense.toFixed(2)} / month
+                        ${(calcData.monthly_average_included_expense ?? calcData.monthly_fixed_expense ?? 0).toFixed(2)} / month
                       </b>{" "}
                       bare-bones living expenses (total unadjusted spend was $
-                      {calcData.monthly_average_total_expense.toFixed(2)}/mo).
+                      {(calcData.monthly_average_total_expense ?? (calcData.total_spent_in_period ? calcData.total_spent_in_period / Math.max(1, calcLookback) : 0)).toFixed(2)}/mo).
                     </div>
                   </div>
 
@@ -827,7 +827,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-subtle">
-                      {calcData?.category_breakdown.map((row) => {
+                      {(calcData?.category_breakdown || calcData?.categories || []).map((row) => {
                         const isIncluded = !excludedCatIds.includes(row.category_id);
                         return (
                           <tr

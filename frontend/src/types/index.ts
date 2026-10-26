@@ -399,15 +399,34 @@ export interface EmergencyCategoryBreakdown {
 
 export interface EmergencyFundCalcResponse {
   lookback_months: number;
+  months?: number;
   months_selected: number;
   monthly_average_total_expense: number;
   monthly_average_included_expense: number;
+  monthly_fixed_expense?: number;
   suggested_target_amount: number;
+  suggested_target?: number;
+  total_spent_in_period?: number;
   excluded_category_ids: string[];
   category_breakdown: EmergencyCategoryBreakdown[];
+  categories?: EmergencyCategoryBreakdown[];
+}
+
+export interface CraLimitInfo {
+  account_type: string;
+  annual_limit: number;
+  year_to_date_contributions: number;
+  remaining_annual_room: number;
+  is_over_limit: boolean;
+  lifetime_limit?: number | null;
+  total_lifetime_contributions?: number | null;
+  notes: string;
+  owner_member_id?: string | null;
+  owner_member_name?: string | null;
 }
 
 export interface CraSummaryResponse {
+  year?: number;
   tax_year: number;
   tfsa_annual_limit: number;
   fhsa_annual_limit: number;
@@ -417,6 +436,7 @@ export interface CraSummaryResponse {
   fhsa_contributed: number;
   fhsa_remaining_room: number;
   notes: string;
+  limits?: CraLimitInfo[];
 }
 
 
