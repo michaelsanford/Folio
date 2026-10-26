@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { GoalsView } from "./GoalsView";
 import { api } from "../../services/api";
@@ -22,7 +22,14 @@ vi.mock("../../services/api", () => ({
       createGoal: vi.fn(),
       updateGoal: vi.fn(),
       deleteGoal: vi.fn(),
-      getEmergencyFundCalc: vi.fn(),
+      getEmergencyFundCalc: vi.fn().mockResolvedValue({
+        months: 6,
+        lookback_months: 6,
+        monthly_fixed_expense: 3000,
+        suggested_target: 18000,
+        total_spent_in_period: 18000,
+        categories: [],
+      }),
     },
   },
 }));
@@ -37,6 +44,9 @@ describe("GoalsView", () => {
         onDataModified={vi.fn()}
       />
     );
-    expect(screen.getByText("Goals & Savings Envelopes")).toBeDefined();
+    expect(await screen.findByText("Goals & Savings Envelopes")).toBeDefined();
+    await waitFor(() => {
+      expect(api.goals.getGoals).toHaveBeenCalled();
+    });
   });
 });

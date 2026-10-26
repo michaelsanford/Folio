@@ -39,9 +39,7 @@ Designed for high-density desktop statement parsing and data entry with responsi
     including your timing. Reported for 1M / 3M / YTD / 1Y / all-time.
   - Contributions-versus-market-growth breakdown: how much of the balance you saved and
     how much the market added.
-  - Prices are entered manually (pasted in bulk); Folio makes no outbound market-data
-    calls, preserving the offline, zero-cost posture. Positions with no recorded price are
-    labelled rather than silently valued at cost.
+  - Automated TSX, TSXV, and US market quote updates alongside Bank of Canada daily FX rates, with zero external API keys required. Positions also support manual price overrides and bulk paste.
 - **Multi-User Collaboration & Canadian Household Sharing**:
   - Assign accounts and transactions to household members or hold them jointly.
   - Canadian statutory ownership rules: Registered accounts (TFSA, RRSP, FHSA) are legally individual, while Chequing, Savings, and Mortgages support joint ownership.
