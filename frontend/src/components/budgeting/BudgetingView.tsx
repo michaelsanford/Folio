@@ -18,9 +18,11 @@ import {
   FolderPlus,
   DollarSign,
   BarChart3,
+  RefreshCw,
 } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
 import { useChartTheme } from "../../hooks/useChartTheme";
+import { CashFlowForecastView } from "./CashFlowForecastView";
 import type { Budget, BudgetItem, Category, Transaction } from "../../types";
 import { api } from "../../services/api";
 
@@ -55,6 +57,8 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [budget, setBudget] = useState<Budget | null>(null);
+  const [budgetSubTab, setBudgetSubTab] = useState<"ledger" | "forecast">("ledger");
+  const [newCatIsRollover, setNewCatIsRollover] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
 
   // View & Filter States
@@ -125,6 +129,18 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
     setCurrentDate(new Date(year, month, 1));
   };
 
+  const handleToggleCategoryRollover = async (cat: Category) => {
+    try {
+      await api.updateCategory(cat.id, {
+        is_rollover: !cat.is_rollover,
+      });
+      if (onCategoriesModified) onCategoriesModified();
+      await loadBudget();
+    } catch (err: any) {
+      alert("Failed to toggle category rollover: " + err?.message);
+    }
+  };
+
   // Inline Planned Amount Update
   const handleSavePlannedAmount = async (categoryId: string, plannedAmount: number) => {
     try {
@@ -169,6 +185,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
         parent_id: newCatParentId || null,
         color: newCatColor,
         is_budgeted: true,
+        is_rollover: newCatIsRollover,
       });
 
       await api.upsertBudgetItem(year, month, {
@@ -496,6 +513,36 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      {/* View Switcher: Monthly Envelopes vs Cash-Flow Forecast */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setBudgetSubTab("ledger")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            budgetSubTab === "ledger"
+              ? "bg-accent-main text-accent-contrast shadow-xs"
+              : "bg-surface text-sub border border-default hover:bg-surface-hover"
+          }`}
+        >
+          <PiggyBank className="w-4 h-4" />
+          <span>Monthly Budget Envelopes</span>
+        </button>
+        <button
+          onClick={() => setBudgetSubTab("forecast")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            budgetSubTab === "forecast"
+              ? "bg-accent-main text-accent-contrast shadow-xs"
+              : "bg-surface text-sub border border-default hover:bg-surface-hover"
+          }`}
+        >
+          <TrendingUp className="w-4 h-4" />
+          <span>Cash Flow Forecast (30/60/90 Days)</span>
+        </button>
+      </div>
+
+      {budgetSubTab === "forecast" ? (
+        <CashFlowForecastView />
+      ) : (
+        <>
       {/* Header & Month Navigator */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-surface border border-default shadow-xs">
         <div className="flex items-center gap-3">
@@ -936,8 +983,13 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                             style={{ backgroundColor: cat.color || chartTheme.accentColor }}
                           ></span>
                           <div>
-                            <div className="font-semibold text-main">
-                              {cat.name}
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold text-main">{cat.name}</span>
+                              {cat.is_rollover && (
+                                <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded shadow-2xs" title="Envelope rollover enabled">
+                                  Rollover
+                                </span>
+                              )}
                             </div>
                             {parentCat && (
                               <div className="text-[10px] text-muted font-medium">
@@ -1004,19 +1056,33 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                             </button>
                           </div>
                         ) : (
-                          <div
-                            onClick={() => {
-                              setEditingTargetId(item.category_id);
-                              setTargetInput(item.planned_amount);
-                            }}
-                            className="cursor-pointer hover:text-accent-main flex items-center justify-end gap-1.5 group/edit"
-                            title="Click to edit target"
-                          >
-                            <span className="font-semibold text-main">
-                              ${item.planned_amount.toFixed(2)}
-                            </span>
-                            <Edit2 className="w-3 h-3 text-muted opacity-0 group-hover/edit:opacity-100 transition-opacity" />
-                          </div>
+                          <>
+                            <div
+                              onClick={() => {
+                                setEditingTargetId(item.category_id);
+                                setTargetInput(item.planned_amount);
+                              }}
+                              className="cursor-pointer hover:text-accent-main flex items-center justify-end gap-1.5 group/edit"
+                              title="Click to edit target"
+                            >
+                              <span className="font-semibold text-main">
+                                ${item.planned_amount.toFixed(2)}
+                              </span>
+                              <Edit2 className="w-3 h-3 text-muted opacity-0 group-hover/edit:opacity-100 transition-opacity" />
+                            </div>
+                            {item.rollover_amount !== undefined && item.rollover_amount !== 0 && (
+                              <div className="text-[10px] font-sans flex items-center justify-end gap-1 mt-0.5">
+                                <span className={item.rollover_amount > 0 ? "text-positive font-semibold font-mono" : "text-negative font-semibold font-mono"}>
+                                  {item.rollover_amount > 0 ? "+" : ""}${item.rollover_amount.toFixed(2)} roll
+                                </span>
+                              </div>
+                            )}
+                            {item.available_amount !== undefined && item.available_amount !== item.planned_amount && (
+                              <div className="text-[10px] text-muted font-sans font-mono mt-0.5">
+                                Avail: ${item.available_amount.toFixed(2)}
+                              </div>
+                            )}
+                          </>
                         )}
                       </td>
 
@@ -1064,6 +1130,17 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       {/* Actions */}
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => handleToggleCategoryRollover(cat)}
+                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                              cat.is_rollover
+                                ? "text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20"
+                                : "text-muted hover:text-main hover:bg-surface"
+                            }`}
+                            title={cat.is_rollover ? "Rollover enabled (click to disable)" : "Rollover disabled (click to enable)"}
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          </button>
                           <button
                             onClick={() => handleOpenDrilldown(cat)}
                             className="p-1.5 rounded-lg text-muted hover:text-accent-main hover:bg-surface transition-colors cursor-pointer"
@@ -1181,6 +1258,22 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       )}
                     </div>
 
+                    {item.rollover_amount !== undefined && item.rollover_amount !== 0 && (
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-muted">Rollover Balance:</span>
+                        <span className={item.rollover_amount > 0 ? "text-positive font-bold font-mono" : "text-negative font-bold font-mono"}>
+                          {item.rollover_amount > 0 ? "+" : ""}${item.rollover_amount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {item.available_amount !== undefined && item.available_amount !== item.planned_amount && (
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-muted">Available Envelope:</span>
+                        <span className="font-bold font-mono text-main">
+                          ${item.available_amount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between pt-1 border-t border-subtle">
                       <span className="text-muted">Remaining:</span>
                       <span
@@ -1214,6 +1307,10 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
           </div>
         )}
       </div>
+
+
+        </>
+      )}
 
       {/* ------------------------------------------------------------- */}
       {/* ADD / CREATE CATEGORY MODAL                                   */}
@@ -1369,6 +1466,22 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                         />
                       ))}
                     </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 p-3 rounded-xl bg-surface-subtle border border-default">
+                    <input
+                      type="checkbox"
+                      id="newCatIsRollover"
+                      checked={newCatIsRollover}
+                      onChange={(e) => setNewCatIsRollover(e.target.checked)}
+                      className="mt-0.5 rounded-md border-default text-accent-main focus:ring-accent-main cursor-pointer"
+                    />
+                    <label htmlFor="newCatIsRollover" className="text-xs cursor-pointer">
+                      <span className="font-semibold text-main block">Enable Rollover Envelope</span>
+                      <span className="text-muted block text-[11px] mt-0.5">
+                        Surplus budget rolls over to increase next month's envelope; overspending reduces next month's available funds.
+                      </span>
+                    </label>
                   </div>
 
                   <div>

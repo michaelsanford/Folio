@@ -1,5 +1,5 @@
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import date, datetime
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.core.database import get_db
@@ -14,13 +14,40 @@ from app.schemas.budget import (
     BudgetItemCreate,
     BudgetResponse,
     BudgetItemResponse,
+    CashFlowForecastResponse,
 )
 
 router = APIRouter(prefix="/budgets", tags=["Budgets"])
 
 
+def get_category_actual_spend_cents(db: Session, year: int, month: int, category_id: str) -> int:
+    """Calculates total actual outflow cents for a specific category in a given calendar month."""
+    start_of_month = datetime(year, month, 1)
+    if month == 12:
+        end_of_month = datetime(year + 1, 1, 1)
+    else:
+        end_of_month = datetime(year, month + 1, 1)
+
+    kind = split_kind_case().label("kind")
+    total = (
+        db.query(func.sum(TransactionSplit.amount_cents))
+        .join(Transaction, TransactionSplit.transaction_id == Transaction.id)
+        .outerjoin(Category, TransactionSplit.category_id == Category.id)
+        .filter(
+            Transaction.transaction_date >= start_of_month,
+            Transaction.transaction_date < end_of_month,
+            TransactionSplit.category_id == category_id,
+            kind == "EXPENSE",
+        )
+        .scalar()
+    ) or 0
+    return abs(total)
+
+
 def populate_budget_actuals(db: Session, budget: Budget) -> BudgetResponse:
     """Calculates actual spending/income for each category in the budget month and syncs all budgeted categories."""
+    from app.services.budgeting.rollover_engine import calculate_category_rollover_cents
+
     start_of_month = datetime(budget.year, budget.month, 1)
     if budget.month == 12:
         end_of_month = datetime(budget.year + 1, 1, 1)
@@ -95,20 +122,36 @@ def populate_budget_actuals(db: Session, budget: Budget) -> BudgetResponse:
         db.refresh(budget)
 
     items_resp: list[BudgetItemResponse] = []
+    rollover_updated = False
     for item in budget.items:
         actual_cents = actuals_by_cat.get(item.category_id, 0)
-        remaining_cents = item.planned_amount_cents - actual_cents
+
+        # Calculate rollover from previous month if category.is_rollover is True
+        rollover_cents = 0
+        if item.category and item.category.is_rollover:
+            rollover_cents = calculate_category_rollover_cents(db, item.category, budget.year, budget.month)
+            if item.rollover_amount_cents != rollover_cents:
+                item.rollover_amount_cents = rollover_cents
+                rollover_updated = True
+
+        available_cents = (item.planned_amount_cents or 0) + rollover_cents
+        remaining_cents = available_cents - actual_cents
         items_resp.append(
             BudgetItemResponse(
                 id=item.id,
                 budget_id=item.budget_id,
                 category_id=item.category_id,
                 planned_amount=float(from_cents(item.planned_amount_cents)),
+                rollover_amount=float(from_cents(rollover_cents)),
+                available_amount=float(from_cents(available_cents)),
                 actual_amount=float(from_cents(actual_cents)),
                 remaining_amount=float(from_cents(remaining_cents)),
                 category=item.category,
             )
         )
+
+    if rollover_updated:
+        db.commit()
 
     # Sort items by category name for predictable order
     items_resp.sort(key=lambda x: (x.category.name if x.category else ""))
@@ -128,6 +171,25 @@ def populate_budget_actuals(db: Session, budget: Budget) -> BudgetResponse:
     )
 
 
+@router.get("/forecast/cash-flow", response_model=CashFlowForecastResponse)
+def get_cash_flow_forecast(
+    days: int = Query(60, ge=7, le=180, description="Forecast horizon in days"),
+    pay_cycle: str = Query("BI_WEEKLY", pattern="^(BI_WEEKLY|SEMI_MONTHLY|MONTHLY)$"),
+    pay_amount: float | None = Query(None, description="Optional manual pay amount override"),
+    next_pay_date: date | None = Query(None, description="Next pay date (default upcoming Friday)"),
+    db: Session = Depends(get_db),
+):
+    """Generates day-by-day cash flow forecast considering payroll cycles and loan payments."""
+    from app.services.analytics.forecast_engine import project_cash_flow
+    return project_cash_flow(
+        db,
+        days=days,
+        pay_cycle=pay_cycle,
+        pay_amount=pay_amount,
+        next_pay_date=next_pay_date,
+    )
+
+
 @router.get("/current", response_model=BudgetResponse)
 def get_current_budget(db: Session = Depends(get_db)):
     now = datetime.now()
@@ -139,7 +201,6 @@ def get_current_budget(db: Session = Depends(get_db)):
     )
 
     if not budget:
-        # Create empty budget for current month with all budgeted categories
         budget = Budget(year=now.year, month=now.month)
         categories = db.query(Category).filter(Category.is_budgeted.is_(True), Category.type == CategoryType.EXPENSE).all()
         for cat in categories:
@@ -160,7 +221,6 @@ def get_budget_by_month(year: int, month: int, db: Session = Depends(get_db)):
         .first()
     )
     if not budget:
-        # Automatically initialize budget for requested period
         budget = Budget(year=year, month=month)
         categories = db.query(Category).filter(Category.is_budgeted.is_(True), Category.type == CategoryType.EXPENSE).all()
         for cat in categories:
@@ -217,14 +277,12 @@ def upsert_budget_item(
         db.add(budget)
         db.flush()
 
-    # Ensure category exists and is marked as is_budgeted
     cat = db.query(Category).filter(Category.id == item_in.category_id).first()
     if not cat:
         raise HTTPException(status_code=404, detail="Category not found")
     if not cat.is_budgeted:
         cat.is_budgeted = True
 
-    # Check if item already exists
     existing_item = next((it for it in budget.items if it.category_id == item_in.category_id), None)
     if existing_item:
         existing_item.planned_amount = item_in.planned_amount
@@ -270,7 +328,6 @@ def update_budget(budget_id: str, budget_in: BudgetUpdate, db: Session = Depends
         budget.notes = budget_in.notes
 
     if budget_in.items is not None:
-        # Update or add items
         existing_items = {it.category_id: it for it in budget.items}
         for item_in in budget_in.items:
             if item_in.category_id in existing_items:

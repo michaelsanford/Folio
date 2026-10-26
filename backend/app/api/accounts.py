@@ -13,6 +13,7 @@ router = APIRouter(prefix="/accounts", tags=["Accounts"])
 def list_accounts(
     is_active: bool | None = None,
     account_type: AccountType | None = None,
+    owner_member_id: str | None = None,
     db: Session = Depends(get_db),
 ):
     query = db.query(Account)
@@ -20,6 +21,8 @@ def list_accounts(
         query = query.filter(Account.is_active == is_active)
     if account_type is not None:
         query = query.filter(Account.type == account_type)
+    if owner_member_id is not None:
+        query = query.filter(Account.owner_member_id == owner_member_id)
     return query.order_by(Account.name.asc()).all()
 
 

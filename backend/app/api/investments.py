@@ -1,7 +1,7 @@
 """Investment holdings, prices, activity, and performance."""
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
@@ -371,3 +371,46 @@ def revalue_investment_accounts(
 
     db.commit()
     return RevalueResponse(accounts_revalued=revalued, unpriced_holdings=sorted(set(unpriced)))
+
+
+class AutomatedQuotesResponse(BaseModel):
+    updated_count: int
+    failed_count: int
+    quotes: list[dict]
+    failed_symbols: list[str]
+    usdcad_fx_rate: float | None = None
+    accounts_revalued: int
+    quotes_fetched: int = 0
+
+
+class FxRateResponse(BaseModel):
+    pair: str = "USDCAD"
+    rate: float | None = None
+    source: str = "Bank of Canada"
+    as_of_date: str | None = None
+
+
+@router.post("/quotes/fetch-automated", response_model=AutomatedQuotesResponse)
+def fetch_automated_quotes(
+    payload: list[str] | dict | None = Body(None),
+    as_of: date | None = Query(None, description="Price quote date"),
+    db: Session = Depends(get_db),
+):
+    """Fetches automated market quotes for TSX/US tickers and Bank of Canada FX."""
+    symbols: list[str] | None = None
+    if isinstance(payload, list):
+        symbols = payload
+    elif isinstance(payload, dict):
+        symbols = payload.get("symbols")
+    from app.services.investments.quote_fetcher import update_quotes_for_securities
+    res = update_quotes_for_securities(db, symbols=symbols, as_of=as_of)
+    res["quotes_fetched"] = res.get("updated_count", 0)
+    return AutomatedQuotesResponse(**res)
+
+
+@router.get("/fx-rate", response_model=FxRateResponse)
+def get_boc_fx_rate(pair: str = "USDCAD"):
+    """Returns official Bank of Canada USD/CAD daily exchange rate."""
+    from app.services.investments.quote_fetcher import fetch_boc_usdcad_rate
+    rate = fetch_boc_usdcad_rate()
+    return FxRateResponse(pair=pair, rate=rate, source="Bank of Canada", as_of_date=date.today().isoformat())

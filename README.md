@@ -42,6 +42,20 @@ Designed for high-density desktop statement parsing and data entry with responsi
   - Prices are entered manually (pasted in bulk); Folio makes no outbound market-data
     calls, preserving the offline, zero-cost posture. Positions with no recorded price are
     labelled rather than silently valued at cost.
+- **Multi-User Collaboration & Canadian Household Sharing**:
+  - Assign accounts and transactions to household members or hold them jointly.
+  - Canadian statutory ownership rules: Registered accounts (TFSA, RRSP, FHSA) are legally individual, while Chequing, Savings, and Mortgages support joint ownership.
+  - Granular household member filtering across the ledger, account balances, and goal tracking.
+- **Budget Envelope Rollovers & Cash-Flow Forecasting**:
+  - Optional envelope rollovers per category: surplus savings roll forward to expand next month's envelope, while overspending strictly reduces next month's available cushion.
+  - Forward-looking 30/60/90-day cash trajectory simulation tailored to Canadian 26-pay-period bi-weekly, semi-monthly, and monthly payrolls combined with loan and mortgage amortization schedules.
+  - Real-time zero-liquidity floor detection and advance cash deficit warning alerts.
+- **Automated TSX Investment Quotes & Bank of Canada FX**:
+  - Zero-cost automated quote fetching for Toronto Stock Exchange (TSX) and TSX Venture (`.TO`, `.V`) equities and ETFs alongside US equities.
+  - Official Bank of Canada Valet API integration for daily USD/CAD foreign exchange benchmarks (`FXUSDCAD`) and automated portfolio revaluation.
+- **Dedicated Goals & CRA Statutory Contribution Tracking**:
+  - Real-time tracking of Canadian Revenue Agency (CRA) statutory limits: TFSA ($7,000 annual room) and FHSA ($8,000 annual / $40,000 lifetime ceiling) with 1%/mo excess contribution penalty warnings.
+  - Interactive Emergency Fund Auto-Calculator: models 3, 6, 9, or 12 months of survival cushion with interactive checkboxes to exclude discretionary lifestyle spending (dining out, shopping, travel).
 - **Envelope Budgeting & Analytics**:
   - Category target progress meters with live spend tracking and overspend warnings.
   - **Real net worth history** from recorded daily balance snapshots, reconstructible for

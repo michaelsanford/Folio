@@ -46,6 +46,7 @@ def recalculate_account_balance(db: Session, account_id: str):
 def list_transactions(
     account_id: str | None = None,
     category_id: str | None = None,
+    assigned_member_id: str | None = None,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
     status: TransactionStatus | None = None,
@@ -66,6 +67,11 @@ def list_transactions(
 
     if account_id:
         query = query.filter(Transaction.account_id == account_id)
+    if assigned_member_id:
+        if assigned_member_id == "unassigned":
+            query = query.filter(Transaction.assigned_member_id.is_(None))
+        else:
+            query = query.filter(Transaction.assigned_member_id == assigned_member_id)
     if status:
         query = query.filter(Transaction.status == status)
     if start_date:

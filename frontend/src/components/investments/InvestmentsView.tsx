@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Globe,
   Plus,
   RefreshCw,
   TrendingUp,
@@ -49,6 +50,13 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [isFetchingQuotes, setIsFetchingQuotes] = useState(false);
+  const [fxRate, setFxRate] = useState<{
+    pair: string;
+    rate: number | null;
+    source?: string;
+    as_of_date?: string;
+  } | null>(null);
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newHolding, setNewHolding] = useState({
@@ -83,9 +91,58 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
     }
   };
 
+  const loadFxRate = async () => {
+    try {
+      const data = await api.getFxRate("USDCAD");
+      if (data && data.rate !== null && data.rate !== undefined) {
+        setFxRate(data);
+      }
+    } catch {
+      // Non-critical background fetch
+    }
+  };
+
+  useEffect(() => {
+    loadFxRate();
+  }, []);
+
   useEffect(() => {
     if (accountId) load(accountId);
   }, [accountId]);
+
+  const handleFetchAutomatedQuotes = async () => {
+    setIsFetchingQuotes(true);
+    setError(null);
+    try {
+      const res = await api.fetchAutomatedQuotes();
+      const count = res.quotes_fetched ?? res.updated_count ?? 0;
+      const rateVal = res.usdcad_fx_rate;
+      if (rateVal !== null && rateVal !== undefined) {
+        setFxRate({
+          pair: "USDCAD",
+          rate: rateVal,
+          source: "Bank of Canada",
+          as_of_date: todayIso(),
+        });
+      }
+
+      let noticeText = `Automated quotes updated (${count} symbol${count === 1 ? "" : "s"}).`;
+      if (rateVal !== null && rateVal !== undefined) {
+        noticeText += ` Bank of Canada USD/CAD: ${rateVal.toFixed(4)}`;
+      }
+      if (res.failed_count > 0 && res.failed_symbols?.length) {
+        noticeText += ` (${res.failed_symbols.join(", ")} could not be quoted)`;
+      }
+      setNotice(noticeText);
+
+      await load();
+      onDataModified();
+    } catch (err: any) {
+      setError(err?.message || "Could not fetch automated quotes.");
+    } finally {
+      setIsFetchingQuotes(false);
+    }
+  };
 
   const currency = investmentAccounts.find((a) => a.id === accountId)?.currency || "CAD";
 
@@ -280,20 +337,44 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
       )}
 
       {/* Account selector and actions */}
-      <div className="p-4 rounded-2xl bg-surface border border-default shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <select
-          value={accountId}
-          onChange={(e) => setAccountId(e.target.value)}
-          className="px-3 py-2 bg-input border border-default rounded-xl text-xs font-medium text-main focus:ring-1 focus:ring-accent-main focus:outline-hidden"
-        >
-          {investmentAccounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name} {a.institution ? `· ${a.institution}` : ""}
-            </option>
-          ))}
-        </select>
+      <div className="p-4 rounded-2xl bg-surface border border-default shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <select
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+            className="px-3 py-2 bg-input border border-default rounded-xl text-xs font-medium text-main focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+          >
+            {investmentAccounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name} {a.institution ? `· ${a.institution}` : ""}
+              </option>
+            ))}
+          </select>
+
+          {/* Bank of Canada USD/CAD FX Rate badge */}
+          {fxRate?.rate !== null && fxRate?.rate !== undefined && (
+            <div
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-subtle border border-default text-xs"
+              title={`Bank of Canada USD/CAD daily exchange rate${fxRate.as_of_date ? ` as of ${fxRate.as_of_date}` : ""}`}
+            >
+              <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="font-semibold text-main">USD/CAD:</span>
+              <span className="font-mono font-bold text-main">{fxRate.rate.toFixed(4)}</span>
+              <span className="text-[10px] text-muted hidden sm:inline">(Bank of Canada)</span>
+            </div>
+          )}
+        </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleFetchAutomatedQuotes}
+            disabled={isFetchingQuotes}
+            className="px-3 py-2 rounded-xl bg-surface-subtle hover:bg-surface-hover border border-default text-sub hover:text-main text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Automatically fetch latest quotes for TSX/TSX-V (.TO, .V), US equities, and Bank of Canada exchange rate"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isFetchingQuotes ? "animate-spin text-accent-main" : ""}`} />
+            {isFetchingQuotes ? "Updating quotes..." : "Update Quotes (TSX / BoC)"}
+          </button>
           <button
             onClick={() => setIsPriceOpen(true)}
             className="px-3 py-2 rounded-xl bg-surface-subtle hover:bg-surface-hover border border-default text-sub text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
@@ -307,6 +388,33 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
             <Plus className="w-3.5 h-3.5" /> Add holding
           </button>
         </div>
+      </div>
+
+      {/* Canadian Market Coverage & BoC FX Rate Context */}
+      <div className="px-4 py-2.5 rounded-2xl bg-surface border border-default shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-2.5 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-sub">
+          <span className="inline-flex items-center gap-1 font-semibold text-main">
+            <Globe className="w-3.5 h-3.5 text-accent-main" /> Market Coverage:
+          </span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-subtle border border-subtle text-[11px] font-medium text-main">
+            TSX &amp; TSX-V (<code className="text-accent-main font-mono">.TO</code>, <code className="text-accent-main font-mono">.V</code>)
+          </span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-subtle border border-subtle text-[11px] font-medium text-main">
+            US Equities &amp; ETFs (USD)
+          </span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-subtle border border-subtle text-[11px] font-medium text-main">
+            Bank of Canada Valet FX Daily
+          </span>
+        </div>
+        {fxRate?.rate !== null && fxRate?.rate !== undefined && (
+          <div className="flex items-center gap-2 text-muted text-[11px] shrink-0">
+            <span>BoC Valet Daily:</span>
+            <span className="font-mono font-bold text-main">{fxRate.rate.toFixed(4)}</span>
+            {fxRate.as_of_date && (
+              <span className="text-[10px] text-muted">({fxRate.as_of_date})</span>
+            )}
+          </div>
+        )}
       </div>
 
       {performance && performance.unpriced_holdings.length > 0 && (
@@ -625,7 +733,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
               </div>
             </div>
             <p className="text-[11px] text-muted">
-              Total cost is what the whole tranche cost, not the per-share price.
+              For Canadian securities, specify <span className="font-mono text-main font-semibold">.TO</span> for TSX (e.g. <span className="font-mono text-main">XEQT.TO</span>, <span className="font-mono text-main">VFV.TO</span>) or <span className="font-mono text-main">.V</span> for TSX Venture. US equities use standard tickers (e.g. <span className="font-mono text-main">AAPL</span>). Total cost is for the entire position, not per-share.
             </p>
 
             <div className="flex justify-end gap-2 pt-2 border-t border-subtle">
@@ -656,7 +764,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           >
             <h3 className="text-base font-bold text-main">Update Prices</h3>
             <p className="text-[11px] text-muted">
-              Prices are entered by hand — Folio makes no outbound network calls. Paste one{" "}
+              Manual quote overrides. Folio also provides one-click automated quotes for TSX/TSX-V (<span className="text-main font-mono">.TO</span>, <span className="text-main font-mono">.V</span>), US equities, and Bank of Canada exchange rates. Paste one{" "}
               <span className="text-main font-mono">SYMBOL,PRICE</span> per line.
             </p>
 

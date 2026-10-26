@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 import enum
-from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime, Enum
+from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime, Enum, ForeignKey
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.core.config import settings
@@ -92,11 +92,13 @@ class Account(Base):
         Enum(LoanCompounding), nullable=False, default=LoanCompounding.MONTHLY
     )
     
+    owner_member_id = Column(String(36), ForeignKey("household_members.id", ondelete="SET NULL"), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
+    owner_member = relationship("HouseholdMember", back_populates="accounts")
     transactions = relationship("Transaction", back_populates="account", cascade="all, delete-orphan")
     statement_files = relationship("StatementFile", back_populates="account", cascade="all, delete-orphan")
     balance_snapshots = relationship("AccountBalanceSnapshot", back_populates="account", cascade="all, delete-orphan")

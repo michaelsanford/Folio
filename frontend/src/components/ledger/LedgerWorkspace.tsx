@@ -6,10 +6,13 @@ import {
   Trash2,
   Layers,
   Sparkles,
+  Users,
+  Edit2,
 } from "lucide-react";
 import type {
   Account,
   Category,
+  HouseholdMember,
   Transaction,
   TransactionSplit,
   TransactionStatus,
@@ -19,6 +22,7 @@ import { api } from "../../services/api";
 interface LedgerWorkspaceProps {
   accounts: Account[];
   categories: Category[];
+  householdMembers?: HouseholdMember[];
   onDataModified: () => void;
 }
 
@@ -27,12 +31,14 @@ const PAGE_SIZE = 50;
 export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
   accounts,
   categories,
+  householdMembers,
   onDataModified,
 }) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [page, setPage] = useState(1);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
+  const [selectedMemberId, setSelectedMemberId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
@@ -50,9 +56,10 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
   const [batchPayee, setBatchPayee] = useState<string>("");
   const [createRuleWithBatch, setCreateRuleWithBatch] = useState(false);
 
-  // New Transaction Modal State
-  const [isNewTxnOpen, setIsNewTxnOpen] = useState(false);
-  const [newTxn, setNewTxn] = useState({
+  // Transaction Modal State (Create / Edit)
+  const [isTxnModalOpen, setIsTxnModalOpen] = useState(false);
+  const [editingTxn, setEditingTxn] = useState<Transaction | null>(null);
+  const [txnFormData, setTxnFormData] = useState({
     account_id: accounts[0]?.id || "",
     transaction_date: new Date().toISOString().split("T")[0],
     raw_payee: "",
@@ -60,7 +67,40 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
     amount: 0.0,
     category_id: "",
     notes: "",
+    assigned_member_id: "",
   });
+
+  const handleOpenCreateTxn = () => {
+    setEditingTxn(null);
+    setTxnFormData({
+      account_id: accounts[0]?.id || "",
+      transaction_date: new Date().toISOString().split("T")[0],
+      raw_payee: "",
+      normalized_payee: "",
+      amount: 0.0,
+      category_id: "",
+      notes: "",
+      assigned_member_id: "",
+    });
+    setIsTxnModalOpen(true);
+  };
+
+  const handleOpenEditTxn = (txn: Transaction) => {
+    setEditingTxn(txn);
+    setTxnFormData({
+      account_id: txn.account_id,
+      transaction_date: txn.transaction_date
+        ? txn.transaction_date.split("T")[0]
+        : new Date().toISOString().split("T")[0],
+      raw_payee: txn.raw_payee,
+      normalized_payee: txn.normalized_payee || "",
+      amount: txn.amount,
+      category_id: txn.splits?.[0]?.category_id || "",
+      notes: txn.notes || "",
+      assigned_member_id: txn.assigned_member_id || "",
+    });
+    setIsTxnModalOpen(true);
+  };
 
   const loadTransactions = async () => {
     setIsLoading(true);
@@ -68,6 +108,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       const resp = await api.getTransactions({
         account_id: selectedAccountId || undefined,
         category_id: selectedCategoryId || undefined,
+        assigned_member_id: selectedMemberId || undefined,
         search: searchQuery || undefined,
         page,
         page_size: PAGE_SIZE,
@@ -86,7 +127,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
   useEffect(() => {
     const handle = window.setTimeout(loadTransactions, searchQuery ? 300 : 0);
     return () => window.clearTimeout(handle);
-  }, [selectedAccountId, selectedCategoryId, searchQuery, page]);
+  }, [selectedAccountId, selectedCategoryId, selectedMemberId, searchQuery, page]);
 
   const handleToggleSelectRow = (id: string) => {
     const next = new Set(selectedTxnIds);
@@ -188,32 +229,41 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
     }
   };
 
-  const handleCreateManualTxn = async (e: React.FormEvent) => {
+  const handleSaveTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.createTransaction({
-        account_id: newTxn.account_id,
-        transaction_date: newTxn.transaction_date,
-        raw_payee: newTxn.raw_payee,
-        normalized_payee: newTxn.normalized_payee || newTxn.raw_payee,
-        amount: Number(newTxn.amount),
-        notes: newTxn.notes || null,
-        splits: newTxn.category_id ? [{ category_id: newTxn.category_id, amount: Number(newTxn.amount) }] : [],
-      });
-      setIsNewTxnOpen(false);
-      setNewTxn({
-        account_id: accounts[0]?.id || "",
-        transaction_date: new Date().toISOString().split("T")[0],
-        raw_payee: "",
-        normalized_payee: "",
-        amount: 0.0,
-        category_id: "",
-        notes: "",
-      });
+      if (editingTxn) {
+        await api.updateTransaction(editingTxn.id, {
+          account_id: txnFormData.account_id,
+          transaction_date: txnFormData.transaction_date,
+          raw_payee: txnFormData.raw_payee,
+          normalized_payee: txnFormData.normalized_payee || txnFormData.raw_payee,
+          amount: Number(txnFormData.amount),
+          notes: txnFormData.notes || null,
+          assigned_member_id: txnFormData.assigned_member_id || null,
+          splits: txnFormData.category_id
+            ? [{ category_id: txnFormData.category_id, amount: Number(txnFormData.amount) }]
+            : undefined,
+        });
+      } else {
+        await api.createTransaction({
+          account_id: txnFormData.account_id,
+          transaction_date: txnFormData.transaction_date,
+          raw_payee: txnFormData.raw_payee,
+          normalized_payee: txnFormData.normalized_payee || txnFormData.raw_payee,
+          amount: Number(txnFormData.amount),
+          notes: txnFormData.notes || null,
+          assigned_member_id: txnFormData.assigned_member_id || undefined,
+          splits: txnFormData.category_id
+            ? [{ category_id: txnFormData.category_id, amount: Number(txnFormData.amount) }]
+            : [],
+        });
+      }
+      setIsTxnModalOpen(false);
       loadTransactions();
       onDataModified();
     } catch (err: any) {
-      alert(`Failed to create transaction: ${err.message}`);
+      alert(`Failed to save transaction: ${err.message}`);
     }
   };
 
@@ -287,13 +337,32 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 </option>
               ))}
             </select>
+
+            {householdMembers && householdMembers.length > 0 && (
+              <select
+                value={selectedMemberId}
+                onChange={(e) => {
+                  setSelectedMemberId(e.target.value);
+                  setPage(1);
+                }}
+                className="flex-1 sm:flex-none px-3 py-2 bg-input border border-default rounded-xl text-xs font-medium text-main focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+              >
+                <option value="">All Household</option>
+                {householdMembers.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+                <option value="unassigned">Joint / Unassigned</option>
+              </select>
+            )}
           </div>
         </div>
 
         {/* Action Buttons */}
         <div className="flex items-center justify-end gap-3 shrink-0 w-full sm:w-auto">
           <button
-            onClick={() => setIsNewTxnOpen(true)}
+            onClick={handleOpenCreateTxn}
             className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" /> Add Transaction
@@ -398,8 +467,29 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <div className="text-xs font-bold text-main truncate">
-                          {txn.normalized_payee || txn.raw_payee}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-bold text-main truncate">
+                            {txn.normalized_payee || txn.raw_payee}
+                          </span>
+                          {(() => {
+                            const member =
+                              householdMembers?.find((m) => m.id === txn.assigned_member_id) ||
+                              txn.assigned_member;
+                            if (!member) return null;
+                            const memberColor = member.color || "#3B82F6";
+                            return (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold text-white shadow-2xs shrink-0"
+                                style={{ backgroundColor: memberColor }}
+                                title={`Assigned to ${member.name}`}
+                              >
+                                <span className="w-3 h-3 rounded-full bg-white/20 flex items-center justify-center text-[8px] font-bold">
+                                  {member.name.charAt(0)}
+                                </span>
+                                <span>{member.name}</span>
+                              </span>
+                            );
+                          })()}
                         </div>
                         {txn.normalized_payee && txn.normalized_payee !== txn.raw_payee && (
                           <div className="text-[10px] text-muted font-mono truncate">
@@ -448,13 +538,24 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                         </select>
                       )}
 
-                      <button
-                        onClick={() => handleOpenSplitModal(txn)}
-                        title="Split transaction"
-                        className="ml-auto p-1 text-muted hover:text-accent-main"
-                      >
-                        <Split className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="ml-auto flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditTxn(txn)}
+                          title="Edit transaction"
+                          className="p-1 text-muted hover:text-accent-main cursor-pointer"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSplitModal(txn)}
+                          title="Split transaction"
+                          className="p-1 text-muted hover:text-accent-main cursor-pointer"
+                        >
+                          <Split className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -527,7 +628,30 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                         {matchedAccount?.name || "Account"}
                       </td>
                       <td className="p-3.5">
-                        <div className="text-main font-semibold">{txn.normalized_payee || txn.raw_payee}</div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-main font-semibold">
+                            {txn.normalized_payee || txn.raw_payee}
+                          </span>
+                          {(() => {
+                            const member =
+                              householdMembers?.find((m) => m.id === txn.assigned_member_id) ||
+                              txn.assigned_member;
+                            if (!member) return null;
+                            const memberColor = member.color || "#3B82F6";
+                            return (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-white shadow-2xs shrink-0"
+                                style={{ backgroundColor: memberColor }}
+                                title={`Assigned to ${member.name}`}
+                              >
+                                <span className="w-3.5 h-3.5 rounded-full bg-white/20 flex items-center justify-center text-[9px] font-bold">
+                                  {member.name.charAt(0)}
+                                </span>
+                                <span>{member.name}</span>
+                              </span>
+                            );
+                          })()}
+                        </div>
                         {txn.normalized_payee && txn.normalized_payee !== txn.raw_payee && (
                           <div className="text-[10px] text-muted font-mono truncate max-w-xs">{txn.raw_payee}</div>
                         )}
@@ -566,13 +690,24 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                         {txn.amount >= 0 ? "+" : ""}${Math.abs(txn.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="p-3.5 text-center">
-                        <button
-                          onClick={() => handleOpenSplitModal(txn)}
-                          title="Edit splits or loan breakdown"
-                          className="p-1 text-muted hover:text-accent-main hover:bg-surface-hover rounded transition-colors"
-                        >
-                          <Split className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditTxn(txn)}
+                            title="Edit transaction"
+                            className="p-1 text-muted hover:text-accent-main hover:bg-surface-hover rounded transition-colors cursor-pointer"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSplitModal(txn)}
+                            title="Edit splits or loan breakdown"
+                            className="p-1 text-muted hover:text-accent-main hover:bg-surface-hover rounded transition-colors cursor-pointer"
+                          >
+                            <Split className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -718,18 +853,20 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
         </div>
       )}
 
-      {/* New Transaction Modal */}
-      {isNewTxnOpen && (
+      {/* Transaction Create / Edit Modal */}
+      {isTxnModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <form
-            onSubmit={handleCreateManualTxn}
+            onSubmit={handleSaveTransaction}
             className="w-full max-w-md rounded-2xl bg-surface border border-default shadow-2xl p-6 space-y-4"
           >
             <div className="flex items-center justify-between border-b border-subtle pb-3">
-              <h3 className="text-base font-bold text-main">Add Manual Transaction</h3>
+              <h3 className="text-base font-bold text-main">
+                {editingTxn ? "Edit Transaction" : "Add Manual Transaction"}
+              </h3>
               <button
                 type="button"
-                onClick={() => setIsNewTxnOpen(false)}
+                onClick={() => setIsTxnModalOpen(false)}
                 className="text-muted hover:text-main"
               >
                 ✕
@@ -740,8 +877,10 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               <div>
                 <label className="block text-muted mb-1 font-medium">Account</label>
                 <select
-                  value={newTxn.account_id}
-                  onChange={(e) => setNewTxn({ ...newTxn, account_id: e.target.value })}
+                  value={txnFormData.account_id}
+                  onChange={(e) =>
+                    setTxnFormData({ ...txnFormData, account_id: e.target.value })
+                  }
                   className="w-full px-3 py-2 bg-input border border-default rounded-xl text-main"
                   required
                 >
@@ -758,20 +897,29 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                   <label className="block text-muted mb-1 font-medium">Date</label>
                   <input
                     type="date"
-                    value={newTxn.transaction_date}
-                    onChange={(e) => setNewTxn({ ...newTxn, transaction_date: e.target.value })}
+                    value={txnFormData.transaction_date}
+                    onChange={(e) =>
+                      setTxnFormData({ ...txnFormData, transaction_date: e.target.value })
+                    }
                     className="w-full px-3 py-2 bg-input border border-default rounded-xl text-main"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-muted mb-1 font-medium">Amount (Negative for expense)</label>
+                  <label className="block text-muted mb-1 font-medium">
+                    Amount (Negative for expense)
+                  </label>
                   <input
                     type="number"
                     step="0.01"
                     placeholder="-50.00"
-                    value={newTxn.amount}
-                    onChange={(e) => setNewTxn({ ...newTxn, amount: parseFloat(e.target.value) || 0 })}
+                    value={txnFormData.amount}
+                    onChange={(e) =>
+                      setTxnFormData({
+                        ...txnFormData,
+                        amount: parseFloat(e.target.value) || 0,
+                      })
+                    }
                     className="w-full px-3 py-2 bg-input border border-default rounded-xl text-main font-mono"
                     required
                   />
@@ -782,9 +930,11 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 <label className="block text-muted mb-1 font-medium">Payee / Merchant</label>
                 <input
                   type="text"
-                  placeholder="e.g. Trader Joe's"
-                  value={newTxn.raw_payee}
-                  onChange={(e) => setNewTxn({ ...newTxn, raw_payee: e.target.value })}
+                  placeholder="e.g. Trader Joe's or Tim Hortons"
+                  value={txnFormData.raw_payee}
+                  onChange={(e) =>
+                    setTxnFormData({ ...txnFormData, raw_payee: e.target.value })
+                  }
                   className="w-full px-3 py-2 bg-input border border-default rounded-xl text-main placeholder:text-muted"
                   required
                 />
@@ -793,8 +943,10 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               <div>
                 <label className="block text-muted mb-1 font-medium">Category</label>
                 <select
-                  value={newTxn.category_id}
-                  onChange={(e) => setNewTxn({ ...newTxn, category_id: e.target.value })}
+                  value={txnFormData.category_id}
+                  onChange={(e) =>
+                    setTxnFormData({ ...txnFormData, category_id: e.target.value })
+                  }
                   className="w-full px-3 py-2 bg-input border border-default rounded-xl text-main"
                 >
                   <option value="">Uncategorized</option>
@@ -806,13 +958,36 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 </select>
               </div>
 
+              {/* Household Member Assignment */}
+              <div>
+                <label className="block text-muted mb-1 font-medium">
+                  Household Member Attribution
+                </label>
+                <select
+                  value={txnFormData.assigned_member_id}
+                  onChange={(e) =>
+                    setTxnFormData({ ...txnFormData, assigned_member_id: e.target.value })
+                  }
+                  className="w-full px-3 py-2 bg-input border border-default rounded-xl text-main"
+                >
+                  <option value="">Joint / Unassigned</option>
+                  {householdMembers?.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.role || "Member"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-muted mb-1 font-medium">Notes (Optional)</label>
                 <input
                   type="text"
                   placeholder="Memo, check number..."
-                  value={newTxn.notes}
-                  onChange={(e) => setNewTxn({ ...newTxn, notes: e.target.value })}
+                  value={txnFormData.notes}
+                  onChange={(e) =>
+                    setTxnFormData({ ...txnFormData, notes: e.target.value })
+                  }
                   className="w-full px-3 py-2 bg-input border border-default rounded-xl text-main placeholder:text-muted"
                 />
               </div>
@@ -821,7 +996,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
             <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
               <button
                 type="button"
-                onClick={() => setIsNewTxnOpen(false)}
+                onClick={() => setIsTxnModalOpen(false)}
                 className="px-4 py-2 rounded-xl border border-default text-sub text-xs hover:bg-surface-hover"
               >
                 Cancel
@@ -830,7 +1005,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 type="submit"
                 className="px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs cursor-pointer"
               >
-                Save Transaction
+                {editingTxn ? "Update Transaction" : "Save Transaction"}
               </button>
             </div>
           </form>
