@@ -21,6 +21,7 @@ class AccountBase(BaseModel):
     monthly_payment: float | None = None
     escrow_payment: float | None = None
     compounding: LoanCompounding = LoanCompounding.MONTHLY
+    owner_member_id: str | None = None
     is_active: bool = True
 
 
@@ -45,6 +46,7 @@ class AccountUpdate(BaseModel):
     monthly_payment: float | None = None
     escrow_payment: float | None = None
     compounding: LoanCompounding | None = None
+    owner_member_id: str | None = None
     is_active: bool | None = None
 
 

@@ -21,6 +21,8 @@ from app.api.budgets import router as budgets_router
 from app.api.analytics import router as analytics_router
 from app.api.maintenance import router as maintenance_router
 from app.api.investments import router as investments_router
+from app.api.household import router as household_router
+from app.api.goals import router as goals_router
 
 
 @asynccontextmanager
@@ -131,6 +133,8 @@ app.include_router(budgets_router, prefix=settings.API_V1_STR, dependencies=[Dep
 app.include_router(analytics_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
 app.include_router(maintenance_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
 app.include_router(investments_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
+app.include_router(household_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
+app.include_router(goals_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
 
 
 @app.get("/api/health", tags=["Health"])

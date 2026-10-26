@@ -26,7 +26,7 @@ DEFAULT_CATEGORIES = [
         {"name": "Mortgage Interest", "slug": "mortgage-interest", "icon": "percent", "color": "#EF4444", "type": CategoryType.EXPENSE},
         {"name": "Property Tax & Insurance (Escrow)", "slug": "escrow", "icon": "file-text", "color": "#8B5CF6", "type": CategoryType.EXPENSE},
         {"name": "Utilities (Electric/Water/Gas)", "slug": "utilities", "icon": "zap", "color": "#F59E0B", "type": CategoryType.EXPENSE},
-        {"name": "Home Maintenance & Repairs", "slug": "home-maintenance", "icon": "wrench", "color": "#6B7280", "type": CategoryType.EXPENSE},
+        {"name": "Home Maintenance & Repairs", "slug": "home-maintenance", "icon": "wrench", "color": "#6B7280", "type": CategoryType.EXPENSE, "is_rollover": True},
     ]},
     # Transportation & Auto
     {"name": "Transportation", "slug": "transportation", "icon": "car", "color": "#3B82F6", "type": CategoryType.EXPENSE, "children": [
@@ -39,15 +39,15 @@ DEFAULT_CATEGORIES = [
     # Food & Dining
     {"name": "Food & Dining", "slug": "food-dining", "icon": "utensils", "color": "#F97316", "type": CategoryType.EXPENSE, "children": [
         {"name": "Groceries", "slug": "groceries", "icon": "shopping-bag", "color": "#F97316", "type": CategoryType.EXPENSE},
-        {"name": "Restaurants & Takeout", "slug": "restaurants", "icon": "coffee", "color": "#FB923C", "type": CategoryType.EXPENSE},
+        {"name": "Restaurants & Takeout", "slug": "restaurants", "icon": "coffee", "color": "#FB923C", "type": CategoryType.EXPENSE, "is_rollover": True},
         {"name": "Coffee Shops", "slug": "coffee-shops", "icon": "coffee", "color": "#D97706", "type": CategoryType.EXPENSE},
     ]},
     # Lifestyle & Personal
     {"name": "Personal & Lifestyle", "slug": "personal", "icon": "user", "color": "#8B5CF6", "type": CategoryType.EXPENSE, "children": [
-        {"name": "Shopping & General Merchandise", "slug": "shopping", "icon": "shopping-cart", "color": "#8B5CF6", "type": CategoryType.EXPENSE},
+        {"name": "Shopping & General Merchandise", "slug": "shopping", "icon": "shopping-cart", "color": "#8B5CF6", "type": CategoryType.EXPENSE, "is_rollover": True},
         {"name": "Subscriptions & Streaming", "slug": "subscriptions", "icon": "tv", "color": "#A855F7", "type": CategoryType.EXPENSE},
         {"name": "Health & Medical", "slug": "health-medical", "icon": "activity", "color": "#14B8A6", "type": CategoryType.EXPENSE},
-        {"name": "Travel & Vacation", "slug": "travel", "icon": "plane", "color": "#0EA5E9", "type": CategoryType.EXPENSE},
+        {"name": "Travel & Vacation", "slug": "travel", "icon": "plane", "color": "#0EA5E9", "type": CategoryType.EXPENSE, "is_rollover": True},
     ]},
     # Transfers
     {"name": "Transfers", "slug": "transfers", "icon": "arrow-left-right", "color": "#64748B", "type": CategoryType.TRANSFER, "children": [
@@ -81,6 +81,7 @@ def seed_default_categories(db: Session):
                 icon=child_def["icon"],
                 color=child_def["color"],
                 type=child_def["type"],
+                is_rollover=child_def.get("is_rollover", False),
                 parent_id=parent.id,
             )
             db.add(child)

@@ -23,6 +23,7 @@ class Category(Base):
     color = Column(String(20), nullable=True, default="#6366F1")
     type = Column(Enum(CategoryType), nullable=False, default=CategoryType.EXPENSE)
     is_budgeted = Column(Boolean, nullable=False, default=True)
+    is_rollover = Column(Boolean, nullable=False, default=False)
     sort_order = Column(Integer, nullable=False, default=0)
     
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

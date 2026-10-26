@@ -8,10 +8,12 @@ import { LedgerWorkspace } from "./components/ledger/LedgerWorkspace";
 import { LoanAmortizationView } from "./components/loans/LoanAmortizationView";
 import { InvestmentsView } from "./components/investments/InvestmentsView";
 import { BudgetingView } from "./components/budgeting/BudgetingView";
+import { GoalsView } from "./components/goals/GoalsView";
 import { RulesManagerView } from "./components/rules/RulesManagerView";
 import { AccountsManagerView } from "./components/accounts/AccountsManagerView";
+import { HouseholdModal } from "./components/household/HouseholdModal";
 import { LockScreen } from "./components/auth/LockScreen";
-import type { Account, Category, DashboardAnalyticsResponse } from "./types";
+import type { Account, Category, DashboardAnalyticsResponse, HouseholdMember } from "./types";
 import { api, setOnUnauthorized } from "./services/api";
 import { Landmark, ArrowRight } from "lucide-react";
 
@@ -19,8 +21,10 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<NavTab>("dashboard");
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
   const [analytics, setAnalytics] = useState<DashboardAnalyticsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isHouseholdModalOpen, setIsHouseholdModalOpen] = useState(false);
 
   // Authentication State
   const [authStatus, setAuthStatus] = useState<{
@@ -59,14 +63,16 @@ function AppContent() {
 
   const loadAllData = async () => {
     try {
-      const [accs, cats, anl] = await Promise.all([
+      const [accs, cats, anl, members] = await Promise.all([
         api.getAccounts(),
         api.getCategories(),
         api.getDashboardAnalytics(),
+        api.household.getMembers(),
       ]);
       setAccounts(accs);
       setCategories(cats);
       setAnalytics(anl);
+      setHouseholdMembers(members);
     } catch (err) {
       console.error("Data load error:", err);
     } finally {
@@ -81,16 +87,61 @@ function AppContent() {
     checkAuth();
   }, []);
 
-  // Quick starter seeder for initial user demo
+  // Quick starter seeder for initial Canadian user demo
   const handleSeedDemoData = async () => {
     try {
+      // 1. Seed Household Members (Canadian couple)
+      const m1 = await api.household.createMember({
+        name: "Michael",
+        role: "Self",
+        color: "#3B82F6",
+        notes: "Primary earner",
+      });
+
+      const m2 = await api.household.createMember({
+        name: "Sarah",
+        role: "Partner",
+        color: "#10B981",
+        notes: "Partner / Spouse",
+      });
+
+      // 2. Seed Accounts with Canadian legal ownership attribution
       await api.createAccount({
-        name: "Chequing",
+        name: "Joint Chequing",
         type: "CHECKING",
         institution: "RBC",
         account_number_mask: "*1234",
         currency: "CAD",
-        current_balance: 4250.0,
+        current_balance: 5250.0,
+      });
+
+      await api.createAccount({
+        name: "Emergency HISA",
+        type: "HISA",
+        institution: "EQ Bank",
+        account_number_mask: "*7711",
+        currency: "CAD",
+        current_balance: 15000.0,
+      });
+
+      await api.createAccount({
+        name: "Michael's TFSA",
+        type: "TFSA",
+        institution: "Wealthsimple",
+        account_number_mask: "*5566",
+        currency: "CAD",
+        current_balance: 24500.0,
+        owner_member_id: m1.id,
+      });
+
+      await api.createAccount({
+        name: "Sarah's RRSP",
+        type: "RRSP",
+        institution: "TD Direct",
+        account_number_mask: "*3344",
+        currency: "CAD",
+        current_balance: 38200.0,
+        owner_member_id: m2.id,
       });
 
       await api.createAccount({
@@ -132,6 +183,25 @@ function AppContent() {
         escrow_payment: 0.0,
       });
 
+      // 3. Seed Sample Goals
+      await api.goals.createGoal({
+        name: "6-Month Emergency Cushion",
+        type: "EMERGENCY_FUND",
+        target_amount: 25000.0,
+        current_amount: 15000.0,
+        emergency_fund_months: 6,
+        notes: "Liquid emergency buffer in EQ Bank HISA",
+      });
+
+      await api.goals.createGoal({
+        name: "Michael 2026 TFSA Max",
+        type: "TFSA_ANNUAL",
+        target_amount: 7000.0,
+        current_amount: 3500.0,
+        owner_member_id: m1.id,
+        notes: "Annual CRA statutory allowance tracking",
+      });
+
       const demoRules: Array<{
         slug: string;
         pattern: string;
@@ -139,12 +209,17 @@ function AppContent() {
         priority: number;
         normalized_payee_override?: string;
       }> = [
+        { slug: "groceries", pattern: "LOBLAWS", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Loblaws" },
         { slug: "groceries", pattern: "METRO", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Metro" },
-        { slug: "groceries", pattern: "PROVIGO", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Provigo" },
+        { slug: "groceries", pattern: "SOBEYS", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Sobeys" },
+        { slug: "groceries", pattern: "COSTCO", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Costco" },
         { slug: "coffee-shops", pattern: "TIM HORTONS", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Tim Hortons" },
-        { slug: "restaurants", pattern: "ST-HUBERT", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "St-Hubert" },
+        { slug: "coffee-shops", pattern: "STARBUCKS", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Starbucks" },
         { slug: "fuel", pattern: "PETRO-CANADA", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Petro-Canada" },
-        { slug: "utilities", pattern: "HYDRO", pattern_type: "STARTS_WITH", priority: 15, normalized_payee_override: "Hydro-Quebec" },
+        { slug: "fuel", pattern: "ESSO", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Esso" },
+        { slug: "telecom-internet", pattern: "ROGERS", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Rogers" },
+        { slug: "telecom-internet", pattern: "BELL", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Bell" },
+        { slug: "salary-wages", pattern: "PAYROLL", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Employer Payroll" },
       ];
 
       for (const rule of demoRules) {
@@ -188,6 +263,8 @@ function AppContent() {
       activeTab={activeTab}
       onTabChange={(tab) => setActiveTab(tab)}
       accounts={accounts}
+      householdMembers={householdMembers}
+      onManageHousehold={() => setIsHouseholdModalOpen(true)}
     >
       {/* Empty State Banner if no accounts configured */}
       {accounts.length === 0 && !isLoading && (
@@ -199,22 +276,22 @@ function AppContent() {
             <div>
               <div className="text-sm font-bold text-main">Welcome to Folio</div>
               <div className="text-xs text-muted mt-0.5">
-                Get started by creating your financial accounts or load sample data.
+                Get started by creating your financial accounts or load sample Canadian data.
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               onClick={() => setActiveTab("accounts")}
-              className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-surface-subtle hover:bg-surface-hover border border-default text-sub text-xs font-semibold transition-all"
+              className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-surface-subtle hover:bg-surface-hover border border-default text-sub text-xs font-semibold transition-all cursor-pointer"
             >
               Add Custom Account
             </button>
             <button
               onClick={handleSeedDemoData}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs transition-all"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs transition-all cursor-pointer"
             >
-              <span>Load Demo Accounts</span>
+              <span>Load Canadian Demo</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -234,6 +311,7 @@ function AppContent() {
         <LedgerWorkspace
           accounts={accounts}
           categories={categories}
+          householdMembers={householdMembers}
           onDataModified={loadAllData}
         />
       )}
@@ -248,6 +326,15 @@ function AppContent() {
 
       {activeTab === "budgeting" && (
         <BudgetingView categories={categories} onCategoriesModified={loadAllData} />
+      )}
+
+      {activeTab === "goals" && (
+        <GoalsView
+          accounts={accounts}
+          categories={categories}
+          householdMembers={householdMembers}
+          onDataModified={loadAllData}
+        />
       )}
 
       {activeTab === "investments" && (
@@ -265,9 +352,19 @@ function AppContent() {
       {activeTab === "accounts" && (
         <AccountsManagerView
           accounts={accounts}
+          householdMembers={householdMembers}
           onAccountsModified={loadAllData}
+          onManageHousehold={() => setIsHouseholdModalOpen(true)}
         />
       )}
+
+      {/* Household Management Modal */}
+      <HouseholdModal
+        isOpen={isHouseholdModalOpen}
+        onClose={() => setIsHouseholdModalOpen(false)}
+        members={householdMembers}
+        onMembersModified={loadAllData}
+      />
     </AppLayout>
   );
 }

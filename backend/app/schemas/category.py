@@ -10,6 +10,7 @@ class CategoryBase(BaseModel):
     color: str | None = "#6366F1"
     type: CategoryType = CategoryType.EXPENSE
     is_budgeted: bool = True
+    is_rollover: bool = False
     sort_order: int = 0
 
 
@@ -25,6 +26,7 @@ class CategoryUpdate(BaseModel):
     color: str | None = None
     type: CategoryType | None = None
     is_budgeted: bool | None = None
+    is_rollover: bool | None = None
     sort_order: int | None = None
 
 

@@ -48,6 +48,8 @@ export interface Account {
   loan_original_principal?: number;
   monthly_payment?: number;
   escrow_payment?: number;
+  owner_member_id?: string | null;
+  owner_member?: HouseholdMember;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -64,6 +66,7 @@ export interface Category {
   color?: string;
   type: CategoryType;
   is_budgeted: boolean;
+  is_rollover: boolean;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -97,6 +100,8 @@ export interface Transaction {
   import_hash?: string | null;
   status: TransactionStatus;
   notes?: string | null;
+  assigned_member_id?: string | null;
+  assigned_member?: HouseholdMember;
   created_at: string;
   updated_at: string;
   splits: TransactionSplit[];
@@ -108,8 +113,6 @@ export interface TransactionListResponse {
   page: number;
   page_size: number;
 }
-
-export type RulePatternType = "EXACT" | "CONTAINS" | "REGEX" | "STARTS_WITH";
 
 export interface CategorizationRule {
   id: string;
@@ -127,6 +130,8 @@ export interface CategorizationRule {
   category?: Category;
 }
 
+export type RulePatternType = "EXACT" | "CONTAINS" | "REGEX" | "STARTS_WITH";
+
 export interface BudgetItem {
   id?: string;
   budget_id?: string;
@@ -134,6 +139,8 @@ export interface BudgetItem {
   planned_amount: number;
   actual_amount: number;
   remaining_amount: number;
+  rollover_amount?: number;
+  available_amount?: number;
   category?: Category;
 }
 
@@ -336,4 +343,109 @@ export interface PriceQuote {
   symbol: string;
   as_of_date: string;
   price: number;
+}
+
+
+// ---------------------------------------------------------------- Household & Collaboration
+
+export interface HouseholdMember {
+  id: string;
+  name: string;
+  color?: string | null;
+  avatar_icon?: string | null;
+  role?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+
+// ---------------------------------------------------------------- Goals & Canadian CRA
+
+export type GoalType =
+  | "SAVINGS"
+  | "EMERGENCY_FUND"
+  | "TFSA_ANNUAL"
+  | "FHSA_ANNUAL"
+  | "HBP_REPAYMENT"
+  | "DEBT_PAYOFF";
+
+export interface Goal {
+  id: string;
+  name: string;
+  type: GoalType;
+  target_amount: number;
+  current_amount: number;
+  effective_current_amount: number;
+  progress_percentage: number;
+  target_date?: string | null;
+  emergency_fund_months?: number | null;
+  excluded_category_ids?: string[] | null;
+  linked_account_id?: string | null;
+  owner_member_id?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+  linked_account?: Account;
+  owner_member?: HouseholdMember;
+}
+
+export interface EmergencyCategoryBreakdown {
+  category_id: string;
+  category_name: string;
+  monthly_average: number;
+  is_excluded: boolean;
+}
+
+export interface EmergencyFundCalcResponse {
+  lookback_months: number;
+  months_selected: number;
+  monthly_average_total_expense: number;
+  monthly_average_included_expense: number;
+  suggested_target_amount: number;
+  excluded_category_ids: string[];
+  category_breakdown: EmergencyCategoryBreakdown[];
+}
+
+export interface CraSummaryResponse {
+  tax_year: number;
+  tfsa_annual_limit: number;
+  fhsa_annual_limit: number;
+  fhsa_lifetime_limit: number;
+  tfsa_contributed: number;
+  tfsa_remaining_room: number;
+  fhsa_contributed: number;
+  fhsa_remaining_room: number;
+  notes: string;
+}
+
+
+// ---------------------------------------------------------------- Cash Flow Forecast
+
+export interface ForecastEvent {
+  date: string;
+  amount: number;
+  description: string;
+  event_type: "INCOME" | "MORTGAGE" | "LOAN" | "EXPENSE";
+  account_name?: string | null;
+}
+
+export interface ForecastDataPoint {
+  date: string;
+  cash_balance: number;
+  projected_income: number;
+  projected_expense: number;
+  net_change: number;
+  events: string[];
+}
+
+export interface CashFlowForecastResponse {
+  start_date: string;
+  end_date: string;
+  starting_cash: number;
+  ending_cash: number;
+  lowest_cash_point: number;
+  lowest_cash_date: string;
+  daily_curve: ForecastDataPoint[];
+  scheduled_events: ForecastEvent[];
 }

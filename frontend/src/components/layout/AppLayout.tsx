@@ -7,13 +7,16 @@ import {
   Sliders,
   Wallet,
   TrendingUp,
+  Landmark,
+  Target,
+  Users,
   Menu,
   X,
   Palette,
   Sun,
   Moon,
 } from "lucide-react";
-import type { Account } from "../../types";
+import type { Account, HouseholdMember } from "../../types";
 import { isAssetAccount } from "../../constants/canadianAccountTypes";
 import { useTheme } from "../../context/ThemeContext";
 import { ThemePickerModal } from "../common/ThemePickerModal";
@@ -22,6 +25,7 @@ export type NavTab =
   | "dashboard"
   | "ledger"
   | "budgeting"
+  | "goals"
   | "loans"
   | "ingestion"
   | "rules"
@@ -32,6 +36,8 @@ interface AppLayoutProps {
   activeTab: NavTab;
   onTabChange: (tab: NavTab) => void;
   accounts: Account[];
+  householdMembers?: HouseholdMember[];
+  onManageHousehold?: () => void;
   children: React.ReactNode;
 }
 
@@ -39,6 +45,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   activeTab,
   onTabChange,
   accounts,
+  householdMembers,
+  onManageHousehold,
   children,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -60,6 +68,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     { id: "accounts" as NavTab, label: "Accounts", icon: Wallet },
     { id: "ledger" as NavTab, label: "Ledger", icon: ReceiptText },
     { id: "budgeting" as NavTab, label: "Budget", icon: PiggyBank },
+    { id: "goals" as NavTab, label: "Goals & CRA", icon: Target },
+    { id: "loans" as NavTab, label: "Loans", icon: Landmark },
     { id: "investments" as NavTab, label: "Investments", icon: TrendingUp },
     { id: "ingestion" as NavTab, label: "Import", icon: UploadCloud },
     { id: "rules" as NavTab, label: "Auto / Settings", icon: Sliders },
@@ -114,6 +124,37 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           </div>
         </div>
 
+        {/* Household Collaboration Quick-Bar */}
+        {householdMembers && (
+          <div className="px-3 mb-2">
+            <button
+              onClick={onManageHousehold}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-surface border border-default hover:bg-surface-hover text-xs transition-colors shadow-2xs cursor-pointer group"
+              title="Manage Household Members"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Users className="w-3.5 h-3.5 text-accent-main shrink-0" />
+                <span className="font-semibold text-main truncate text-[11px]">
+                  {householdMembers.length === 0
+                    ? "Add Household Members"
+                    : `${householdMembers.length} Household Member${householdMembers.length === 1 ? "" : "s"}`}
+                </span>
+              </div>
+              <div className="flex -space-x-1.5 shrink-0">
+                {householdMembers.slice(0, 3).map((m) => (
+                  <span
+                    key={m.id}
+                    className="w-4 h-4 rounded-full border border-surface text-[8px] flex items-center justify-center font-bold text-white shadow-2xs"
+                    style={{ backgroundColor: m.color || "#3B82F6" }}
+                  >
+                    {m.name.charAt(0)}
+                  </span>
+                ))}
+              </div>
+            </button>
+          </div>
+        )}
+
         {/* Navigation Links */}
         <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
@@ -123,7 +164,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <button
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-100 ${
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-100 cursor-pointer ${
                   isActive
                     ? "bg-accent-subtle text-accent-subtle border border-accent-main/30 shadow-2xs"
                     : "text-sub hover:text-main hover:bg-surface-hover"
@@ -140,7 +181,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         <div className="p-3 border-t border-subtle bg-surface-subtle/50 flex items-center justify-between gap-2">
           <button
             onClick={() => setIsThemeModalOpen(true)}
-            className="flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-subtle bg-surface hover:bg-surface-hover text-left transition-colors"
+            className="flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-subtle bg-surface hover:bg-surface-hover text-left transition-colors cursor-pointer"
           >
             <div
               className="w-3.5 h-3.5 rounded-full border border-subtle shrink-0"
@@ -153,7 +194,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
           <button
             onClick={toggleMode}
-            className="p-1.5 rounded-lg border border-subtle bg-surface hover:bg-surface-hover text-muted hover:text-main transition-colors"
+            className="p-1.5 rounded-lg border border-subtle bg-surface hover:bg-surface-hover text-muted hover:text-main transition-colors cursor-pointer"
             title={`Switch to ${resolvedMode === "dark" ? "Light" : "Dark"} Mode`}
             aria-label="Toggle Color Mode"
           >

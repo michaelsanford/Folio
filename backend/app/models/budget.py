@@ -28,7 +28,7 @@ class Budget(Base):
     )
 
 
-@with_money(planned_amount=False)
+@with_money(planned_amount=False, rollover_amount=False)
 class BudgetItem(Base):
     __tablename__ = "budget_items"
 
@@ -36,6 +36,7 @@ class BudgetItem(Base):
     budget_id = Column(String(36), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True)
     category_id = Column(String(36), ForeignKey("categories.id", ondelete="CASCADE"), nullable=False, index=True)
     planned_amount_cents = Column(Integer, nullable=False, default=0)
+    rollover_amount_cents = Column(Integer, nullable=False, default=0)
 
     # Relationships
     budget = relationship("Budget", back_populates="items")

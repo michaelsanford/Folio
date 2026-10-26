@@ -6,6 +6,8 @@ from app.models.transaction import Transaction, TransactionSplit, TransactionSta
 from app.models.rule import CategorizationRule, RulePatternType
 from app.models.budget import Budget, BudgetItem
 from app.models.snapshot import AccountBalanceSnapshot
+from app.models.household import HouseholdMember
+from app.models.goal import Goal, GoalType
 from app.models.investment import (
     AssetClass,
     Holding,
@@ -31,6 +33,9 @@ __all__ = [
     "Budget",
     "BudgetItem",
     "AccountBalanceSnapshot",
+    "HouseholdMember",
+    "Goal",
+    "GoalType",
     "Security",
     "AssetClass",
     "Holding",

@@ -33,6 +33,7 @@ class TransactionBase(BaseModel):
     currency: str = settings.DEFAULT_CURRENCY
     status: TransactionStatus = TransactionStatus.CLEARED
     notes: str | None = None
+    assigned_member_id: str | None = None
 
 
 class TransactionCreate(TransactionBase):
@@ -50,6 +51,7 @@ class TransactionUpdate(BaseModel):
     currency: str | None = None
     status: TransactionStatus | None = None
     notes: str | None = None
+    assigned_member_id: str | None = None
     transfer_transaction_id: str | None = None
     splits: list[TransactionSplitCreate] | None = None
 

@@ -22,6 +22,7 @@ class Transaction(Base):
     account_id = Column(String(36), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True)
     transfer_transaction_id = Column(String(36), ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True)
     statement_file_id = Column(String(36), ForeignKey("statement_files.id", ondelete="SET NULL"), nullable=True)
+    assigned_member_id = Column(String(36), ForeignKey("household_members.id", ondelete="SET NULL"), nullable=True)
     
     transaction_date = Column(DateTime, nullable=False, index=True)
     posted_date = Column(DateTime, nullable=True)
@@ -43,6 +44,7 @@ class Transaction(Base):
 
     # Relationships
     account = relationship("Account", back_populates="transactions")
+    assigned_member = relationship("HouseholdMember", back_populates="transactions")
     statement_file = relationship("StatementFile", back_populates="transactions")
     splits = relationship("TransactionSplit", back_populates="transaction", cascade="all, delete-orphan")
     transfer_pair = relationship("Transaction", remote_side=[id], foreign_keys=[transfer_transaction_id], post_update=True)

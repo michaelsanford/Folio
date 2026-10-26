@@ -5,8 +5,9 @@ import {
   Trash2,
   Info,
   Wallet,
+  Users,
 } from "lucide-react";
-import type { Account, AccountType } from "../../types";
+import type { Account, AccountType, HouseholdMember } from "../../types";
 import { api } from "../../services/api";
 import {
   getAccountTypeMeta,
@@ -23,12 +24,16 @@ import { InstitutionAutocomplete } from "./InstitutionAutocomplete";
 
 interface AccountsManagerViewProps {
   accounts: Account[];
+  householdMembers?: HouseholdMember[];
   onAccountsModified: () => void;
+  onManageHousehold?: () => void;
 }
 
 export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
   accounts,
+  householdMembers,
   onAccountsModified,
+  onManageHousehold,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -47,6 +52,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
     account_number_mask: string;
     icon: string;
     color: string;
+    owner_member_id: string;
     current_balance: number;
     credit_limit: number;
     interest_rate: number;
@@ -61,6 +67,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
     account_number_mask: "",
     icon: "wallet",
     color: "#10B981",
+    owner_member_id: "",
     current_balance: 0.0,
     credit_limit: 0.0,
     interest_rate: 0.0,
@@ -80,6 +87,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
       account_number_mask: "",
       icon: meta.defaultIcon,
       color: meta.defaultColor,
+      owner_member_id: "",
       current_balance: 0.0,
       credit_limit: 0.0,
       interest_rate: 0.0,
@@ -101,6 +109,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
       account_number_mask: acc.account_number_mask || "",
       icon: acc.icon || meta.defaultIcon,
       color: acc.color || meta.defaultColor,
+      owner_member_id: acc.owner_member_id || "",
       current_balance: acc.current_balance,
       credit_limit: acc.credit_limit || 0.0,
       interest_rate: acc.interest_rate || 0.0,
@@ -130,6 +139,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
           name: formData.name,
           institution: formData.institution || undefined,
           account_number_mask: formData.account_number_mask || undefined,
+          owner_member_id: formData.owner_member_id || undefined,
           icon: formData.icon || null,
           color: formData.color || null,
           current_balance: Number(formData.current_balance),
@@ -156,6 +166,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
           type: formData.type,
           institution: formData.institution || undefined,
           account_number_mask: formData.account_number_mask || undefined,
+          owner_member_id: formData.owner_member_id || undefined,
           currency: "CAD",
           icon: formData.icon || null,
           color: formData.color || null,
@@ -297,12 +308,23 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={handleOpenCreate}
-          className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-semibold shadow-xs transition-all cursor-pointer"
-        >
-          <Plus className="w-4 h-4" /> Add Account
-        </button>
+        <div className="flex items-center gap-3">
+          {onManageHousehold && (
+            <button
+              type="button"
+              onClick={onManageHousehold}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-default bg-surface hover:bg-surface-hover text-main text-sm font-semibold shadow-xs transition-all cursor-pointer"
+            >
+              <Users className="w-4 h-4 text-accent-main" /> Manage Household
+            </button>
+          )}
+          <button
+            onClick={handleOpenCreate}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-semibold shadow-xs transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" /> Add Account
+          </button>
+        </div>
       </div>
 
       {/* Metrics Row */}
@@ -437,6 +459,35 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                     <span className="text-xs text-muted font-medium">
                       {ACCOUNT_CATEGORY_LABELS[meta.category]}
                     </span>
+                    {(() => {
+                      const owner =
+                        householdMembers?.find((m) => m.id === acc.owner_member_id) ||
+                        acc.owner_member;
+                      if (acc.owner_member_id && owner) {
+                        const ownerColor = owner.color || "#3B82F6";
+                        return (
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold border font-mono"
+                            style={{
+                              backgroundColor: `${ownerColor}15`,
+                              color: ownerColor,
+                              borderColor: `${ownerColor}30`,
+                            }}
+                          >
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: ownerColor }}
+                            />
+                            {owner.name}
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-surface-subtle text-muted border border-subtle">
+                          Joint / Shared
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -528,6 +579,30 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                   value={formData.type}
                   onChange={handleTypeChange}
                 />
+              </div>
+
+              {/* Account Ownership (Household Member) */}
+              <div>
+                <label className="block text-muted mb-1.5 font-semibold text-xs uppercase tracking-wider">
+                  Account Ownership (Household Member)
+                </label>
+                <select
+                  value={formData.owner_member_id}
+                  onChange={(e) =>
+                    setFormData({ ...formData, owner_member_id: e.target.value })
+                  }
+                  className="w-full px-4 py-2.5 bg-input border border-default rounded-xl text-main text-sm focus:outline-hidden focus:ring-1 focus:ring-accent-main"
+                >
+                  <option value="">Joint / Shared Household</option>
+                  {householdMembers?.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.role || "Member"})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-muted mt-1.5 leading-relaxed">
+                  Note: In Canada, registered accounts (TFSA, RRSP, FHSA) are individual legal registrations. Joint ownership applies to Chequing, Savings, and Mortgages.
+                </p>
               </div>
 
               {/* Account Name with Integrated Glyph Trigger */}

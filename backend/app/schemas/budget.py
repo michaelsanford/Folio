@@ -20,6 +20,8 @@ class BudgetItemResponse(BudgetItemBase):
     id: str
     budget_id: str
     actual_amount: float = 0.0
+    rollover_amount: float = 0.0
+    available_amount: float = 0.0
     remaining_amount: float = 0.0
     category: CategoryResponse | None = None
 
@@ -54,3 +56,21 @@ class BudgetResponse(BudgetBase):
     total_actual_expense: float = 0.0
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CashFlowForecastPoint(BaseModel):
+    date: str
+    projected_balance: float
+    daily_net: float = 0.0
+    notes: list[str] = []
+
+
+class CashFlowForecastResponse(BaseModel):
+    start_date: str
+    end_date: str
+    days: int
+    starting_balance: float
+    lowest_projected_balance: float
+    lowest_balance_date: str
+    is_overdraft_risk: bool
+    points: list[CashFlowForecastPoint]

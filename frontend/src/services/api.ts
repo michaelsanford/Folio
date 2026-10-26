@@ -15,6 +15,11 @@ import type {
   PriceQuote,
   AuthStatusResponse,
   CognitoConfigResponse,
+  HouseholdMember,
+  Goal,
+  EmergencyFundCalcResponse,
+  CraSummaryResponse,
+  CashFlowForecastResponse,
 } from "../types";
 
 const API_BASE = "/api";
@@ -112,11 +117,72 @@ export const api = {
       }),
   },
 
+  // Household & Multi-User Collaboration
+  household: {
+    getMembers: () =>
+      request<HouseholdMember[]>("/household/members"),
+    createMember: (member: Partial<HouseholdMember>) =>
+      request<HouseholdMember>("/household/members", {
+        method: "POST",
+        body: JSON.stringify(member),
+      }),
+    updateMember: (id: string, member: Partial<HouseholdMember>) =>
+      request<HouseholdMember>(`/household/members/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(member),
+      }),
+    deleteMember: (id: string) =>
+      request<void>(`/household/members/${id}`, { method: "DELETE" }),
+  },
+
+  // Goals & CRA Tracking
+  goals: {
+    getGoals: (type?: string, ownerMemberId?: string) => {
+      const q = new URLSearchParams();
+      if (type) q.append("type", type);
+      if (ownerMemberId) q.append("owner_member_id", ownerMemberId);
+      const qs = q.toString() ? `?${q.toString()}` : "";
+      return request<Goal[]>(`/goals${qs}`);
+    },
+    createGoal: (goal: Partial<Goal>) =>
+      request<Goal>("/goals", {
+        method: "POST",
+        body: JSON.stringify(goal),
+      }),
+    updateGoal: (id: string, goal: Partial<Goal>) =>
+      request<Goal>(`/goals/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(goal),
+      }),
+    deleteGoal: (id: string) =>
+      request<void>(`/goals/${id}`, { method: "DELETE" }),
+    getEmergencyFundCalc: (
+      months = 3,
+      lookbackMonths = 6,
+      excludedCategoryIds: string[] = []
+    ) => {
+      const q = new URLSearchParams({
+        months: months.toString(),
+        lookback_months: lookbackMonths.toString(),
+      });
+      if (excludedCategoryIds.length > 0) {
+        q.append("excluded_category_ids", excludedCategoryIds.join(","));
+      }
+      return request<EmergencyFundCalcResponse>(`/goals/emergency-fund-calc?${q.toString()}`);
+    },
+    getCraLimits: (memberId?: string) => {
+      const q = memberId ? `?member_id=${memberId}` : "";
+      return request<CraSummaryResponse>(`/goals/cra-limits${q}`);
+    },
+  },
 
   // Accounts
-  getAccounts: (isActive?: boolean) => {
-    const query = isActive !== undefined ? `?is_active=${isActive}` : "";
-    return request<Account[]>(`/accounts${query}`);
+  getAccounts: (isActive?: boolean, ownerMemberId?: string) => {
+    const q = new URLSearchParams();
+    if (isActive !== undefined) q.append("is_active", isActive.toString());
+    if (ownerMemberId) q.append("owner_member_id", ownerMemberId);
+    const qs = q.toString() ? `?${q.toString()}` : "";
+    return request<Account[]>(`/accounts${qs}`);
   },
   createAccount: (account: Partial<Account>) =>
     request<Account>("/accounts", {
@@ -163,6 +229,7 @@ export const api = {
     page_size?: number;
     account_id?: string;
     category_id?: string;
+    assigned_member_id?: string;
     search?: string;
     start_date?: string;
     end_date?: string;
@@ -177,6 +244,7 @@ export const api = {
     if (params?.page_size) query.append("page_size", params.page_size.toString());
     if (params?.account_id) query.append("account_id", params.account_id);
     if (params?.category_id) query.append("category_id", params.category_id);
+    if (params?.assigned_member_id) query.append("assigned_member_id", params.assigned_member_id);
     if (params?.search) query.append("search", params.search);
     if (params?.start_date) query.append("start_date", params.start_date);
     if (params?.end_date) query.append("end_date", params.end_date);
@@ -224,13 +292,37 @@ export const api = {
       body: JSON.stringify(req),
     }),
   linkTransfer: (req: { source_transaction_id: string; target_transaction_id: string }) =>
-    request<{ status: string; transaction1: string; transaction2: string }>("/transactions/link-transfer", {
+    request<{ status: string; transaction1: string; transaction2: string }>(
+      "/transactions/link-transfer",
+      {
+        method: "POST",
+        body: JSON.stringify(req),
+      }
+    ),
+  splitTransaction: (id: string, splits: { category_id: string; amount: number; memo?: string }[]) =>
+    request<Transaction>(`/transactions/${id}/split`, {
       method: "POST",
-      body: JSON.stringify(req),
+      body: JSON.stringify({ splits }),
+    }),
+  bulkCategorizeTransactions: (transactionIds: string[], categoryId: string) =>
+    request<{ updated: number }>("/transactions/bulk-categorize", {
+      method: "POST",
+      body: JSON.stringify({
+        transaction_ids: transactionIds,
+        category_id: categoryId,
+      }),
+    }),
+  bulkDeleteTransactions: (transactionIds: string[]) =>
+    request<{ deleted: number }>("/transactions/bulk-delete", {
+      method: "POST",
+      body: JSON.stringify({
+        transaction_ids: transactionIds,
+      }),
     }),
 
-  // Rules
-  getRules: () => request<CategorizationRule[]>("/rules"),
+  // Categorization Rules
+  getRules: () =>
+    request<CategorizationRule[]>("/rules"),
   createRule: (rule: Partial<CategorizationRule>) =>
     request<CategorizationRule>("/rules", {
       method: "POST",
@@ -259,8 +351,12 @@ export const api = {
     request<{ applied_count: number }>("/rules/apply-batch", {
       method: "POST",
     }),
+  applyRulesToTransactions: () =>
+    request<{ matched_count: number; updated_count: number }>("/rules/apply", {
+      method: "POST",
+    }),
 
-  // Ingestion
+  // Statement Ingestion
   uploadStatementPreview: async (accountId: string, file: File) => {
     const formData = new FormData();
     formData.append("file", file);
@@ -298,6 +394,47 @@ export const api = {
       method: "POST",
       body: JSON.stringify(req),
     }),
+  uploadStatement: (accountId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("account_id", accountId);
+
+    const token = getStoredToken();
+    const authHeader: Record<string, string> = token
+      ? { Authorization: `Bearer ${token}` }
+      : {};
+
+    return fetch(`${API_BASE}/ingestion/upload`, {
+      method: "POST",
+      body: formData,
+      credentials: "same-origin",
+      headers: {
+        ...authHeader,
+      },
+    }).then(async (res) => {
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Upload failed");
+      }
+      return res.json() as Promise<IngestionPreviewResponse>;
+    });
+  },
+  commitTransactions: (payload: {
+    account_id: string;
+    file_id?: string | null;
+    items: any[];
+  }) =>
+    request<{ committed_count: number; ignored_duplicates: number }>(
+      "/ingestion/commit",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    ),
+  previewExistingStatement: (fileId: string) =>
+    request<IngestionPreviewResponse>(`/ingestion/statement-files/${fileId}/preview`, {
+      method: "POST",
+    }),
   deleteStatementFile: (id: string) =>
     request<void>(`/ingestion/statement-files/${id}`, { method: "DELETE" }),
   getStatementFiles: (accountId?: string) => {
@@ -305,7 +442,7 @@ export const api = {
     return request<any[]>(`/ingestion/statement-files${query}`);
   },
 
-  // Budgets
+  // Budgets & Forecasting
   getCurrentBudget: () =>
     request<Budget>("/budgets/current"),
   getBudget: (year: number, month: number) =>
@@ -333,6 +470,23 @@ export const api = {
     request<Budget>(`/budgets/${budgetId}/items/${categoryId}`, {
       method: "DELETE",
     }),
+  getCashFlowForecast: (params?: {
+    days?: number;
+    pay_schedule?: "BI_WEEKLY" | "SEMI_MONTHLY" | "MONTHLY" | "NONE";
+    pay_frequency_days?: number;
+    next_pay_date?: string;
+    expected_paycheck_net?: number;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.days) q.append("days", params.days.toString());
+    if (params?.pay_schedule) q.append("pay_schedule", params.pay_schedule);
+    if (params?.pay_frequency_days) q.append("pay_frequency_days", params.pay_frequency_days.toString());
+    if (params?.next_pay_date) q.append("next_pay_date", params.next_pay_date);
+    if (params?.expected_paycheck_net !== undefined)
+      q.append("expected_paycheck_net", params.expected_paycheck_net.toString());
+    const qs = q.toString() ? `?${q.toString()}` : "";
+    return request<CashFlowForecastResponse>(`/budgets/forecast/cash-flow${qs}`);
+  },
 
   // Analytics & Dashboard
   getDashboardAnalytics: () =>
@@ -389,6 +543,23 @@ export const api = {
     request<{ accounts_revalued: number; unpriced_holdings: string[] }>(
       "/investments/revalue",
       { method: "POST" }
+    ),
+  fetchAutomatedQuotes: (symbols?: string[]) =>
+    request<{
+      quotes_fetched: number;
+      updated_count: number;
+      failed_count: number;
+      quotes: { symbol: string; price: number; currency: string; as_of_date: string }[];
+      failed_symbols: string[];
+      usdcad_fx_rate: number | null;
+      accounts_revalued: number;
+    }>("/investments/quotes/fetch-automated", {
+      method: "POST",
+      body: JSON.stringify({ symbols: symbols || [] }),
+    }),
+  getFxRate: (pair = "USDCAD") =>
+    request<{ pair: string; rate: number | null; source?: string; as_of_date?: string }>(
+      `/investments/fx-rate?pair=${pair}`
     ),
 
   // Maintenance / backfill for existing installations
