@@ -108,10 +108,11 @@ def post_emergency_fund_calc(req: EmergencyFundCalcRequest, db: Session = Depend
 @router.get("/cra-limits", response_model=CraSummaryResponse)
 def get_cra_limits(
     year: int | None = Query(None, description="Tax year (defaults to current year)"),
+    member_id: str | None = Query(None, description="Filter by household member ID"),
     db: Session = Depends(get_db),
 ):
     """Calculates TFSA and FHSA contribution room per household member."""
-    return get_cra_contribution_summary(db, year=year)
+    return get_cra_contribution_summary(db, year=year, member_id=member_id)
 
 
 @router.get("/{goal_id}", response_model=GoalResponse)

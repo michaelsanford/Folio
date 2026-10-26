@@ -106,6 +106,7 @@ def calculate_emergency_fund(
     suggested = round(monthly_fixed * float(months), 2)
     total_spent_dollars = float(from_cents(total_spent_cents))
 
+    avg_total = round(total_spent_dollars / float(lookback_months), 2) if lookback_months > 0 else 0.0
     return EmergencyFundCalcResponse(
         months=months,
         lookback_months=lookback_months,
@@ -113,12 +114,19 @@ def calculate_emergency_fund(
         suggested_target=suggested,
         total_spent_in_period=total_spent_dollars,
         categories=categories_breakdown,
+        months_selected=months,
+        monthly_average_included_expense=monthly_fixed,
+        suggested_target_amount=suggested,
+        monthly_average_total_expense=avg_total,
+        category_breakdown=categories_breakdown,
+        excluded_category_ids=list(excluded_set),
     )
 
 
 def get_cra_contribution_summary(
     db: Session,
     year: int | None = None,
+    member_id: str | None = None,
 ) -> CraSummaryResponse:
     """
     Calculates year-to-date contributions against CRA statutory limits for TFSA and FHSA accounts.
@@ -131,11 +139,10 @@ def get_cra_contribution_summary(
     tfsa_annual_limit = TFSA_ANNUAL_LIMITS.get(target_year, 7000.0)
 
     # 1. Query all TFSA and FHSA accounts
-    registered_accounts = (
-        db.query(Account)
-        .filter(Account.type.in_([AccountType.TFSA, AccountType.FHSA]), Account.is_active.is_(True))
-        .all()
-    )
+    q = db.query(Account).filter(Account.type.in_([AccountType.TFSA, AccountType.FHSA]), Account.is_active.is_(True))
+    if member_id:
+        q = q.filter(Account.owner_member_id == member_id)
+    registered_accounts = q.all()
 
     members = {m.id: m for m in db.query(HouseholdMember).all()}
 
@@ -213,4 +220,21 @@ def get_cra_contribution_summary(
                 )
             )
 
-    return CraSummaryResponse(year=target_year, limits=limits_info)
+    tfsa_contrib = sum(l.year_to_date_contributions for l in limits_info if l.account_type == "TFSA")
+    fhsa_contrib = sum(l.year_to_date_contributions for l in limits_info if l.account_type == "FHSA")
+    tfsa_rem = max(0.0, tfsa_annual_limit - tfsa_contrib)
+    fhsa_rem = max(0.0, FHSA_ANNUAL_LIMIT - fhsa_contrib)
+
+    return CraSummaryResponse(
+        year=target_year,
+        tax_year=target_year,
+        tfsa_annual_limit=tfsa_annual_limit,
+        fhsa_annual_limit=FHSA_ANNUAL_LIMIT,
+        fhsa_lifetime_limit=FHSA_LIFETIME_LIMIT,
+        tfsa_contributed=round(tfsa_contrib, 2),
+        tfsa_remaining_room=round(tfsa_rem, 2),
+        fhsa_contributed=round(fhsa_contrib, 2),
+        fhsa_remaining_room=round(fhsa_rem, 2),
+        notes=f"{target_year} Canadian Statutory CRA Limits: TFSA ${tfsa_annual_limit:,.0f}/yr; FHSA ${FHSA_ANNUAL_LIMIT:,.0f}/yr.",
+        limits=limits_info,
+    )

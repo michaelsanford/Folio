@@ -13,6 +13,7 @@ import { RulesManagerView } from "./components/rules/RulesManagerView";
 import { AccountsManagerView } from "./components/accounts/AccountsManagerView";
 import { HouseholdModal } from "./components/household/HouseholdModal";
 import { LockScreen } from "./components/auth/LockScreen";
+import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import type { Account, Category, DashboardAnalyticsResponse, HouseholdMember } from "./types";
 import { api, setOnUnauthorized } from "./services/api";
 import { Landmark, ArrowRight } from "lucide-react";
@@ -299,7 +300,8 @@ function AppContent() {
       )}
 
       {/* Dynamic Tab Views */}
-      {activeTab === "dashboard" && (
+      <ErrorBoundary key={activeTab} fallbackTitle={`Error loading ${activeTab} view`}>
+        {activeTab === "dashboard" && (
         <DashboardView
           analytics={analytics}
           accounts={accounts}
@@ -357,6 +359,7 @@ function AppContent() {
           onManageHousehold={() => setIsHouseholdModalOpen(true)}
         />
       )}
+      </ErrorBoundary>
 
       {/* Household Management Modal */}
       <HouseholdModal

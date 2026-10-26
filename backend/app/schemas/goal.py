@@ -1,16 +1,16 @@
 from datetime import date, datetime
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field
 from app.models.goal import GoalType
 
 
 class GoalBase(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
-    type: GoalType = GoalType.SAVINGS
-    target_amount: float = Field(..., ge=0)
-    current_amount: float | None = None
+    name: str = Field(..., min_length=1, max_length=150)
+    type: GoalType = Field(default=GoalType.SAVINGS)
+    target_amount: float = Field(..., gt=0, description="Target amount in dollars")
+    current_amount: float | None = Field(default=None, description="Starting / manual current amount in dollars")
     target_date: date | None = None
-    emergency_fund_months: int | None = Field(6, ge=1, le=36)
-    excluded_category_ids: str | None = None
+    emergency_fund_months: int | None = Field(default=None, ge=1, le=36)
+    excluded_category_ids: list[str] | None = None
     linked_account_id: str | None = None
     owner_member_id: str | None = None
     notes: str | None = None
@@ -21,32 +21,43 @@ class GoalCreate(GoalBase):
 
 
 class GoalUpdate(BaseModel):
-    name: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=150)
     type: GoalType | None = None
-    target_amount: float | None = None
+    target_amount: float | None = Field(default=None, gt=0)
     current_amount: float | None = None
     target_date: date | None = None
-    emergency_fund_months: int | None = None
-    excluded_category_ids: str | None = None
+    emergency_fund_months: int | None = Field(default=None, ge=1, le=36)
+    excluded_category_ids: list[str] | None = None
     linked_account_id: str | None = None
     owner_member_id: str | None = None
     notes: str | None = None
 
 
-class GoalResponse(GoalBase):
+class GoalResponse(BaseModel):
     id: str
-    effective_current_amount: float = 0.0
-    progress_percentage: float = 0.0
+    name: str
+    type: GoalType
+    target_amount: float
+    current_amount: float | None = None
+    effective_current_amount: float
+    progress_percentage: float
+    target_date: date | None = None
+    emergency_fund_months: int | None = None
+    excluded_category_ids: list[str] | None = None
+    linked_account_id: str | None = None
+    owner_member_id: str | None = None
+    notes: str | None = None
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        from_attributes = True
 
 
 class EmergencyFundCategoryBreakdown(BaseModel):
     category_id: str
     category_name: str
-    category_color: str
+    category_color: str | None = None
     total_spent: float
     monthly_average: float
     is_excluded: bool = False
@@ -66,6 +77,14 @@ class EmergencyFundCalcResponse(BaseModel):
     total_spent_in_period: float
     categories: list[EmergencyFundCategoryBreakdown] = []
 
+    # Frontend compatibility aliases
+    months_selected: int = 0
+    monthly_average_included_expense: float = 0.0
+    suggested_target_amount: float = 0.0
+    monthly_average_total_expense: float = 0.0
+    category_breakdown: list[EmergencyFundCategoryBreakdown] = []
+    excluded_category_ids: list[str] = []
+
 
 class CraLimitInfo(BaseModel):
     account_type: str
@@ -82,4 +101,13 @@ class CraLimitInfo(BaseModel):
 
 class CraSummaryResponse(BaseModel):
     year: int
+    tax_year: int = 2026
+    tfsa_annual_limit: float = 7000.0
+    fhsa_annual_limit: float = 8000.0
+    fhsa_lifetime_limit: float = 40000.0
+    tfsa_contributed: float = 0.0
+    tfsa_remaining_room: float = 7000.0
+    fhsa_contributed: float = 0.0
+    fhsa_remaining_room: float = 8000.0
+    notes: str = ""
     limits: list[CraLimitInfo] = []
