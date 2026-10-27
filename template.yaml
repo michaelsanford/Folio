@@ -31,6 +31,17 @@ Parameters:
       https://folio.example.com. Leave empty when the PWA is served from the
       function itself, which is the default and needs no CORS at all.
 
+  EnableBedrock:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Enable AWS Bedrock recourse for transaction auto-classification
+
+  BedrockModelId:
+    Type: String
+    Default: 'amazon.nova-micro-v1:0'
+    Description: Model ID for AWS Bedrock auto-classification (e.g. amazon.nova-micro-v1:0 or anthropic.claude-3-haiku-20240307-v1:0)
+
 Conditions:
   HasAllowedOrigin: !Not [!Equals [!Ref AllowedOrigin, '']]
 
@@ -133,6 +144,8 @@ Resources:
           COGNITO_REGION: !Ref AWS::Region
           FOLIO_ORIGIN_VERIFY_SECRET: !Ref OriginVerifySecret
           FOLIO_CORS_ORIGINS: !Ref AllowedOrigin
+          FOLIO_BEDROCK_ENABLED: !Ref EnableBedrock
+          FOLIO_BEDROCK_MODEL_ID: !Ref BedrockModelId
       FunctionUrlConfig:
         AuthType: NONE
         # The app and its API are served from the same origin, so cross-origin
@@ -160,6 +173,12 @@ Resources:
       Policies:
         - S3CrudPolicy:
             BucketName: !Sub 'folio-vault-${AWS::AccountId}-${AWS::Region}'
+        - Statement:
+            - Effect: Allow
+              Action:
+                - 'bedrock:InvokeModel'
+                - 'bedrock:InvokeModelWithResponseStream'
+              Resource: '*'
     Metadata:
       DockerTag: latest
       DockerContext: .

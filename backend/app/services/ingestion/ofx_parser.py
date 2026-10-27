@@ -12,6 +12,7 @@ from app.services.ingestion.deduplication import (
     check_existing_duplicates,
 )
 from app.services.categorization.normalizer import normalize_payee
+from app.services.categorization.engine import ClassificationEngine
 from app.services.categorization.rules_engine import evaluate_rules
 from app.services.categorization.transfer_matcher import find_potential_transfers
 from app.core.config import settings
@@ -75,12 +76,12 @@ def parse_ofx_content(
 
                 norm_payee = normalize_payee(payee)
 
-                rule_match = evaluate_rules(db, payee, amt, account_id)
-                suggested_cat_id = rule_match.category_id if rule_match.matched else None
-                suggested_cat_name = rule_match.category_name if rule_match.matched else None
-                suggested_cat_color = rule_match.category_color if rule_match.matched else None
-                if rule_match.matched and rule_match.normalized_payee:
-                    norm_payee = rule_match.normalized_payee
+                cls_match = ClassificationEngine.classify_transaction(db, payee, amount=amt, account_id=account_id)
+                suggested_cat_id = cls_match.category_id if cls_match.matched else None
+                suggested_cat_name = cls_match.category_name if cls_match.matched else None
+                suggested_cat_color = cls_match.category_color if cls_match.matched else None
+                if cls_match.matched and cls_match.normalized_payee:
+                    norm_payee = cls_match.normalized_payee
 
                 transfer_match = find_potential_transfers(db, account_id, dt_obj, amt)
                 potential_xfer_acc_id = transfer_match.account_id if transfer_match else None
@@ -99,7 +100,9 @@ def parse_ofx_content(
                     import_hash=item_hash,
                     potential_transfer_account_id=potential_xfer_acc_id,
                     potential_transfer_account_name=potential_xfer_acc_name,
-                    confidence_score=rule_match.confidence if rule_match.matched else 0.5,
+                    confidence_score=cls_match.confidence if cls_match.matched else 0.5,
+                    classification_tier=cls_match.tier.value if cls_match.matched else None,
+                    classification_reason=cls_match.reason if cls_match.matched else None,
                 )
                 parsed_items.append(item)
 
@@ -135,12 +138,12 @@ def parse_ofx_content(
                 hashes.append(item_hash)
 
                 norm_payee = normalize_payee(payee)
-                rule_match = evaluate_rules(db, payee, amt, account_id)
-                suggested_cat_id = rule_match.category_id if rule_match.matched else None
-                suggested_cat_name = rule_match.category_name if rule_match.matched else None
-                suggested_cat_color = rule_match.category_color if rule_match.matched else None
-                if rule_match.matched and rule_match.normalized_payee:
-                    norm_payee = rule_match.normalized_payee
+                cls_match = ClassificationEngine.classify_transaction(db, payee, amount=amt, account_id=account_id)
+                suggested_cat_id = cls_match.category_id if cls_match.matched else None
+                suggested_cat_name = cls_match.category_name if cls_match.matched else None
+                suggested_cat_color = cls_match.category_color if cls_match.matched else None
+                if cls_match.matched and cls_match.normalized_payee:
+                    norm_payee = cls_match.normalized_payee
 
                 transfer_match = find_potential_transfers(db, account_id, dt_obj, amt)
                 potential_xfer_acc_id = transfer_match.account_id if transfer_match else None
@@ -159,7 +162,9 @@ def parse_ofx_content(
                     import_hash=item_hash,
                     potential_transfer_account_id=potential_xfer_acc_id,
                     potential_transfer_account_name=potential_xfer_acc_name,
-                    confidence_score=rule_match.confidence if rule_match.matched else 0.5,
+                    confidence_score=cls_match.confidence if cls_match.matched else 0.5,
+                    classification_tier=cls_match.tier.value if cls_match.matched else None,
+                    classification_reason=cls_match.reason if cls_match.matched else None,
                 )
                 parsed_items.append(item)
 

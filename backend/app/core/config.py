@@ -82,6 +82,12 @@ class Settings(BaseSettings):
     def cognito_jwks_url(self) -> str:
         return f"{self.cognito_issuer}/.well-known/jwks.json"
 
+    # AWS Bedrock LLM Recourse for Transaction Classification
+    FOLIO_BEDROCK_ENABLED: bool = os.getenv("FOLIO_BEDROCK_ENABLED", "").lower() in ("1", "true", "yes")
+    FOLIO_BEDROCK_MODEL_ID: str = os.getenv("FOLIO_BEDROCK_MODEL_ID", "amazon.nova-micro-v1:0")
+    FOLIO_BEDROCK_REGION: str = os.getenv("FOLIO_BEDROCK_REGION", os.getenv("AWS_DEFAULT_REGION", "ca-central-1"))
+    FOLIO_CLASSIFICATION_THRESHOLD: float = float(os.getenv("FOLIO_CLASSIFICATION_THRESHOLD", "0.75"))
+
     # Edge Origin Verification (CloudFront / WAF secret header)
     FOLIO_ORIGIN_VERIFY_SECRET: str = os.getenv("FOLIO_ORIGIN_VERIFY_SECRET", "")
     
@@ -137,4 +143,3 @@ def validate_production_settings(current: Settings = settings) -> list[str]:
         )
 
     return problems
-

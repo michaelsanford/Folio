@@ -30,6 +30,8 @@ class ParsedTransactionItem(BaseModel):
     potential_transfer_account_id: str | None = None
     potential_transfer_account_name: str | None = None
     confidence_score: float = 1.0  # 1.0 for rule match, 0.5-0.9 for ML/heuristic
+    classification_tier: str | None = None
+    classification_reason: str | None = None
 
 
 class IngestionPreviewResponse(BaseModel):
