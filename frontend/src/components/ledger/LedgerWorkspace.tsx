@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   Search,
+  Receipt,
   Plus,
   Split,
   Trash2,
@@ -44,6 +45,20 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isSeedingDemo, setIsSeedingDemo] = useState(false);
+
+  const handleSeedLedger = async () => {
+    try {
+      setIsSeedingDemo(true);
+      await api.seedDemoData(false);
+      await loadTransactions();
+      if (onDataModified) onDataModified();
+    } catch (err) {
+      console.error("Failed to seed demo transactions:", err);
+    } finally {
+      setIsSeedingDemo(false);
+    }
+  };
 
   // Batch selection
   const [selectedTxnIds, setSelectedTxnIds] = useState<Set<string>>(new Set());
@@ -530,9 +545,28 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               Loading ledger...
             </div>
           ) : transactions.length === 0 ? (
-            <div className="p-8 text-center text-muted text-xs">
-              No transactions found matching criteria.
-            </div>
+            totalCount === 0 && !searchQuery && !selectedAccountId && !selectedCategoryId && !selectedMemberId ? (
+              <div className="p-8 text-center max-w-sm mx-auto">
+                <div className="w-10 h-10 rounded-xl bg-accent-subtle/50 text-accent-main flex items-center justify-center mx-auto mb-2.5">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <div className="text-xs font-bold text-main mb-1">No transactions in ledger</div>
+                <div className="text-[11px] text-muted mb-3">Load Canadian sample ledger entries to test categorization, analytics, and budgeting.</div>
+                <button
+                  type="button"
+                  onClick={handleSeedLedger}
+                  disabled={isSeedingDemo}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{isSeedingDemo ? "Seeding..." : "Load Sample Ledger"}</span>
+                </button>
+              </div>
+            ) : (
+              <div className="p-8 text-center text-muted text-xs">
+                No transactions found matching criteria.
+              </div>
+            )
           ) : (
             transactions.map((txn) => {
               const isChecked = selectedTxnIds.has(txn.id);
@@ -689,7 +723,32 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               ) : transactions.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="text-center py-12 text-muted">
-                    No transactions found matching criteria.
+                    {totalCount === 0 && !searchQuery && !selectedAccountId && !selectedCategoryId && !selectedMemberId ? (
+                      <div className="max-w-md mx-auto">
+                        <div className="w-12 h-12 rounded-2xl bg-accent-subtle/40 text-accent-main flex items-center justify-center mx-auto mb-3">
+                          <Receipt className="w-6 h-6" />
+                        </div>
+                        <div className="text-sm font-bold text-main mb-1">
+                          No transactions in your ledger yet
+                        </div>
+                        <div className="text-xs text-muted mb-4">
+                          Load realistic Canadian household ledger entries to test auto-classification, budget tracking, and cash flow forecasting.
+                        </div>
+                        <div className="flex items-center justify-center">
+                          <button
+                            type="button"
+                            onClick={handleSeedLedger}
+                            disabled={isSeedingDemo}
+                            className="px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                            <span>{isSeedingDemo ? "Seeding Ledger..." : "Load Canadian Demo Ledger"}</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      "No transactions found matching criteria."
+                    )}
                   </td>
                 </tr>
               ) : (

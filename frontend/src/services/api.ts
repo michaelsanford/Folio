@@ -647,4 +647,15 @@ export const api = {
       `/maintenance/detect-transfers?window_days=${windowDays}`,
       { method: "POST" }
     ),
+  seedDemoData: (force = false) =>
+    request<{
+      message: string;
+      accounts_count: number;
+      transactions_count: number;
+      categories_count: number;
+      rules_count: number;
+      goals_count: number;
+      household_members_count: number;
+      snapshots_count: number;
+    }>(`/maintenance/seed-demo-data?force=${force}`, { method: "POST" }),
 };
