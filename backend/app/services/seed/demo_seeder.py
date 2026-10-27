@@ -588,6 +588,42 @@ def seed_canadian_demo_dataset(db: Session, force: bool = False) -> dict:
     for days_ago, raw, norm, amt, slug, member in card_txns:
         add_txn(visa, days_ago, raw, norm, amt, slug, member)
 
+    # I. Recent Uncategorized Transactions (To showcase the 4-Tier Auto-Classification Engine!)
+    # These transactions have NO assigned category (category_id = None), intentionally curated
+    # across each engine tier so users can test live classification and batch auto-categorization:
+    uncategorized_txns = [
+        # Tier 1 Candidates: Exact / Contains matching seeded deterministic rules (100% confidence)
+        (1, visa, "METRO PLUS #224 MONTREAL QC", "Metro", -78.40, m_sarah, "Recent grocery run (matches Tier 1 rule)"),
+        (2, visa, "TIM HORTONS #4122 TORONTO ON", "Tim Hortons", -4.85, m_michael, "Morning coffee (matches Tier 1 rule)"),
+        (2, chequing, "BELL MOBILITY 800-667-0123", "Bell Mobility", -95.00, None, "Mobile plan (matches Tier 1 rule)"),
+        (3, visa, "PETRO-CANADA #1822 LAVAL QC", "Petro-Canada", -74.20, m_michael, "Fuel fill-up (matches Tier 1 rule)"),
+        (4, visa, "SAQ SELECTION #312 MONTREAL QC", "SAQ", -45.20, None, "Weekend wine (matches Tier 1 rule)"),
+
+        # Tier 2 Candidates: Historical merchant learning based on user ledger frequency (85%-98% confidence)
+        (1, visa, "MARCHE ADONIS BOUL DES SOURCES", "Marché Adonis", -62.15, m_sarah, "Specialty groceries (matches Tier 2 user history)"),
+        (3, visa, "FARM BOY RETAIL STORE", "Farm Boy", -48.30, m_sarah, "Produce market (matches Tier 2 user history)"),
+        (4, visa, "PIZZERIA NO. 900 MILE END", "Pizzeria No. 900", -38.50, m_sarah, "Takeout dinner (matches Tier 2 user history)"),
+        (5, chequing, "CPE LES PETITS AMIS FRAIS", "CPE Daycare", -420.00, None, "Monthly daycare (matches Tier 2 user history)"),
+        (5, visa, "PET VALU #610 ANIMAL SUPPLIES", "Pet Valu", -34.50, None, "Pet food (matches Tier 2 user history)"),
+
+        # Tier 3 Candidates: Canadian multi-signal heuristics & typo fuzzy matching (75%-80% confidence)
+        (2, visa, "HOPITAL VETERINAIRE RIVE-NORD", "Hôpital Vétérinaire", -145.00, None, "Vet clinic visit (matches Tier 3 pets heuristic)"),
+        (3, chequing, "GARDERIE LES POUPONS MONTREAL", "Garderie Les Poupons", -380.00, None, "Childcare facility (matches Tier 3 childcare heuristic)"),
+        (4, chequing, "UNIVERSITE DE MONTREAL TUITION", "Université de Montréal", -250.00, m_michael, "Continuing ed course (matches Tier 3 education heuristic)"),
+        (5, visa, "CLINIQUE DENTAIRE DR LEBLANC", "Clinique Dentaire", -210.00, m_sarah, "Dental cleaning (matches Tier 3 healthcare heuristic)"),
+        (6, visa, "POUTINEVILLE CASSE-CROUTE", "Poutineville", -24.50, None, "Quick lunch (matches Tier 3 fast food heuristic)"),
+        (6, visa, "MICROBRASSERIE DIEU DU CIEL", "Dieu du Ciel", -42.00, None, "Local craft brewery (matches Tier 3 alcohol heuristic)"),
+        (7, visa, "VIA RAIL CANADA VOYAGEURS", "Via Rail", -115.00, m_sarah, "Train ticket (matches Tier 3 transit heuristic)"),
+        (7, visa, "COSTMART WHOLESALE #10", "Costco Wholesale", -135.00, None, "Bulk shopping (matches Tier 3 typo-fuzzy Jaccard)"),
+
+        # Tier 4 / Recourse Candidates: Ambiguous local merchants (evaluates via Bedrock LLM or manual review)
+        (3, visa, "BOUTIQUE ARTISANALE DU COIN", "Boutique Artisanale", -45.00, m_sarah, "Local neighborhood boutique gift (Tier 4 / review)"),
+        (6, visa, "ATELIER MECANIQUE SPEEDY LEVAL", "Speedy Mécanique", -160.00, m_michael, "Oil change and tire swap (Tier 4 / review)"),
+    ]
+
+    for days_ago, acc, raw, norm, amt, member, notes in uncategorized_txns:
+        add_txn(acc, days_ago, raw, norm, amt, None, member, notes)
+
     # Insert all transactions
     db.add_all(txns_to_add)
     db.commit()

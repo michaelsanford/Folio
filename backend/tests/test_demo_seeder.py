@@ -59,6 +59,10 @@ def test_seed_canadian_demo_dataset_creates_complete_household(db_session):
     for m in mortgage_pmts:
         assert len(m.splits) == 3
 
+    # Check uncategorized transactions to showcase auto-categorizer
+    uncategorized = [t for t in txns if not t.splits or t.splits[0].category_id is None]
+    assert len(uncategorized) >= 20
+
     # Check budget exists
     budget = db_session.query(Budget).first()
     assert budget is not None
@@ -71,6 +75,13 @@ def test_seed_demo_data_api_endpoint(client, db_session):
     data = resp.json()
     assert data["accounts_count"] == 7
     assert data["transactions_count"] >= 50
+
+    # Verify classification preview finds uncategorized transactions ready for auto-classification
+    preview_resp = client.post("/api/classification/auto-classify-uncategorized", json={"dry_run": True})
+    assert preview_resp.status_code == 200
+    preview_data = preview_resp.json()
+    assert preview_data["total_uncategorized"] >= 20
+    assert preview_data["classified_count"] >= 15
 
     # Second call without force should report already exists
     resp2 = client.post("/api/maintenance/seed-demo-data?force=false")
