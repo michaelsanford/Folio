@@ -88,159 +88,16 @@ function AppContent() {
     checkAuth();
   }, []);
 
-  // Quick starter seeder for initial Canadian user demo
+  // Quick starter seeder for initial Canadian user demo with complete ledger history
   const handleSeedDemoData = async () => {
     try {
-      // 1. Seed Household Members (Canadian couple)
-      const m1 = await api.household.createMember({
-        name: "Michael",
-        role: "Self",
-        color: "#3B82F6",
-        notes: "Primary earner",
-      });
-
-      const m2 = await api.household.createMember({
-        name: "Sarah",
-        role: "Partner",
-        color: "#10B981",
-        notes: "Partner / Spouse",
-      });
-
-      // 2. Seed Accounts with Canadian legal ownership attribution
-      await api.createAccount({
-        name: "Joint Chequing",
-        type: "CHECKING",
-        institution: "RBC",
-        account_number_mask: "*1234",
-        currency: "CAD",
-        current_balance: 5250.0,
-      });
-
-      await api.createAccount({
-        name: "Emergency HISA",
-        type: "HISA",
-        institution: "EQ Bank",
-        account_number_mask: "*7711",
-        currency: "CAD",
-        current_balance: 15000.0,
-      });
-
-      await api.createAccount({
-        name: "Michael's TFSA",
-        type: "TFSA",
-        institution: "Wealthsimple",
-        account_number_mask: "*5566",
-        currency: "CAD",
-        current_balance: 24500.0,
-        owner_member_id: m1.id,
-      });
-
-      await api.createAccount({
-        name: "Sarah's RRSP",
-        type: "RRSP",
-        institution: "TD Direct",
-        account_number_mask: "*3344",
-        currency: "CAD",
-        current_balance: 38200.0,
-        owner_member_id: m2.id,
-      });
-
-      await api.createAccount({
-        name: "Visa Infinite",
-        type: "CREDIT_CARD",
-        institution: "RBC",
-        account_number_mask: "*8888",
-        currency: "CAD",
-        current_balance: -840.5,
-        credit_limit: 15000.0,
-        interest_rate: 20.99,
-      });
-
-      await api.createAccount({
-        name: "Home Mortgage",
-        type: "MORTGAGE",
-        institution: "Desjardins",
-        account_number_mask: "*4567",
-        currency: "CAD",
-        current_balance: 380000.0,
-        loan_original_principal: 400000.0,
-        interest_rate: 4.79,
-        loan_term_months: 300,
-        monthly_payment: 2278.0,
-        escrow_payment: 375.0,
-      });
-
-      await api.createAccount({
-        name: "Vehicle Loan",
-        type: "VEHICLE_LOAN",
-        institution: "Toyota Financial",
-        account_number_mask: "*9012",
-        currency: "CAD",
-        current_balance: 24500.0,
-        loan_original_principal: 32000.0,
-        interest_rate: 4.99,
-        loan_term_months: 60,
-        monthly_payment: 603.82,
-        escrow_payment: 0.0,
-      });
-
-      // 3. Seed Sample Goals
-      await api.goals.createGoal({
-        name: "6-Month Emergency Cushion",
-        type: "EMERGENCY_FUND",
-        target_amount: 25000.0,
-        current_amount: 15000.0,
-        emergency_fund_months: 6,
-        notes: "Liquid emergency buffer in EQ Bank HISA",
-      });
-
-      await api.goals.createGoal({
-        name: "Michael 2026 TFSA Max",
-        type: "TFSA_ANNUAL",
-        target_amount: 7000.0,
-        current_amount: 3500.0,
-        owner_member_id: m1.id,
-        notes: "Annual CRA statutory allowance tracking",
-      });
-
-      const demoRules: Array<{
-        slug: string;
-        pattern: string;
-        pattern_type: "CONTAINS" | "STARTS_WITH";
-        priority: number;
-        normalized_payee_override?: string;
-      }> = [
-        { slug: "groceries", pattern: "LOBLAWS", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Loblaws" },
-        { slug: "groceries", pattern: "METRO", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Metro" },
-        { slug: "groceries", pattern: "SOBEYS", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Sobeys" },
-        { slug: "groceries", pattern: "COSTCO", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Costco" },
-        { slug: "coffee-shops", pattern: "TIM HORTONS", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Tim Hortons" },
-        { slug: "coffee-shops", pattern: "STARBUCKS", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Starbucks" },
-        { slug: "fuel", pattern: "PETRO-CANADA", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Petro-Canada" },
-        { slug: "fuel", pattern: "ESSO", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Esso" },
-        { slug: "telecom-internet", pattern: "ROGERS", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Rogers" },
-        { slug: "telecom-internet", pattern: "BELL", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Bell" },
-        { slug: "salary-wages", pattern: "PAYROLL", pattern_type: "CONTAINS", priority: 10, normalized_payee_override: "Employer Payroll" },
-      ];
-
-      for (const rule of demoRules) {
-        const category = categories.find((c) => c.slug === rule.slug);
-        if (!category) {
-          console.warn(`Skipping demo rule for unknown category slug: ${rule.slug}`);
-          continue;
-        }
-        await api.createRule({
-          category_id: category.id,
-          pattern: rule.pattern,
-          pattern_type: rule.pattern_type,
-          priority: rule.priority,
-          normalized_payee_override: rule.normalized_payee_override,
-        });
-      }
-
+      setIsLoading(true);
+      await api.seedDemoData(true);
       await loadAllData();
     } catch (err) {
       console.error("Demo seeding error:", err);
+    } finally {
+      setIsLoading(false);
     }
   };
 

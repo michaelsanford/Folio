@@ -94,3 +94,25 @@ def detect_transfers(
 
     db.commit()
     return DetectTransfersResponse(pairs_linked=linked, transactions_scanned=len(unpaired))
+
+class SeedDemoDataResponse(BaseModel):
+    message: str
+    accounts_count: int
+    transactions_count: int
+    categories_count: int
+    rules_count: int
+    goals_count: int
+    household_members_count: int
+    snapshots_count: int
+
+
+@router.post("/seed-demo-data", response_model=SeedDemoDataResponse)
+def seed_demo_data(
+    force: bool = Query(False, description="Wipe and recreate demo data even if data exists"),
+    db: Session = Depends(get_db),
+):
+    """Seed comprehensive Canadian demo dataset with household accounts, budgets, goals, and 90-day ledger history."""
+    from app.services.seed.demo_seeder import seed_canadian_demo_dataset
+
+    stats = seed_canadian_demo_dataset(db, force=force)
+    return SeedDemoDataResponse(**stats)

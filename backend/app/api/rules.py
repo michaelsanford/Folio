@@ -208,8 +208,8 @@ DEFAULT_RULES = [
     {"pattern": "PUBLIX", "pattern_type": RulePatternType.CONTAINS, "category_slug": "groceries", "normalized_payee": "Publix", "priority": 5},
 
     # --- Shopping, Hardware & Retail (slug: "shopping" / "home-maintenance") ---
-    {"pattern": "SAQ", "pattern_type": RulePatternType.CONTAINS, "category_slug": "shopping", "normalized_payee": "Société des alcools du Québec (SAQ)", "priority": 4},
-    {"pattern": "LCBO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "shopping", "normalized_payee": "LCBO", "priority": 4},
+    {"pattern": "SAQ", "pattern_type": RulePatternType.CONTAINS, "category_slug": "alcohol-bars", "normalized_payee": "Société des alcools du Québec (SAQ)", "priority": 3},
+    {"pattern": "LCBO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "alcohol-bars", "normalized_payee": "LCBO", "priority": 3},
     {"pattern": "CANADIAN TIRE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "shopping", "normalized_payee": "Canadian Tire", "priority": 5},
     {"pattern": "CAN TIRE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "shopping", "normalized_payee": "Canadian Tire", "priority": 5},
     {"pattern": "RONA", "pattern_type": RulePatternType.CONTAINS, "category_slug": "home-maintenance", "normalized_payee": "RONA", "priority": 4},
@@ -242,23 +242,23 @@ DEFAULT_RULES = [
     {"pattern": "ENERGIR", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Énergir", "priority": 3},
     {"pattern": "GAZ METRO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Énergir Gaz", "priority": 3},
     {"pattern": "ENBRIDGE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Enbridge Gas", "priority": 3},
-    {"pattern": "VIDEOTRON", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Vidéotron", "priority": 3},
-    {"pattern": "VIDÉOTRON", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Vidéotron", "priority": 3},
-    {"pattern": "FIZZ", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Fizz Mobile & Internet", "priority": 4},
-    {"pattern": "BELL MOBILITY", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Bell Mobility", "priority": 3},
-    {"pattern": "BELL CANADA", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Bell Canada", "priority": 3},
-    {"pattern": "TELUS MOBILITY", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Telus Mobility", "priority": 3},
-    {"pattern": "TELUS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Telus", "priority": 4},
-    {"pattern": "ROGERS WIRELESS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Rogers Wireless", "priority": 3},
-    {"pattern": "ROGERS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Rogers", "priority": 4},
-    {"pattern": "FIDO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Fido", "priority": 4},
-    {"pattern": "KOODO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Koodo Mobile", "priority": 4},
-    {"pattern": "VIRGIN PLUS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Virgin Plus", "priority": 4},
-    {"pattern": "COMCAST", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Comcast Xfinity", "priority": 4},
-    {"pattern": "XFINITY", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Xfinity", "priority": 4},
-    {"pattern": "VERIZON", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Verizon Wireless", "priority": 4},
-    {"pattern": "AT&T", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "AT&T", "priority": 4},
-    {"pattern": "T-MOBILE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "T-Mobile", "priority": 4},
+    {"pattern": "VIDEOTRON", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "Vidéotron", "priority": 3},
+    {"pattern": "VIDÉOTRON", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "Vidéotron", "priority": 3},
+    {"pattern": "FIZZ", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "Fizz Mobile & Internet", "priority": 4},
+    {"pattern": "BELL MOBILITY", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "Bell Mobility", "priority": 3},
+    {"pattern": "BELL CANADA", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "Bell Canada", "priority": 3},
+    {"pattern": "TELUS MOBILITY", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "Telus Mobility", "priority": 3},
+    {"pattern": "TELUS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "Telus", "priority": 4},
+    {"pattern": "ROGERS WIRELESS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "Rogers Wireless", "priority": 3},
+    {"pattern": "ROGERS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "Rogers", "priority": 4},
+    {"pattern": "FIDO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "Fido", "priority": 4},
+    {"pattern": "KOODO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "Koodo Mobile", "priority": 4},
+    {"pattern": "VIRGIN PLUS", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "Virgin Plus", "priority": 4},
+    {"pattern": "COMCAST", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "Comcast Xfinity", "priority": 4},
+    {"pattern": "XFINITY", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "Xfinity", "priority": 4},
+    {"pattern": "VERIZON", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "Verizon Wireless", "priority": 4},
+    {"pattern": "AT&T", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "AT&T", "priority": 4},
+    {"pattern": "T-MOBILE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "T-Mobile", "priority": 4},
     {"pattern": "WATER", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Water Utility", "priority": 8},
 
     # --- Transfers & Payments (slug: "cc-payment") ---
@@ -273,6 +273,22 @@ DEFAULT_RULES = [
     {"pattern": "SALARY", "pattern_type": RulePatternType.CONTAINS, "category_slug": "salary", "normalized_payee": "Salary Payment", "priority": 3},
     {"pattern": "GUSTO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "salary", "normalized_payee": "Gusto Payroll", "priority": 3},
     {"pattern": "ADP ", "pattern_type": RulePatternType.CONTAINS, "category_slug": "salary", "normalized_payee": "ADP Payroll", "priority": 3},
+
+    # --- Beer, Wine & Liquor (slug: "alcohol-bars") ---
+    {"pattern": "BEER STORE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "alcohol-bars", "normalized_payee": "The Beer Store", "priority": 3},
+
+    # --- Family, Pets & Care ---
+    {"pattern": "GARDERIE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "childcare", "normalized_payee": "Garderie / Daycare", "priority": 3},
+    {"pattern": "CPE ", "pattern_type": RulePatternType.CONTAINS, "category_slug": "childcare", "normalized_payee": "CPE Daycare", "priority": 3},
+    {"pattern": "PET VALU", "pattern_type": RulePatternType.CONTAINS, "category_slug": "pets", "normalized_payee": "Pet Valu", "priority": 3},
+    {"pattern": "PETSMART", "pattern_type": RulePatternType.CONTAINS, "category_slug": "pets", "normalized_payee": "PetSmart", "priority": 3},
+    {"pattern": "MONDOU", "pattern_type": RulePatternType.CONTAINS, "category_slug": "pets", "normalized_payee": "Mondou", "priority": 3},
+
+    # --- Government Benefits (slug: "government-benefits") ---
+    {"pattern": "CANADA RYC", "pattern_type": RulePatternType.CONTAINS, "category_slug": "government-benefits", "normalized_payee": "Canada Child Benefit (CCB)", "priority": 2},
+    {"pattern": "CANADA PRO", "pattern_type": RulePatternType.CONTAINS, "category_slug": "government-benefits", "normalized_payee": "CRA Provincial / GST Credit", "priority": 2},
+    {"pattern": "CRA / ARC", "pattern_type": RulePatternType.CONTAINS, "category_slug": "government-benefits", "normalized_payee": "Canada Revenue Agency", "priority": 2},
+    {"pattern": "DIRECT DEPOSIT CANADA", "pattern_type": RulePatternType.CONTAINS, "category_slug": "government-benefits", "normalized_payee": "Government of Canada Direct Deposit", "priority": 2},
 ]
 
 

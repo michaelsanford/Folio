@@ -18,6 +18,7 @@ DEFAULT_CATEGORIES = [
     {"name": "Income", "slug": "income", "icon": "wallet", "color": "#10B981", "type": CategoryType.INCOME, "children": [
         {"name": "Salary / Paycheck", "slug": "salary", "icon": "briefcase", "color": "#10B981", "type": CategoryType.INCOME},
         {"name": "Investment Dividends", "slug": "investments", "icon": "trending-up", "color": "#10B981", "type": CategoryType.INCOME},
+        {"name": "Government Benefits (CRA/CCB/CPP)", "slug": "government-benefits", "icon": "landmark", "color": "#059669", "type": CategoryType.INCOME},
         {"name": "Other Income", "slug": "other-income", "icon": "plus-circle", "color": "#10B981", "type": CategoryType.INCOME},
     ]},
     # Housing & Utilities
@@ -26,6 +27,7 @@ DEFAULT_CATEGORIES = [
         {"name": "Mortgage Interest", "slug": "mortgage-interest", "icon": "percent", "color": "#EF4444", "type": CategoryType.EXPENSE},
         {"name": "Property Tax & Insurance (Escrow)", "slug": "escrow", "icon": "file-text", "color": "#8B5CF6", "type": CategoryType.EXPENSE},
         {"name": "Utilities (Electric/Water/Gas)", "slug": "utilities", "icon": "zap", "color": "#F59E0B", "type": CategoryType.EXPENSE},
+        {"name": "Internet & Mobile Phone", "slug": "telecom", "icon": "phone", "color": "#0284C7", "type": CategoryType.EXPENSE},
         {"name": "Home Maintenance & Repairs", "slug": "home-maintenance", "icon": "wrench", "color": "#6B7280", "type": CategoryType.EXPENSE, "is_rollover": True},
     ]},
     # Transportation & Auto
@@ -33,21 +35,28 @@ DEFAULT_CATEGORIES = [
         {"name": "Vehicle Loan Principal", "slug": "vehicle-loan-principal", "icon": "shield-check", "color": "#3B82F6", "type": CategoryType.EXPENSE},
         {"name": "Vehicle Loan Interest", "slug": "vehicle-loan-interest", "icon": "percent", "color": "#EF4444", "type": CategoryType.EXPENSE},
         {"name": "Gas / Fuel", "slug": "fuel", "icon": "fuel", "color": "#EC4899", "type": CategoryType.EXPENSE},
+        {"name": "Public Transit & Rideshare", "slug": "transportation", "icon": "bus", "color": "#06B6D4", "type": CategoryType.EXPENSE},
         {"name": "Auto Insurance", "slug": "auto-insurance", "icon": "shield", "color": "#06B6D4", "type": CategoryType.EXPENSE},
-        {"name": "Auto Maintenance & Service", "slug": "auto-maintenance", "icon": "tool", "color": "#64748B", "type": CategoryType.EXPENSE},
+        {"name": "Auto Maintenance & Service", "slug": "auto-maintenance", "icon": "tool", "color": "#64748B", "type": CategoryType.EXPENSE, "is_rollover": True},
     ]},
     # Food & Dining
     {"name": "Food & Dining", "slug": "food-dining", "icon": "utensils", "color": "#F97316", "type": CategoryType.EXPENSE, "children": [
         {"name": "Groceries", "slug": "groceries", "icon": "shopping-bag", "color": "#F97316", "type": CategoryType.EXPENSE},
         {"name": "Restaurants & Takeout", "slug": "restaurants", "icon": "coffee", "color": "#FB923C", "type": CategoryType.EXPENSE, "is_rollover": True},
         {"name": "Coffee Shops", "slug": "coffee-shops", "icon": "coffee", "color": "#D97706", "type": CategoryType.EXPENSE},
+        {"name": "Fast Food", "slug": "fast-food", "icon": "utensils", "color": "#F59E0B", "type": CategoryType.EXPENSE},
+        {"name": "Beer, Wine & Liquor", "slug": "alcohol-bars", "icon": "wine", "color": "#7C3AED", "type": CategoryType.EXPENSE},
     ]},
     # Lifestyle & Personal
     {"name": "Personal & Lifestyle", "slug": "personal", "icon": "user", "color": "#8B5CF6", "type": CategoryType.EXPENSE, "children": [
         {"name": "Shopping & General Merchandise", "slug": "shopping", "icon": "shopping-cart", "color": "#8B5CF6", "type": CategoryType.EXPENSE, "is_rollover": True},
         {"name": "Subscriptions & Streaming", "slug": "subscriptions", "icon": "tv", "color": "#A855F7", "type": CategoryType.EXPENSE},
         {"name": "Health & Medical", "slug": "health-medical", "icon": "activity", "color": "#14B8A6", "type": CategoryType.EXPENSE},
+        {"name": "Childcare & Daycare", "slug": "childcare", "icon": "users", "color": "#F43F5E", "type": CategoryType.EXPENSE, "is_rollover": True},
+        {"name": "Education & Tuition", "slug": "education", "icon": "book-open", "color": "#8B5CF6", "type": CategoryType.EXPENSE},
+        {"name": "Pets & Veterinary", "slug": "pets", "icon": "heart", "color": "#EC4899", "type": CategoryType.EXPENSE, "is_rollover": True},
         {"name": "Travel & Vacation", "slug": "travel", "icon": "plane", "color": "#0EA5E9", "type": CategoryType.EXPENSE, "is_rollover": True},
+        {"name": "Bank Fees & Charges", "slug": "bank-fees", "icon": "alert-circle", "color": "#94A3B8", "type": CategoryType.EXPENSE},
     ]},
     # Transfers
     {"name": "Transfers", "slug": "transfers", "icon": "arrow-left-right", "color": "#64748B", "type": CategoryType.TRANSFER, "children": [
@@ -58,33 +67,40 @@ DEFAULT_CATEGORIES = [
 
 
 def seed_default_categories(db: Session):
-    """Populates default categories if category table is empty."""
-    if db.query(Category).count() > 0:
-        return
+    """Populates default categories idempotently, creating missing parents and children."""
+    existing = db.query(Category).all()
+    existing_by_slug = {c.slug: c for c in existing}
 
     for parent_def in DEFAULT_CATEGORIES:
-        parent = Category(
-            name=parent_def["name"],
-            slug=parent_def["slug"],
-            icon=parent_def["icon"],
-            color=parent_def["color"],
-            type=parent_def["type"],
-            parent_id=None,
-        )
-        db.add(parent)
-        db.flush()
+        parent = existing_by_slug.get(parent_def["slug"])
+        if not parent:
+            parent = Category(
+                name=parent_def["name"],
+                slug=parent_def["slug"],
+                icon=parent_def["icon"],
+                color=parent_def["color"],
+                type=parent_def["type"],
+                parent_id=None,
+            )
+            db.add(parent)
+            db.flush()
+            existing_by_slug[parent.slug] = parent
 
         for child_def in parent_def.get("children", []):
-            child = Category(
-                name=child_def["name"],
-                slug=child_def["slug"],
-                icon=child_def["icon"],
-                color=child_def["color"],
-                type=child_def["type"],
-                is_rollover=child_def.get("is_rollover", False),
-                parent_id=parent.id,
-            )
-            db.add(child)
+            child = existing_by_slug.get(child_def["slug"])
+            if not child:
+                child = Category(
+                    name=child_def["name"],
+                    slug=child_def["slug"],
+                    icon=child_def["icon"],
+                    color=child_def["color"],
+                    type=child_def["type"],
+                    is_rollover=child_def.get("is_rollover", False),
+                    parent_id=parent.id,
+                )
+                db.add(child)
+                db.flush()
+                existing_by_slug[child.slug] = child
 
     db.commit()
 
