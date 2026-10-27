@@ -15,3 +15,8 @@ bcrypt>=5.0.0
 # S3 database snapshots. Previously installed ad-hoc in the Dockerfile, which
 # left it undeclared, uncached by CI, and invisible to Dependabot.
 boto3>=1.43.118
+# Security constraints for transitive dependencies (Snyk / Dependabot)
+certifi>=2026.10.19
+mako>=1.4.2
+pillow>=13.0.0
+urllib3>=2.8.0
