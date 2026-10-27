@@ -20,6 +20,9 @@ import type {
   EmergencyFundCalcResponse,
   CraSummaryResponse,
   CashFlowForecastResponse,
+  ClassificationResult,
+  ClassificationStatus,
+  AutoClassifyResult,
 } from "../types";
 
 const API_BASE = "/api";
@@ -355,6 +358,77 @@ export const api = {
     request<{ matched_count: number; updated_count: number }>("/rules/apply", {
       method: "POST",
     }),
+
+  // Auto-Classification Engine
+  classification: {
+    evaluate: (payload: {
+      raw_payee: string;
+      amount?: number;
+      account_id?: string;
+      enable_bedrock?: boolean;
+    }) =>
+      request<ClassificationResult>("/classification/evaluate", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    batchEvaluate: async (
+      items: Array<{ raw_payee: string; amount?: number; account_id?: string }>
+    ): Promise<ClassificationResult[]> => {
+      const res = await request<{ results?: ClassificationResult[] } | ClassificationResult[]>(
+        "/classification/batch-evaluate",
+        {
+          method: "POST",
+          body: JSON.stringify({ transactions: items, items }),
+        }
+      );
+      return Array.isArray(res) ? res : res.results || [];
+    },
+    autoClassifyUncategorized: async (payload: {
+      min_confidence?: number;
+      enable_bedrock?: boolean;
+      dry_run?: boolean;
+    }): Promise<AutoClassifyResult> => {
+      const body = {
+        threshold: payload.min_confidence ?? 0.75,
+        min_confidence: payload.min_confidence ?? 0.75,
+        enable_bedrock: payload.enable_bedrock ?? false,
+        dry_run: payload.dry_run ?? false,
+      };
+      const res = await request<{
+        total_uncategorized?: number;
+        classified_count: number;
+        remaining_count?: number;
+        tier_counts?: Record<string, number>;
+        dry_run?: boolean;
+      }>("/classification/auto-classify-uncategorized", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return {
+        classified_count: res.classified_count,
+        remaining_count:
+          res.remaining_count ??
+          (res.total_uncategorized !== undefined
+            ? Math.max(0, res.total_uncategorized - res.classified_count)
+            : 0),
+        total_uncategorized: res.total_uncategorized,
+        dry_run: res.dry_run,
+      };
+    },
+    getStatus: async (): Promise<ClassificationStatus> => {
+      const res = await request<any>("/classification/status");
+      return {
+        bedrock_enabled: Boolean(res.bedrock_enabled),
+        bedrock_model_id: res.bedrock_model_id || "amazon.nova-micro-v1:0",
+        bedrock_region: res.bedrock_region || "ca-central-1",
+        confidence_threshold: res.confidence_threshold ?? res.threshold ?? 0.75,
+        rules_count: res.rules_count ?? res.total_rules ?? 0,
+        historical_matches_available:
+          res.historical_matches_available ??
+          ((res.historical_learned_count ?? 0) >= 0),
+      };
+    },
+  },
 
   // Statement Ingestion
   uploadStatementPreview: async (accountId: string, file: File) => {

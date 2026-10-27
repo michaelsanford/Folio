@@ -8,6 +8,7 @@ import {
   Sparkles,
   Users,
   Edit2,
+  CheckCircle2,
 } from "lucide-react";
 import type {
   Account,
@@ -59,6 +60,84 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
   // Transaction Modal State (Create / Edit)
   const [isTxnModalOpen, setIsTxnModalOpen] = useState(false);
   const [editingTxn, setEditingTxn] = useState<Transaction | null>(null);
+
+  // Auto-Classify Uncategorized State
+  const [autoClassifyModalOpen, setAutoClassifyModalOpen] = useState(false);
+  const [autoClassifyMinConfidence, setAutoClassifyMinConfidence] = useState(0.75);
+  const [autoClassifyEnableBedrock, setAutoClassifyEnableBedrock] = useState(false);
+  const [isAutoClassifying, setIsAutoClassifying] = useState(false);
+  const [autoClassifySummary, setAutoClassifySummary] = useState<string | null>(null);
+
+  const handleConfirmAutoClassify = async () => {
+    setIsAutoClassifying(true);
+    setAutoClassifySummary(null);
+    try {
+      const res = await api.classification.autoClassifyUncategorized({
+        min_confidence: autoClassifyMinConfidence,
+        enable_bedrock: autoClassifyEnableBedrock,
+        dry_run: false,
+      });
+      const classified = res.classified_count ?? res.updated_count ?? 0;
+      const remaining = res.remaining_count ?? 0;
+      setAutoClassifySummary(`${classified} transactions classified, ${remaining} remaining uncategorized.`);
+      loadTransactions();
+      onDataModified();
+    } catch (err: any) {
+      alert(`Auto-classification error: ${err.message}`);
+    } finally {
+      setIsAutoClassifying(false);
+    }
+  };
+
+  const renderConfidenceBadge = (txn: Transaction) => {
+    const confidence = txn.confidence_score;
+    const tier = txn.classification_tier;
+    const reason = txn.classification_reason;
+
+    if (confidence === undefined || confidence === null) {
+      if (!tier) return null;
+    }
+
+    const score = confidence ?? 0.85;
+    const isHigh = score >= 0.85;
+    const isMed = score >= 0.65 && score < 0.85;
+
+    let dotColor = "bg-emerald-500";
+    let label = "High Confidence";
+    let badgeBg = "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+
+    if (tier === "BEDROCK_AI") {
+      dotColor = "bg-purple-500";
+      label = "AI (Bedrock)";
+      badgeBg = "bg-purple-500/10 text-purple-500 border-purple-500/20";
+    } else if (isHigh) {
+      dotColor = "bg-emerald-500";
+      label = "High Confidence";
+      badgeBg = "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+    } else if (isMed) {
+      dotColor = "bg-amber-500";
+      label = "Medium Confidence";
+      badgeBg = "bg-amber-500/10 text-amber-500 border-amber-500/20";
+    } else {
+      dotColor = "bg-slate-400";
+      label = "Low Confidence";
+      badgeBg = "bg-surface-subtle text-muted border-subtle";
+    }
+
+    const tooltip = reason
+      ? `${label} (${Math.round(score * 100)}%): ${reason}`
+      : `${label} (${Math.round(score * 100)}% confidence)`;
+
+    return (
+      <span
+        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-mono font-semibold border ${badgeBg} cursor-help shrink-0`}
+        title={tooltip}
+      >
+        <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+        <span>{Math.round(score * 100)}%</span>
+      </span>
+    );
+  };
   const [txnFormData, setTxnFormData] = useState({
     account_id: accounts[0]?.id || "",
     transaction_date: new Date().toISOString().split("T")[0],
@@ -360,7 +439,17 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-end gap-3 shrink-0 w-full sm:w-auto">
+        <div className="flex items-center justify-end gap-2.5 shrink-0 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={() => setAutoClassifyModalOpen(true)}
+            className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-surface border border-default hover:bg-surface-hover text-main text-xs font-semibold shadow-2xs transition-all cursor-pointer"
+            title="Auto-classify all uncategorized transactions using the multi-tier engine"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-accent-main" />
+            <span>Auto-Classify Uncategorized</span>
+          </button>
+
           <button
             onClick={handleOpenCreateTxn}
             className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs transition-all cursor-pointer"
@@ -524,18 +613,21 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                           <Layers className="w-2.5 h-2.5" /> Split ({txn.splits.length})
                         </button>
                       ) : (
-                        <select
-                          value={txn.splits?.[0]?.category_id || ""}
-                          onChange={(e) => handleInlineCategoryChange(txn, e.target.value)}
-                          className="bg-input border border-default text-main text-[10px] rounded px-1.5 py-0.5 focus:ring-1 focus:ring-accent-main focus:outline-hidden max-w-[120px] truncate"
-                        >
-                          <option value="">Uncategorized</option>
-                          {categories.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="inline-flex items-center gap-1">
+                          <select
+                            value={txn.splits?.[0]?.category_id || ""}
+                            onChange={(e) => handleInlineCategoryChange(txn, e.target.value)}
+                            className="bg-input border border-default text-main text-[10px] rounded px-1.5 py-0.5 focus:ring-1 focus:ring-accent-main focus:outline-hidden max-w-[120px] truncate"
+                          >
+                            <option value="">Uncategorized</option>
+                            {categories.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
+                          {renderConfidenceBadge(txn)}
+                        </div>
                       )}
 
                       <div className="ml-auto flex items-center gap-1">
@@ -665,18 +757,21 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                             <Layers className="w-3 h-3" /> Split ({txn.splits.length})
                           </button>
                         ) : (
-                          <select
-                            value={txn.splits?.[0]?.category_id || ""}
-                            onChange={(e) => handleInlineCategoryChange(txn, e.target.value)}
-                            className="bg-input border border-default text-main text-xs rounded-md px-2 py-1 focus:ring-1 focus:ring-accent-main focus:outline-hidden"
-                          >
-                            <option value="">Uncategorized</option>
-                            {categories.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <select
+                              value={txn.splits?.[0]?.category_id || ""}
+                              onChange={(e) => handleInlineCategoryChange(txn, e.target.value)}
+                              className="bg-input border border-default text-main text-xs rounded-md px-2 py-1 focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+                            >
+                              <option value="">Uncategorized</option>
+                              {categories.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </select>
+                            {renderConfidenceBadge(txn)}
+                          </div>
                         )}
                       </td>
                       <td className="p-3.5 text-muted text-xs truncate max-w-[150px]">
@@ -1009,6 +1104,123 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               </button>
             </div>
           </form>
+        </div>
+      )}
+      {/* Auto-Classify Uncategorized Confirmation Modal */}
+      {autoClassifyModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-md rounded-2xl bg-surface border border-default shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-subtle pb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-accent-main" />
+                <h3 className="text-base font-bold text-main">Auto-Classify Uncategorized</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAutoClassifyModalOpen(false);
+                  setAutoClassifySummary(null);
+                }}
+                className="text-muted hover:text-main"
+              >
+                ✕
+              </button>
+            </div>
+
+            {autoClassifySummary ? (
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-positive-subtle border border-emerald-500/30 text-xs text-positive flex items-center gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-positive shrink-0" />
+                  <div>
+                    <div className="font-bold">Auto-Classification Complete</div>
+                    <div className="text-[11px] mt-0.5 text-main font-semibold">
+                      {autoClassifySummary}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAutoClassifyModalOpen(false);
+                      setAutoClassifySummary(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs cursor-pointer"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 text-xs">
+                <p className="text-muted leading-relaxed">
+                  Folio will evaluate all uncategorized transactions in the ledger against the 4-tier engine (Tier 1 Rules → Tier 2 History → Tier 3 Heuristics → Tier 4 Bedrock AI) and automatically assign high-confidence categories.
+                </p>
+
+                <div className="p-3.5 rounded-xl bg-surface-subtle border border-subtle space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="confirmMinConfidence" className="font-medium text-main">
+                      Confidence Threshold
+                    </label>
+                    <span className="font-mono font-bold text-accent-main">
+                      {Math.round(autoClassifyMinConfidence * 100)}%
+                    </span>
+                  </div>
+                  <input
+                    id="confirmMinConfidence"
+                    type="range"
+                    min="0.50"
+                    max="0.95"
+                    step="0.05"
+                    value={autoClassifyMinConfidence}
+                    onChange={(e) => setAutoClassifyMinConfidence(parseFloat(e.target.value))}
+                    className="w-full accent-accent-main cursor-pointer"
+                  />
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="confirmEnableBedrock"
+                      checked={autoClassifyEnableBedrock}
+                      onChange={(e) => setAutoClassifyEnableBedrock(e.target.checked)}
+                      className="rounded border-default bg-input text-accent-main focus:ring-accent-main"
+                    />
+                    <label htmlFor="confirmEnableBedrock" className="text-sub cursor-pointer select-none">
+                      Enable Bedrock AI recourse for ambiguous items
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
+                  <button
+                    type="button"
+                    onClick={() => setAutoClassifyModalOpen(false)}
+                    disabled={isAutoClassifying}
+                    className="px-4 py-2 rounded-xl border border-default text-sub hover:bg-surface-hover"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmAutoClassify}
+                    disabled={isAutoClassifying}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast font-semibold shadow-xs disabled:opacity-50 cursor-pointer"
+                  >
+                    {isAutoClassifying ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>Classifying...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Classify Uncategorized</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

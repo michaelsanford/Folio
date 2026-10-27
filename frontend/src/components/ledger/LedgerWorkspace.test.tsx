@@ -65,6 +65,8 @@ const mockTransactions: Transaction[] = [
     created_at: "2026-10-25T12:00:00Z",
     updated_at: "2026-10-25T12:00:00Z",
     splits: [{ category_id: "cat-1", amount: -85.5 }],
+    confidence_score: 0.92,
+    classification_tier: "EXPLICIT_RULE",
   },
   {
     id: "txn-2",
@@ -150,5 +152,58 @@ describe("LedgerWorkspace Household Features", () => {
     expect(screen.getAllByText("Joint / Unassigned").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("Michael (Primary)")).toBeDefined();
     expect(screen.getByText("Sarah (Partner)")).toBeDefined();
+  });
+
+  it("renders confidence badge for auto-classified transactions", async () => {
+    render(
+      <LedgerWorkspace
+        accounts={mockAccounts}
+        categories={mockCategories}
+        householdMembers={mockMembers}
+        onDataModified={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("92%").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("opens Auto-Classify Uncategorized modal and invokes classification API on confirmation", async () => {
+    const onDataModified = vi.fn();
+    const autoClassifySpy = vi
+      .spyOn(api.classification, "autoClassifyUncategorized")
+      .mockResolvedValue({
+        classified_count: 5,
+        remaining_count: 0,
+      });
+
+    render(
+      <LedgerWorkspace
+        accounts={mockAccounts}
+        categories={mockCategories}
+        householdMembers={mockMembers}
+        onDataModified={onDataModified}
+      />
+    );
+
+    const autoClassifyBtn = screen.getByRole("button", { name: /Auto-Classify Uncategorized/i });
+    fireEvent.click(autoClassifyBtn);
+
+    expect(screen.getByRole("heading", { name: /Auto-Classify Uncategorized/i })).toBeDefined();
+
+    const confirmBtn = screen.getByRole("button", { name: /^Classify Uncategorized$/i });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(autoClassifySpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          min_confidence: 0.75,
+        })
+      );
+      expect(screen.getByText("Auto-Classification Complete")).toBeDefined();
+      expect(screen.getByText("5 transactions classified, 0 remaining uncategorized.")).toBeDefined();
+      expect(onDataModified).toHaveBeenCalled();
+    });
   });
 });

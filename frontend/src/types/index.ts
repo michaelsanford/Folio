@@ -105,6 +105,40 @@ export interface Transaction {
   created_at: string;
   updated_at: string;
   splits: TransactionSplit[];
+  confidence_score?: number | null;
+  classification_tier?: ClassificationTier;
+  classification_reason?: string | null;
+}
+
+export type ClassificationTier = "EXPLICIT_RULE" | "USER_HISTORY" | "HEURISTIC" | "BEDROCK_AI" | "UNCLASSIFIED";
+
+export interface ClassificationResult {
+  matched: boolean;
+  category_id?: string | null;
+  category_name?: string | null;
+  category_color?: string | null;
+  normalized_payee: string;
+  confidence: number;
+  tier: ClassificationTier;
+  reason: string;
+  rule_id?: string | null;
+}
+
+export interface ClassificationStatus {
+  bedrock_enabled: boolean;
+  bedrock_model_id: string;
+  bedrock_region: string;
+  confidence_threshold: number;
+  rules_count: number;
+  historical_matches_available: boolean;
+}
+
+export interface AutoClassifyResult {
+  classified_count: number;
+  remaining_count: number;
+  total_uncategorized?: number;
+  updated_count?: number;
+  dry_run?: boolean;
 }
 
 export interface TransactionListResponse {
@@ -170,6 +204,8 @@ export interface ParsedTransactionItem {
   potential_transfer_account_id?: string | null;
   potential_transfer_account_name?: string | null;
   confidence_score: number;
+  classification_tier?: ClassificationTier;
+  classification_reason?: string;
 }
 
 export interface IngestionPreviewResponse {

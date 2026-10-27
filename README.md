@@ -16,11 +16,13 @@ Designed for high-density desktop statement parsing and data entry with responsi
     `FOLIO_DEFAULT_CURRENCY`). Where a statement states its own currency -- an OFX
     `CURDEF`, or an RBC `CAD$`/`USD$` column -- the statement wins over the default.
 - **Zero-Duplicate Import Engine**: Deterministic SHA-256 fingerprinting per transaction (`account_id` + `date` + `amount` + `payee`) flags and filters out duplicate rows across overlapping statement imports.
-- **Intelligent Multi-Tier Categorization & Auto-Learning**:
-  - **Tier 1 (Priority Seed Rules)**: 100+ North American, Canadian, and subscription merchants seeded out of the box (Suno AI, Tidal, A30 Express, 407 ETR, Hydro-Québec, Jean Coutu, Privamed, Boustan, A&W, SAQ, LCBO, Steam, PSN, TradingView, etc.).
-  - **Tier 2 (Semantic Keyword Classifier)**: Offline commercial domain taxonomy (tolls, parking, transit, clinics, dental, pharmacies, cafes, bakeries, utilities, SaaS) automatically classifies unseeded merchants.
-  - **Tier 3 (Adaptive Auto-Learning)**: Automatically remembers your category assignments from the Ledger or Import Workspace and creates active rules so you never have to recategorize that merchant.
-  - **Bilingual Normalizer**: Strips English and French bank transaction noise (`PRÉLÈVEMENT`, `PAIEMENT DIRECT / FACTURE`, `VIREMENT INTERAC`, `ACH DEBIT`, `POS DEBIT`, postal codes, and terminal IDs).
+- **Multi-Tier Auto-Classification Engine & Local Heuristics**:
+  - **Tier 1 (Explicit & Seed Rules)**: 100+ Canadian/US subscription and merchant rules with EXACT, CONTAINS, STARTS_WITH, and safe REGEX pattern matching (100% confidence).
+  - **Tier 2 (Historical User Behavior & Habit Matcher)**: Empirical Bayesian frequency matching based on your past categorized transactions (P(Category | Payee)) with account-level affinity and confidence scaling (85%–98% confidence).
+  - **Tier 3 (Multi-Signal Heuristic Classifier)**: 22-category bilingual (EN/FR) Canadian & US domain taxonomy, fuzzy token-set Jaccard matching, and financial flow heuristics (positive inflow payroll/benefits detection vs. outflow bill patterns) (70%–89% confidence).
+  - **Tier 4 (Optional AWS Bedrock AI Recourse)**: Cloud AI classification recourse using Amazon Nova Micro or Claude 3 via AWS Bedrock Converse API for novel/ambiguous merchants, featuring automatic local rule learning so Bedrock is never called twice for the same merchant pattern.
+  - **Interactive Sandbox & Batch Auto-Classification**: Live sandbox in the Rules Manager to test payees and view tier breakdown; 1-click batch auto-classification for uncategorized ledger transactions with configurable confidence thresholds.
+  - **Bilingual Normalizer**: Strips English and French bank transaction noise (PRÉLÈVEMENT, PAIEMENT DIRECT / FACTURE, VIREMENT INTERAC, ACH DEBIT, POS DEBIT, postal codes, and terminal IDs).
 - **Loan & Mortgage Intelligence**:
   - Full month-by-month loan amortization schedules for 15/30-year Mortgages and Vehicle Loans.
   - Computes remaining interest, payoff date projections, and automated Principal vs. Interest vs. Escrow payment splits.

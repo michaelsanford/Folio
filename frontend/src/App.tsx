@@ -348,7 +348,11 @@ function AppContent() {
       )}
 
       {activeTab === "rules" && (
-        <RulesManagerView categories={categories} />
+        <RulesManagerView
+          categories={categories}
+          accounts={accounts}
+          onDataModified={loadAllData}
+        />
       )}
 
       {activeTab === "accounts" && (
