@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   TrendingUp,
-  TrendingDown,
+
   AlertTriangle,
   Calendar,
-  DollarSign,
+
   Clock,
-  Landmark,
-  ArrowRight,
-  ShieldCheck,
+
+
+
   RefreshCw,
 } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";

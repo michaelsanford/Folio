@@ -1,6 +1,34 @@
+from datetime import datetime
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.models.budget import Budget, BudgetItem
 from app.models.category import Category
+from app.models.transaction import Transaction, TransactionSplit
+from app.services.analytics.classification import split_kind_case
+
+
+def get_category_actual_spend_cents(db: Session, year: int, month: int, category_id: str) -> int:
+    """Calculates total actual outflow cents for a specific category in a given calendar month."""
+    start_of_month = datetime(year, month, 1)
+    if month == 12:
+        end_of_month = datetime(year + 1, 1, 1)
+    else:
+        end_of_month = datetime(year, month + 1, 1)
+
+    kind = split_kind_case().label("kind")
+    total = (
+        db.query(func.sum(TransactionSplit.amount_cents))
+        .join(Transaction, TransactionSplit.transaction_id == Transaction.id)
+        .outerjoin(Category, TransactionSplit.category_id == Category.id)
+        .filter(
+            Transaction.transaction_date >= start_of_month,
+            Transaction.transaction_date < end_of_month,
+            TransactionSplit.category_id == category_id,
+            kind == "EXPENSE",
+        )
+        .scalar()
+    ) or 0
+    return abs(total)
 
 
 def calculate_category_rollover_cents(
@@ -42,7 +70,6 @@ def calculate_category_rollover_cents(
         return 0
 
     # Calculate actuals for prior month in this category
-    from app.api.budgets import get_category_actual_spend_cents
     prior_actual_cents = get_category_actual_spend_cents(db, prev_year, prev_month, category.id)
 
     # Prior available = prior planned + prior rollover

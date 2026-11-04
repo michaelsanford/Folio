@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.core.money import from_cents, to_cents
-from app.models.account import Account, AccountType
+from app.models.account import Account
 from app.models.investment import (
     Holding,
     InvestmentActivity,
@@ -28,6 +28,12 @@ from app.schemas.investment import (
     SecurityResponse,
 )
 from app.services.investments.performance import account_performance, holding_valuation
+from app.services.investments.quote_fetcher import (
+    INVESTMENT_ACCOUNT_TYPES,
+    fetch_boc_usdcad_rate,
+    revalue_accounts,
+    update_quotes_for_securities,
+)
 
 router = APIRouter(prefix="/investments", tags=["Investments"])
 
@@ -43,22 +49,6 @@ def _get_or_create_security(db: Session, symbol: str, name: str | None = None, a
     db.add(security)
     db.flush()
     return security
-
-
-INVESTMENT_ACCOUNT_TYPES = {
-    AccountType.INVESTMENT,
-    AccountType.TFSA,
-    AccountType.RRSP,
-    AccountType.FHSA,
-    AccountType.RESP,
-    AccountType.RDSP,
-    AccountType.RRIF,
-    AccountType.LIRA,
-    AccountType.LIF,
-    AccountType.IPP,
-    AccountType.NON_REGISTERED,
-    AccountType.CRYPTO,
-}
 
 
 def _require_investment_account(db: Session, account_id: str) -> Account:
@@ -349,28 +339,8 @@ def revalue_investment_accounts(
     values with no special-casing, and the figure stays stable until the user
     enters new prices.
     """
-    from app.services.snapshots.balance_history import record_snapshot
-
-    accounts = db.query(Account).filter(Account.type.in_(INVESTMENT_ACCOUNT_TYPES)).all()
-    unpriced: list[str] = []
-    revalued = 0
-
-    for account in accounts:
-        holdings = db.query(Holding).filter(Holding.account_id == account.id).all()
-        if not holdings:
-            continue
-        total = 0
-        for holding in holdings:
-            valuation = holding_valuation(db, holding, as_of)
-            total += valuation["market_value_cents"]
-            if not valuation["is_priced"]:
-                unpriced.append(valuation["symbol"])
-        account.current_balance_cents = total
-        record_snapshot(db, account.id, total, as_of)
-        revalued += 1
-
-    db.commit()
-    return RevalueResponse(accounts_revalued=revalued, unpriced_holdings=sorted(set(unpriced)))
+    revalued, unpriced = revalue_accounts(db, as_of=as_of)
+    return RevalueResponse(accounts_revalued=revalued, unpriced_holdings=unpriced)
 
 
 class AutomatedQuotesResponse(BaseModel):
@@ -402,7 +372,6 @@ def fetch_automated_quotes(
         symbols = payload
     elif isinstance(payload, dict):
         symbols = payload.get("symbols")
-    from app.services.investments.quote_fetcher import update_quotes_for_securities
     res = update_quotes_for_securities(db, symbols=symbols, as_of=as_of)
     res["quotes_fetched"] = res.get("updated_count", 0)
     return AutomatedQuotesResponse(**res)
@@ -411,6 +380,5 @@ def fetch_automated_quotes(
 @router.get("/fx-rate", response_model=FxRateResponse)
 def get_boc_fx_rate(pair: str = "USDCAD"):
     """Returns official Bank of Canada USD/CAD daily exchange rate."""
-    from app.services.investments.quote_fetcher import fetch_boc_usdcad_rate
     rate = fetch_boc_usdcad_rate()
     return FxRateResponse(pair=pair, rate=rate, source="Bank of Canada", as_of_date=date.today().isoformat())

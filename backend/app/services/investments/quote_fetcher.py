@@ -1,11 +1,12 @@
 import logging
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import date
 import httpx
 from sqlalchemy.orm import Session
 from app.core.money import to_cents, from_cents
-from app.models.investment import PriceQuote, Security
-from app.api.investments import _get_or_create_security, revalue_investment_accounts
+from app.models.account import Account, AccountType
+from app.models.investment import Holding, PriceQuote, Security
+from app.services.investments.performance import holding_valuation
+from app.services.snapshots.balance_history import record_snapshot
 
 logger = logging.getLogger("folio.quote_fetcher")
 
@@ -14,6 +15,45 @@ YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?in
 REQUEST_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
+
+INVESTMENT_ACCOUNT_TYPES = {
+    AccountType.INVESTMENT,
+    AccountType.TFSA,
+    AccountType.RRSP,
+    AccountType.FHSA,
+    AccountType.RESP,
+    AccountType.RDSP,
+    AccountType.RRIF,
+    AccountType.LIRA,
+    AccountType.LIF,
+    AccountType.IPP,
+    AccountType.NON_REGISTERED,
+    AccountType.CRYPTO,
+}
+
+
+def revalue_accounts(db: Session, as_of: date | None = None) -> tuple[int, list[str]]:
+    """Revalues all investment accounts from their holdings' market value and records snapshots."""
+    accounts = db.query(Account).filter(Account.type.in_(INVESTMENT_ACCOUNT_TYPES)).all()
+    unpriced: list[str] = []
+    revalued = 0
+
+    for account in accounts:
+        holdings = db.query(Holding).filter(Holding.account_id == account.id).all()
+        if not holdings:
+            continue
+        total = 0
+        for holding in holdings:
+            valuation = holding_valuation(db, holding, as_of)
+            total += valuation["market_value_cents"]
+            if not valuation["is_priced"]:
+                unpriced.append(valuation["symbol"])
+        account.current_balance_cents = total
+        record_snapshot(db, account.id, total, as_of)
+        revalued += 1
+
+    db.commit()
+    return revalued, sorted(set(unpriced))
 
 
 def fetch_boc_usdcad_rate(timeout: float = 8.0) -> float | None:
@@ -108,7 +148,7 @@ def update_quotes_for_securities(
     db.commit()
 
     # Revalue all investment accounts to update balances and balance snapshots
-    revalue_res = revalue_investment_accounts(as_of=as_of_date, db=db)
+    accounts_revalued, _ = revalue_accounts(db=db, as_of=as_of_date)
 
     return {
         "updated_count": len(updated),
@@ -116,5 +156,5 @@ def update_quotes_for_securities(
         "quotes": updated,
         "failed_symbols": failed,
         "usdcad_fx_rate": fx_rate,
-        "accounts_revalued": revalue_res.accounts_revalued,
+        "accounts_revalued": accounts_revalued,
     }

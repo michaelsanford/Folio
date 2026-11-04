@@ -8,6 +8,7 @@ from app.models.budget import Budget, BudgetItem
 from app.models.category import Category, CategoryType
 from app.models.transaction import Transaction, TransactionSplit
 from app.services.analytics.classification import split_kind_case
+from app.services.budgeting.rollover_engine import calculate_category_rollover_cents
 from app.schemas.budget import (
     BudgetCreate,
     BudgetUpdate,
@@ -20,34 +21,8 @@ from app.schemas.budget import (
 router = APIRouter(prefix="/budgets", tags=["Budgets"])
 
 
-def get_category_actual_spend_cents(db: Session, year: int, month: int, category_id: str) -> int:
-    """Calculates total actual outflow cents for a specific category in a given calendar month."""
-    start_of_month = datetime(year, month, 1)
-    if month == 12:
-        end_of_month = datetime(year + 1, 1, 1)
-    else:
-        end_of_month = datetime(year, month + 1, 1)
-
-    kind = split_kind_case().label("kind")
-    total = (
-        db.query(func.sum(TransactionSplit.amount_cents))
-        .join(Transaction, TransactionSplit.transaction_id == Transaction.id)
-        .outerjoin(Category, TransactionSplit.category_id == Category.id)
-        .filter(
-            Transaction.transaction_date >= start_of_month,
-            Transaction.transaction_date < end_of_month,
-            TransactionSplit.category_id == category_id,
-            kind == "EXPENSE",
-        )
-        .scalar()
-    ) or 0
-    return abs(total)
-
-
 def populate_budget_actuals(db: Session, budget: Budget) -> BudgetResponse:
     """Calculates actual spending/income for each category in the budget month and syncs all budgeted categories."""
-    from app.services.budgeting.rollover_engine import calculate_category_rollover_cents
-
     start_of_month = datetime(budget.year, budget.month, 1)
     if budget.month == 12:
         end_of_month = datetime(budget.year + 1, 1, 1)
@@ -243,7 +218,7 @@ def create_budget(budget_in: BudgetCreate, db: Session = Depends(get_db)):
         year=budget_in.year,
         month=budget_in.month,
         total_income_target=budget_in.total_income_target,
-        total_expense_target=budget_in.total_expense_target,
+        total_expense_target=budget.total_expense_target,
         notes=budget_in.notes,
     )
 

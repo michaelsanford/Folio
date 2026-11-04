@@ -7,7 +7,7 @@ import {
   Trash2,
   Layers,
   Sparkles,
-  Users,
+
   Edit2,
   CheckCircle2,
 } from "lucide-react";
@@ -117,9 +117,9 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
     const isHigh = score >= 0.85;
     const isMed = score >= 0.65 && score < 0.85;
 
-    let dotColor = "bg-emerald-500";
-    let label = "High Confidence";
-    let badgeBg = "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+    let dotColor: string;
+    let label: string;
+    let badgeBg: string;
 
     if (tier === "BEDROCK_AI") {
       dotColor = "bg-purple-500";

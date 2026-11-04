@@ -1,20 +1,20 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Target,
-  ShieldCheck,
-  TrendingUp,
+
+
   Plus,
   Trash2,
   Edit2,
   Calculator,
   AlertTriangle,
   Calendar,
-  DollarSign,
+
   Users,
   Check,
   CheckCircle2,
   ArrowRight,
-  Info,
+
 } from "lucide-react";
 import type {
   Goal,
@@ -81,7 +81,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
   // CRA Statutory Room
   const [craSummary, setCraSummary] = useState<CraSummaryResponse | null>(null);
-  const [isLoadingCra, setIsLoadingCra] = useState(false);
+
 
   // Emergency Fund Calculator State
   const [showCalcModal, setShowCalcModal] = useState(false);
@@ -89,7 +89,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
   const [calcLookback, setCalcLookback] = useState<number>(6);
   const [excludedCatIds, setExcludedCatIds] = useState<string[]>([]);
   const [calcData, setCalcData] = useState<EmergencyFundCalcResponse | null>(null);
-  const [isLoadingCalc, setIsLoadingCalc] = useState(false);
+
 
   // Goal Form Modal
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
@@ -130,7 +130,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
   };
 
   const loadCraLimits = async () => {
-    setIsLoadingCra(true);
+
     try {
       const memberParam = selectedMemberId === "ALL" ? undefined : selectedMemberId || undefined;
       const data = await api.goals.getCraLimits(memberParam);
@@ -138,7 +138,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
     } catch (err: any) {
       console.error("CRA limits error:", err);
     } finally {
-      setIsLoadingCra(false);
+
     }
   };
 
@@ -149,7 +149,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
   // Fetch Emergency Fund Calculation
   const fetchEmergencyCalc = async (months: number, lookback: number, excluded: string[]) => {
-    setIsLoadingCalc(true);
+
     try {
       const res = await api.goals.getEmergencyFundCalc(months, lookback, excluded);
       setCalcData(res);
@@ -160,7 +160,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
     } catch (err: any) {
       console.error("Emergency calc error:", err);
     } finally {
-      setIsLoadingCalc(false);
+
     }
   };
 

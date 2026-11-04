@@ -1,10 +1,7 @@
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from app.core.config import settings
-from app.models.account import Account, AccountType
 from app.models.category import Category
 from app.models.rule import CategorizationRule, RulePatternType
 from app.models.transaction import Transaction, TransactionSplit
