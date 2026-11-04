@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-import pytest
 
 from app.models.category import Category
 from app.models.transaction import Transaction, TransactionSplit

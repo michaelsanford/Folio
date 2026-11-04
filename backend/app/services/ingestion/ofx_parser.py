@@ -13,7 +13,7 @@ from app.services.ingestion.deduplication import (
 )
 from app.services.categorization.normalizer import normalize_payee
 from app.services.categorization.engine import ClassificationEngine
-from app.services.categorization.rules_engine import evaluate_rules
+
 from app.services.categorization.transfer_matcher import find_potential_transfers
 from app.core.config import settings
 

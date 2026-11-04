@@ -1,12 +1,10 @@
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
 from botocore.exceptions import ClientError, EndpointConnectionError
 
 from app.core.config import settings
 from app.services.categorization.bedrock_classifier import (
-    BedrockClassificationResult,
     _clean_json_response,
     classify_with_bedrock,
 )

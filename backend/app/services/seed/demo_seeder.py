@@ -1,13 +1,13 @@
 import hashlib
-import uuid
-from datetime import date, datetime, timedelta, timezone
+
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.money import to_cents
 from app.models.account import Account, AccountType, LoanCompounding
 from app.models.budget import Budget, BudgetItem
-from app.models.category import Category, CategoryType
+from app.models.category import Category
 from app.models.goal import Goal, GoalType
 from app.models.household import HouseholdMember
 from app.models.investment import AssetClass, Holding, Lot, PriceQuote, Security

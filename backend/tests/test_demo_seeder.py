@@ -1,8 +1,5 @@
-import pytest
-from app.models.account import Account, AccountType
+from app.models.account import Account
 from app.models.budget import Budget
-from app.models.category import Category
-from app.models.goal import Goal
 from app.models.household import HouseholdMember
 from app.models.transaction import Transaction
 from app.services.seed.demo_seeder import seed_canadian_demo_dataset

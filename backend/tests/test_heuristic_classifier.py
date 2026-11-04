@@ -1,8 +1,6 @@
-import pytest
 from app.services.categorization.semantic_classifier import (
     classify_by_semantic_heuristics,
     classify_by_semantic_keywords,
-    TAXONOMY_PRIORITY,
 )
 
 

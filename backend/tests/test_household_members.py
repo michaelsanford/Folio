@@ -1,8 +1,6 @@
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from app.models.household import HouseholdMember
-from app.models.account import Account, AccountType
-from app.models.transaction import Transaction
 
 
 def test_household_member_crud(client: TestClient):
