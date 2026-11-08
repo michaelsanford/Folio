@@ -32,7 +32,9 @@ def test_automated_quote_fetching(client: TestClient, db_session: Session, monke
             return 32.50, "CAD"
         return None, None
 
+    import app.api.investments as inv_api
     monkeypatch.setattr(qf, "fetch_boc_usdcad_rate", mock_boc_rate)
+    monkeypatch.setattr(inv_api, "fetch_boc_usdcad_rate", mock_boc_rate)
     monkeypatch.setattr(qf, "fetch_single_quote", mock_single_quote)
 
     # 1. Test FX rate endpoint
@@ -55,3 +57,4 @@ def test_automated_quote_fetching(client: TestClient, db_session: Session, monke
     # 100 shares * $32.50 = $3,250.00
     assert acc_check.json()["current_balance"] == 3250.0
 from datetime import datetime
+

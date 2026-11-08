@@ -218,7 +218,7 @@ def create_budget(budget_in: BudgetCreate, db: Session = Depends(get_db)):
         year=budget_in.year,
         month=budget_in.month,
         total_income_target=budget_in.total_income_target,
-        total_expense_target=budget.total_expense_target,
+        total_expense_target=budget_in.total_expense_target,
         notes=budget_in.notes,
     )
 
