@@ -18,11 +18,11 @@ interface LazyChartProps {
 
 const ChartSkeleton: React.FC<{ className?: string }> = ({ className }) => (
   <div
-    className={`${className ?? ""} w-full rounded-xl bg-slate-800/30 animate-pulse flex items-center justify-center`}
+    className={`${className ?? ""} w-full rounded-lg bg-surface-subtle flex items-center justify-center`}
     role="status"
     aria-label="Chart loading"
   >
-    <span className="text-xs text-slate-500">Loading chart…</span>
+    <span className="text-xs text-muted">Loading chart…</span>
   </div>
 );
 

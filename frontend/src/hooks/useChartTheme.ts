@@ -190,24 +190,25 @@ export const useChartTheme = (): ChartThemeTokens => {
     default:
       return {
         isDark,
-        textColor: isDark ? "#94a3b8" : "#475569",
-        subtleTextColor: isDark ? "#64748b" : "#64748b",
-        gridLineColor: isDark ? "rgba(51, 65, 85, 0.35)" : "rgba(203, 213, 225, 0.6)",
-        axisLineColor: isDark ? "#334155" : "#cbd5e1",
-        tooltipBg: isDark ? "#0f172a" : "#ffffff",
-        tooltipBorder: isDark ? "#334155" : "#cbd5e1",
-        tooltipText: isDark ? "#f8fafc" : "#0f172a",
-        accentColor: isDark ? "#10b981" : "#059669",
+        textColor: isDark ? "#a1a1a6" : "#525252",
+        subtleTextColor: isDark ? "#85858b" : "#737373",
+        gridLineColor: isDark ? "rgba(237, 237, 237, 0.06)" : "rgba(23, 23, 23, 0.06)",
+        axisLineColor: isDark ? "rgba(237, 237, 237, 0.12)" : "rgba(23, 23, 23, 0.12)",
+        tooltipBg: isDark ? "#232325" : "#ffffff",
+        tooltipBorder: isDark ? "rgba(237, 237, 237, 0.1)" : "rgba(23, 23, 23, 0.12)",
+        tooltipText: isDark ? "#ededed" : "#171717",
+        accentColor: isDark ? "#10b981" : "#047857",
         accentGradient: {
-          start: isDark ? "rgba(16, 185, 129, 0.45)" : "rgba(5, 150, 105, 0.35)",
-          end: isDark ? "rgba(16, 185, 129, 0.0)" : "rgba(5, 150, 105, 0.0)",
+          start: isDark ? "rgba(16, 185, 129, 0.12)" : "rgba(4, 120, 87, 0.08)",
+          end: isDark ? "rgba(16, 185, 129, 0.0)" : "rgba(4, 120, 87, 0.0)",
         },
-        positiveColor: isDark ? "#10b981" : "#059669",
-        negativeColor: isDark ? "#f43f5e" : "#e11d48",
-        neutralColor: isDark ? "#64748b" : "#64748b",
+        positiveColor: isDark ? "#4cc38a" : "#15803d",
+        negativeColor: isDark ? "#e5484d" : "#dc2626",
+        neutralColor: isDark ? "#85858b" : "#737373",
+        // Accent leads; the rest are muted, distinguishable tones for share charts.
         palette: isDark
-          ? ["#10b981", "#38bdf8", "#f59e0b", "#34d399", "#f43f5e", "#a855f7", "#06b6d4", "#94a3b8"]
-          : ["#059669", "#0284c7", "#d97706", "#0d9488", "#e11d48", "#7e22ce", "#0891b2", "#64748b"],
+          ? ["#10b981", "#7c9cbf", "#c9a46a", "#8f8fa3", "#b07b8c", "#6fa8a0", "#a1a1a6", "#5d5d63"]
+          : ["#047857", "#4f6f94", "#9a7434", "#6b6b80", "#8c5466", "#3f7f77", "#737373", "#a3a3a3"],
       };
   }
 };

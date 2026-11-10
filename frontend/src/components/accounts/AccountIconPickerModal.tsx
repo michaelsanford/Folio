@@ -9,6 +9,7 @@ import {
   type ColorSwatch,
 } from "../../constants/iconPalette";
 import { AccountIcon } from "../common/AccountIcon";
+import { Money } from "../common/Money";
 
 interface AccountIconPickerModalProps {
   isOpen: boolean;
@@ -21,6 +22,15 @@ interface AccountIconPickerModalProps {
   currentColor?: string | null;
   onSave: (icon: string, color: string) => void;
 }
+
+const sectionLabel = "block text-sm text-sub";
+const linkButton = "text-xs text-accent-subtle hover:underline underline-offset-4 cursor-pointer";
+const tabClass = (active: boolean) =>
+  `h-8 px-3 rounded-lg text-xs whitespace-nowrap border transition-colors cursor-pointer ${
+    active
+      ? "bg-surface-subtle border-default text-main font-medium"
+      : "border-transparent text-sub hover:text-main bg-surface-hover"
+  }`;
 
 export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
   isOpen,
@@ -48,11 +58,11 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
   if (!isOpen) return null;
 
   const categories = [
-    { id: "all", label: "All Glyphs" },
+    { id: "all", label: "All icons" },
     { id: "registered", label: "Registered (CRA)" },
     { id: "banking", label: "Banking" },
     { id: "growth", label: "Investments" },
-    { id: "debt", label: "Loans & Debt" },
+    { id: "debt", label: "Loans and debt" },
     { id: "assets", label: "Assets" },
   ] as const;
 
@@ -67,61 +77,53 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-      <div className="w-full max-w-xl rounded-2xl bg-surface border border-default shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+      <div className="w-full max-w-xl rounded-xl bg-surface border border-default shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="p-5 border-b border-subtle bg-surface-subtle flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-subtle flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-base font-bold text-main">
-              Customize Account Glyph & Color
-            </h3>
-            <p className="text-xs text-muted mt-0.5">
-              Choose a representative icon and accent hue for your account
+            <h3 className="text-base font-medium text-main">Account icon and colour</h3>
+            <p className="text-sm text-sub mt-1">
+              Pick an icon and a color to tell this account apart
             </p>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-muted hover:text-main rounded-lg"
+            aria-label="Close"
+            className="h-8 w-8 shrink-0 flex items-center justify-center text-muted hover:text-main rounded-lg bg-surface-hover transition-colors cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" strokeWidth={1.5} />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 overflow-y-auto space-y-5 text-sm">
+        <div className="p-5 overflow-y-auto space-y-6 text-sm">
           {/* Live Card Preview */}
           <div>
-            <label className="block text-muted font-semibold uppercase tracking-wider text-xs mb-2">
-              Live Preview
-            </label>
-            <div className="p-4 rounded-xl bg-surface-subtle border border-default shadow-xs flex items-center justify-between">
-              <div className="flex items-center gap-3.5">
+            <label className={`${sectionLabel} mb-2`}>Preview</label>
+            <div className="p-4 rounded-xl bg-surface-subtle border border-subtle flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
                 <AccountIcon
                   type={accountType}
                   icon={selectedIcon}
                   color={selectedColor}
                   size="lg"
                 />
-                <div>
-                  <div className="text-sm font-bold text-main">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-main truncate">
                     {accountName || meta.name}
                   </div>
-                  <div className="text-xs text-muted mt-0.5">
-                    {institution || "Institution"} • {meta.shortName}
+                  <div className="text-xs text-muted mt-0.5 truncate">
+                    {institution || "Institution"} · {meta.shortName}
                   </div>
                 </div>
               </div>
 
-              <div className="text-right">
-                <div
-                  className="text-base font-bold font-mono"
-                  style={{ color: selectedColor }}
-                >
-                  ${balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                </div>
-                <div className="text-xs text-muted">Current Balance</div>
+              <div className="text-right shrink-0">
+                <Money value={balance} className="block text-base font-medium text-main" />
+                <div className="text-xs text-muted mt-1">Current balance</div>
               </div>
             </div>
           </div>
@@ -129,15 +131,13 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
           {/* Color Palette Swatches */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="block text-muted font-semibold uppercase tracking-wider text-xs">
-                Accent Color Swatch
-              </label>
+              <label className={sectionLabel}>Color</label>
               <button
                 type="button"
                 onClick={() => setSelectedColor(meta.defaultColor)}
-                className="text-xs text-accent-main hover:underline font-semibold cursor-pointer"
+                className={linkButton}
               >
-                Reset to Default ({meta.shortName})
+                Reset to default ({meta.shortName})
               </button>
             </div>
 
@@ -150,15 +150,17 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
                     key={swatch.id}
                     type="button"
                     title={swatch.name}
+                    aria-label={swatch.name}
+                    aria-pressed={isSelected}
                     onClick={() => setSelectedColor(swatch.hex)}
-                    className={`h-8 rounded-lg flex items-center justify-center transition-transform hover:scale-105 border cursor-pointer ${
+                    className={`h-8 rounded-lg flex items-center justify-center cursor-pointer ${
                       isSelected
-                        ? "ring-2 ring-accent-main ring-offset-2 ring-offset-surface border-white"
-                        : "border-transparent"
+                        ? "ring-2 ring-[var(--text-primary)] ring-offset-2 ring-offset-[var(--bg-surface)]"
+                        : ""
                     }`}
                     style={{ backgroundColor: swatch.hex }}
                   >
-                    {isSelected && <Check className="w-3.5 h-3.5 text-white drop-shadow-md" />}
+                    {isSelected && <Check className="w-4 h-4 text-white" strokeWidth={2} />}
                   </button>
                 );
               })}
@@ -168,30 +170,24 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
           {/* Icon Category Tabs & Glyphs Grid */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="block text-muted font-semibold uppercase tracking-wider text-xs">
-                Icon Glyph Selection
-              </label>
+              <label className={sectionLabel}>Icon</label>
               <button
                 type="button"
                 onClick={() => setSelectedIcon(meta.defaultIcon)}
-                className="text-xs text-accent-main hover:underline font-semibold cursor-pointer"
+                className={linkButton}
               >
-                Reset to Default Icon
+                Reset to default icon
               </button>
             </div>
 
             {/* Category Tabs */}
-            <div className="flex gap-1.5 overflow-x-auto pb-1 mb-2.5 no-scrollbar">
+            <div className="flex gap-1 overflow-x-auto pb-1 mb-2 no-scrollbar">
               {categories.map((c) => (
                 <button
                   key={c.id}
                   type="button"
                   onClick={() => setActiveCategory(c.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                    activeCategory === c.id
-                      ? "bg-accent-main text-accent-contrast shadow-xs"
-                      : "bg-surface hover:bg-surface-hover text-sub border border-default"
-                  }`}
+                  className={tabClass(activeCategory === c.id)}
                 >
                   {c.label}
                 </button>
@@ -199,7 +195,7 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
             </div>
 
             {/* Icons Grid */}
-            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 max-h-52 overflow-y-auto p-1 pr-1.5">
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 max-h-52 overflow-y-auto p-1 pr-2">
               {filteredIcons.map((opt: IconOption) => {
                 const isSelected = selectedIcon === opt.id;
                 const IconComponent = opt.icon;
@@ -207,18 +203,20 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
                   <button
                     key={opt.id}
                     type="button"
+                    title={opt.name}
+                    aria-pressed={isSelected}
                     onClick={() => setSelectedIcon(opt.id)}
-                    className={`flex flex-col items-center justify-center p-2.5 rounded-xl border transition-all cursor-pointer ${
+                    className={`flex flex-col items-center justify-center gap-1 p-2 rounded-lg border transition-colors cursor-pointer ${
                       isSelected
-                        ? "bg-accent-subtle border-accent-main shadow-xs ring-1 ring-accent-main"
-                        : "bg-surface-subtle border-subtle hover:bg-surface-hover hover:border-default text-sub"
+                        ? "bg-accent-subtle border-accent-main/40 text-main"
+                        : "border-subtle bg-surface-hover text-sub"
                     }`}
                   >
                     <IconComponent
-                      className="w-4 h-4 mb-1"
-                      style={{ color: isSelected ? selectedColor : undefined }}
+                      className="w-4 h-4"
+                      style={{ color: isSelected ? selectedColor : undefined, strokeWidth: 1.5 }}
                     />
-                    <span className="text-[10px] text-muted font-medium truncate w-full text-center">
+                    <span className="text-[11px] text-muted truncate w-full text-center">
                       {opt.name.split(" ")[0]}
                     </span>
                   </button>
@@ -229,20 +227,20 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-subtle bg-surface-subtle flex items-center justify-end gap-2.5">
+        <div className="px-5 py-4 border-t border-subtle flex items-center justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl border border-default text-sub font-semibold text-xs hover:bg-surface-hover transition-colors"
+            className="h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handleApply}
-            className="px-5 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast font-semibold text-xs shadow-xs transition-all cursor-pointer"
+            className="h-9 px-4 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] cursor-pointer"
           >
-            Apply Glyph & Color
+            Apply
           </button>
         </div>
       </div>

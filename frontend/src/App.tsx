@@ -16,7 +16,7 @@ import { LockScreen } from "./components/auth/LockScreen";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import type { Account, Category, DashboardAnalyticsResponse, HouseholdMember } from "./types";
 import { api, setOnUnauthorized } from "./services/api";
-import { Landmark, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState<NavTab>("dashboard");
@@ -104,9 +104,9 @@ function AppContent() {
   // Auth Loading
   if (authStatus.is_loading) {
     return (
-      <div className="min-h-screen bg-canvas flex items-center justify-center text-muted">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-main mr-3"></div>
-        Authenticating session...
+      <div className="min-h-screen bg-canvas flex items-center justify-center gap-3 text-sm text-muted">
+        <div className="animate-spin rounded-full h-4 w-4 border-2 border-[var(--border-default)] border-t-[var(--accent-primary)]"></div>
+        Checking session…
       </div>
     );
   }
@@ -126,31 +126,26 @@ function AppContent() {
     >
       {/* Empty State Banner if no accounts configured */}
       {accounts.length === 0 && !isLoading && (
-        <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-accent-subtle text-accent-subtle">
-              <Landmark className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-sm font-bold text-main">Welcome to Folio</div>
-              <div className="text-xs text-muted mt-0.5">
-                Get started by creating your financial accounts or load sample Canadian data.
-              </div>
+        <div className="mb-6 p-5 rounded-xl bg-surface border border-default flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <div className="text-base font-medium text-main">Welcome to Folio</div>
+            <div className="text-sm text-muted mt-1">
+              Add your accounts to get started, or load sample Canadian data to explore
             </div>
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               onClick={() => setActiveTab("accounts")}
-              className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-surface-subtle hover:bg-surface-hover border border-default text-sub text-xs font-semibold transition-all cursor-pointer"
+              className="flex-1 sm:flex-none h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer"
             >
-              Add Custom Account
+              Add account
             </button>
             <button
               onClick={handleSeedDemoData}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs transition-all cursor-pointer"
+              className="flex-1 sm:flex-none h-9 px-4 flex items-center justify-center gap-2 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] cursor-pointer"
             >
-              <span>Load Canadian Demo</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <span>Load demo data</span>
+              <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
             </button>
           </div>
         </div>

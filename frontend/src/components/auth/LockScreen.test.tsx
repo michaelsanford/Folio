@@ -8,10 +8,10 @@ describe("LockScreen Component", () => {
   it("renders master passphrase input and lock branding", () => {
     render(<LockScreen onUnlocked={vi.fn()} />);
 
-    expect(screen.getByText("Folio Vault")).toBeDefined();
-    expect(screen.getByText("Master Passphrase")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Folio" })).toBeDefined();
+    expect(screen.getByText("Master passphrase")).toBeDefined();
     expect(screen.getByPlaceholderText("••••••••••••")).toBeDefined();
-    expect(screen.getByRole("button", { name: /Unlock Vault/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /Unlock vault/i })).toBeDefined();
   });
 
   it("handles successful unlock submission", async () => {
@@ -24,7 +24,7 @@ describe("LockScreen Component", () => {
     const input = screen.getByPlaceholderText("••••••••••••");
     fireEvent.change(input, { target: { value: "CorrectPassword123" } });
 
-    const submitBtn = screen.getByRole("button", { name: /Unlock Vault/i });
+    const submitBtn = screen.getByRole("button", { name: /Unlock vault/i });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
@@ -41,7 +41,7 @@ describe("LockScreen Component", () => {
     const input = screen.getByPlaceholderText("••••••••••••");
     fireEvent.change(input, { target: { value: "WrongPassword" } });
 
-    const submitBtn = screen.getByRole("button", { name: /Unlock Vault/i });
+    const submitBtn = screen.getByRole("button", { name: /Unlock vault/i });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {

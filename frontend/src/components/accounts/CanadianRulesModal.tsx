@@ -1,5 +1,5 @@
 import React from "react";
-import { ExternalLink, ShieldCheck, Info, X } from "lucide-react";
+import { ExternalLink, X } from "lucide-react";
 import type { AccountType } from "../../types";
 import { getAccountTypeMeta, CANADIAN_ACCOUNT_TYPES } from "../../constants/canadianAccountTypes";
 import { AccountIcon } from "../common/AccountIcon";
@@ -22,62 +22,54 @@ export const CanadianRulesModal: React.FC<CanadianRulesModalProps> = ({
   const meta = getAccountTypeMeta(accountType);
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-      <div className="w-full max-w-xl rounded-2xl bg-surface border border-default shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+      <div className="w-full max-w-xl rounded-xl bg-surface border border-default shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="p-5 border-b border-subtle flex items-start justify-between bg-surface-subtle">
-          <div className="flex items-center gap-3.5">
+        <div className="px-5 py-4 border-b border-subtle flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
             <AccountIcon type={meta.type} size="lg" />
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-base font-bold text-main">{meta.name}</h3>
-                <span className="px-2 py-0.5 rounded-md text-xs font-semibold font-mono bg-accent-subtle text-accent-subtle border border-accent-main/30">
+                <h3 className="text-base font-medium text-main">{meta.name}</h3>
+                <span className="rounded-md px-1.5 py-0.5 text-xs font-mono bg-surface-subtle text-sub">
                   {meta.badge}
                 </span>
               </div>
-              <p className="text-xs text-muted mt-0.5">{meta.description}</p>
+              <p className="text-sm text-sub mt-1">{meta.description}</p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-1.5 text-muted hover:text-main transition-colors rounded-lg"
+            aria-label="Close"
+            className="h-8 w-8 shrink-0 flex items-center justify-center text-muted hover:text-main bg-surface-hover transition-colors rounded-lg cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" strokeWidth={1.5} />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-5 overflow-y-auto space-y-5 text-sm">
+        <div className="p-5 overflow-y-auto space-y-6 text-sm">
           {/* Key CRA & Regulatory Rules */}
           <div>
-            <h4 className="text-xs font-bold text-muted uppercase tracking-wider mb-2.5 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-positive" />
-              Key Canadian Rules & Regulations
-            </h4>
-            <div className="space-y-2">
+            <h4 className="text-sm font-medium text-main mb-3">Key rules</h4>
+            <ul className="space-y-2">
               {meta.keyRules.map((rule, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-start gap-2.5 p-3 rounded-xl bg-surface-subtle border border-subtle text-sub text-xs"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-accent-main mt-1.5 shrink-0" />
+                <li key={idx} className="flex items-start gap-3 text-sm text-sub">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-muted)] mt-2 shrink-0" />
                   <span className="leading-relaxed">{rule}</span>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
 
           {/* Official Government Documentation */}
           {meta.craUrl && (
-            <div className="p-3.5 rounded-xl bg-surface-subtle border border-default flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <Info className="w-4 h-4 text-accent-main shrink-0" />
-                <div>
-                  <div className="font-semibold text-main text-xs">Official Government of Canada Guide</div>
-                  <div className="text-[11px] text-muted">
-                    Review CRA / FCAC statutory guidelines & limits
-                  </div>
+            <div className="p-4 rounded-xl bg-surface-subtle border border-subtle flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-main">Government of Canada guide</div>
+                <div className="text-xs text-muted mt-0.5">
+                  CRA and FCAC guidelines and limits
                 </div>
               </div>
 
@@ -85,28 +77,27 @@ export const CanadianRulesModal: React.FC<CanadianRulesModalProps> = ({
                 href={meta.craUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast font-semibold text-xs shadow-xs transition-colors shrink-0"
+                className="h-9 px-4 inline-flex items-center gap-2 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors shrink-0"
               >
                 <span>Canada.ca</span>
-                <ExternalLink className="w-3.5 h-3.5" />
+                <ExternalLink className="w-4 h-4 text-muted" strokeWidth={1.5} />
               </a>
             </div>
           )}
 
           {/* Quick Account Switcher */}
-          <div className="pt-3.5 border-t border-subtle">
-            <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">
-              Explore Other Canadian Account Types
-            </div>
-            <div className="flex flex-wrap gap-1.5">
+          <div className="pt-4 border-t border-subtle">
+            <div className="text-sm text-sub mb-2">Other account types</div>
+            <div className="flex flex-wrap gap-1">
               {Object.values(CANADIAN_ACCOUNT_TYPES).map((item) => (
                 <button
                   key={item.type}
                   onClick={() => onSelectType ? onSelectType(item.type) : undefined}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  aria-pressed={item.type === meta.type}
+                  className={`h-7 px-2 rounded-md text-xs border transition-colors cursor-pointer ${
                     item.type === meta.type
-                      ? "bg-accent-main text-accent-contrast shadow-xs"
-                      : "bg-surface hover:bg-surface-hover text-sub border border-default"
+                      ? "bg-accent-subtle text-accent-subtle border-accent-main/30 font-medium"
+                      : "border-default text-sub hover:text-main bg-surface-hover"
                   }`}
                 >
                   {item.shortName}
@@ -117,12 +108,12 @@ export const CanadianRulesModal: React.FC<CanadianRulesModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-3.5 border-t border-subtle bg-surface-subtle flex justify-end">
+        <div className="px-5 py-4 border-t border-subtle flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-surface hover:bg-surface-hover border border-default text-sub font-semibold text-xs transition-colors cursor-pointer"
+            className="h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer"
           >
-            Close Guide
+            Close
           </button>
         </div>
       </div>

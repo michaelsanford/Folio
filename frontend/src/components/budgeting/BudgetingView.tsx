@@ -1,10 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
-  PiggyBank,
   ChevronLeft,
   ChevronRight,
-  TrendingDown,
-  TrendingUp,
   Edit2,
   Save,
   X,
@@ -15,13 +12,12 @@ import {
   ExternalLink,
   Trash2,
   ArrowUpDown,
-  FolderPlus,
-  DollarSign,
-  BarChart3,
   RefreshCw,
 } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
+import { Money } from "../common/Money";
 import { useChartTheme } from "../../hooks/useChartTheme";
+import { formatMoney, formatMoneyCompact } from "../../utils/format";
 import { CashFlowForecastView } from "./CashFlowForecastView";
 import type { Budget, BudgetItem, Category, Transaction } from "../../types";
 import { api } from "../../services/api";
@@ -34,6 +30,29 @@ interface BudgetingViewProps {
 type FilterStatus = "ALL" | "OVER" | "WARNING" | "ON_TRACK" | "UNSPENT";
 type SortField = "NAME" | "PLANNED" | "ACTUAL" | "REMAINING" | "PERCENT";
 type SortDirection = "ASC" | "DESC";
+
+const card = "rounded-xl bg-surface border border-subtle";
+const mono = "IBM Plex Mono, ui-monospace, monospace";
+const iconButton =
+  "h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer";
+const primaryButton =
+  "h-9 px-4 inline-flex items-center justify-center gap-2 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] cursor-pointer disabled:opacity-50";
+const secondaryButton =
+  "h-9 px-4 inline-flex items-center justify-center rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer";
+const inputClass =
+  "w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]";
+const segmentTrack = "flex items-center gap-0.5 p-0.5 rounded-lg bg-surface-subtle border border-default";
+const segmentButton = (active: boolean) =>
+  `h-7 px-3 rounded-md text-xs transition-colors cursor-pointer ${
+    active ? "bg-surface text-main" : "text-muted hover:text-main"
+  }`;
+
+/** Reads a CSS custom property so ECharts can use theme tokens it has no slot for. */
+const readCssVar = (name: string, fallback: string): string => {
+  if (typeof window === "undefined") return fallback;
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+};
 
 const PRESET_COLORS = [
   "#10B981", // Emerald
@@ -207,7 +226,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
   // Delete category from budget
   const handleRemoveCategoryFromBudget = async (categoryId: string) => {
-    if (!confirm("Are you sure you want to remove this target from your monthly budget?")) return;
+    if (!confirm("Remove this target from your monthly budget?")) return;
     try {
       if (budget?.id) {
         await api.deleteBudgetItem(budget.id, categoryId);
@@ -325,65 +344,77 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
     return list;
   }, [budget?.items, categories, searchQuery, statusFilter, sortField, sortDirection]);
 
-  // Overall Donut Gauge Chart Options
+  // The chart theme has no warning slot; read the CSS token once the theme attribute has applied.
+  const [warningColor, setWarningColor] = useState(() => readCssVar("--fin-warning", "#e5a83b"));
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setWarningColor(readCssVar("--fin-warning", "#e5a83b")));
+    return () => cancelAnimationFrame(id);
+  }, [chartTheme]);
+
+  const tooltipBase = {
+    backgroundColor: chartTheme.tooltipBg,
+    borderColor: chartTheme.tooltipBorder,
+    borderWidth: 1,
+    padding: [8, 12],
+    extraCssText: "border-radius: 8px; box-shadow: none;",
+    textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: "IBM Plex Sans, sans-serif" },
+  };
+
+  // Overall donut gauge chart options
   const overallGaugeOptions = useMemo(() => {
     const isOver = totalActualExpenses > totalPlannedExpenses && totalPlannedExpenses > 0;
-    const spentColor = isOver ? chartTheme.negativeColor : overallPercentSpent > 80 ? "#f59e0b" : chartTheme.positiveColor;
+    const spentColor = isOver
+      ? chartTheme.negativeColor
+      : overallPercentSpent > 80
+      ? warningColor
+      : chartTheme.positiveColor;
     const remainingVal = Math.max(0, totalPlannedExpenses - totalActualExpenses);
 
     return {
       backgroundColor: "transparent",
       tooltip: {
+        ...tooltipBase,
         trigger: "item",
-        backgroundColor: chartTheme.tooltipBg,
-        borderColor: chartTheme.tooltipBorder,
-        textStyle: { color: chartTheme.tooltipText, fontSize: 12 },
-        formatter: "{b}: <b>${c}</b> ({d}%)",
+        formatter: (p: any) =>
+          `${p.name}<div style="margin-top:4px;font-family:${mono}">${formatMoney(Number(p.value))} · ${p.percent}%</div>`,
       },
       series: [
         {
-          name: "Budget Burn",
+          name: "Budget used",
           type: "pie",
-          radius: ["65%", "85%"],
+          radius: ["68%", "82%"],
           avoidLabelOverlap: false,
           itemStyle: {
-            borderRadius: 4,
+            borderRadius: 2,
             borderColor: chartTheme.tooltipBg,
             borderWidth: 2,
           },
-          label: {
-            show: false,
-          },
-          emphasis: {
-            label: {
-              show: false,
-            },
-          },
+          label: { show: false },
+          emphasis: { label: { show: false } },
           data: [
             {
               value: Number(totalActualExpenses.toFixed(2)),
-              name: "Actual Spent",
+              name: "Spent",
               itemStyle: { color: spentColor },
             },
             {
               value: Number(remainingVal.toFixed(2)),
-              name: "Remaining Cushion",
+              name: "Remaining",
               itemStyle: { color: chartTheme.gridLineColor },
             },
           ],
         },
       ],
     };
-  }, [totalActualExpenses, totalPlannedExpenses, overallPercentSpent, chartTheme]);
+  }, [totalActualExpenses, totalPlannedExpenses, overallPercentSpent, chartTheme, warningColor]);
 
-  // Category Target vs Actual Comparison Bar Chart Options
+  // Category target vs actual comparison bar chart options
   const categoryBarChartOptions = useMemo(() => {
     const rawItems = (budget?.items || [])
       .map((it) => {
         const cat = categories.find((c) => c.id === it.category_id);
         return {
           name: cat?.name || "Other",
-          color: cat?.color || chartTheme.accentColor,
           planned: it.planned_amount,
           actual: it.actual_amount,
           percent: it.planned_amount > 0 ? (it.actual_amount / it.planned_amount) * 100 : 0,
@@ -401,67 +432,64 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
     return {
       backgroundColor: "transparent",
       tooltip: {
+        ...tooltipBase,
         trigger: "axis",
-        axisPointer: { type: "shadow" },
-        backgroundColor: chartTheme.tooltipBg,
-        borderColor: chartTheme.tooltipBorder,
-        textStyle: { color: chartTheme.tooltipText, fontSize: 12 },
+        axisPointer: { type: "shadow", shadowStyle: { color: chartTheme.gridLineColor } },
         formatter: (params: any[]) => {
-          let str = `<b>${params[0].name}</b><br/>`;
+          let str = `<div style="color:${chartTheme.subtleTextColor}">${params[0].name}</div>`;
           params.forEach((p: any) => {
-            str += `${p.marker} ${p.seriesName}: <b>$${Number(p.value).toLocaleString("en-US", {
-              minimumFractionDigits: 2,
-            })}</b><br/>`;
+            str += `<div style="margin-top:4px">${p.marker} ${p.seriesName} <span style="font-family:${mono}">${formatMoney(
+              Number(p.value)
+            )}</span></div>`;
           });
           return str;
         },
       },
       legend: {
-        data: ["Target (Planned)", "Actual Spent"],
-        textStyle: { color: chartTheme.textColor, fontSize: 11 },
+        data: ["Target", "Spent"],
+        textStyle: { color: chartTheme.subtleTextColor, fontSize: 11 },
+        itemWidth: 10,
+        itemHeight: 10,
         top: 0,
-        right: 10,
+        right: 0,
       },
-      grid: {
-        left: "3%",
-        right: "4%",
-        bottom: "3%",
-        top: "30px",
-        containLabel: true,
-      },
+      grid: { left: 8, right: 16, bottom: 8, top: 32, containLabel: true },
       xAxis: {
         type: "value",
         axisLabel: {
           color: chartTheme.subtleTextColor,
-          fontSize: 10,
-          formatter: (v: number) => `$${v}`,
+          fontSize: 11,
+          fontFamily: mono,
+          formatter: (v: number) => formatMoneyCompact(v),
         },
         splitLine: { lineStyle: { color: chartTheme.gridLineColor } },
       },
       yAxis: {
         type: "category",
         data: names,
+        axisTick: { show: false },
         axisLabel: {
           color: chartTheme.textColor,
           fontSize: 11,
           formatter: (value: string) =>
-            value.length > 18 ? `${value.substring(0, 18)}...` : value,
+            value.length > 18 ? `${value.substring(0, 18)}…` : value,
         },
         axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
       },
       series: [
         {
-          name: "Target (Planned)",
+          name: "Target",
           type: "bar",
           data: plannedData,
           itemStyle: {
             color: chartTheme.neutralColor,
-            borderRadius: [0, 4, 4, 0],
+            opacity: 0.35,
+            borderRadius: [0, 2, 2, 0],
           },
-          barMaxWidth: 14,
+          barMaxWidth: 12,
         },
         {
-          name: "Actual Spent",
+          name: "Spent",
           type: "bar",
           data: actualData,
           itemStyle: {
@@ -471,11 +499,11 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
               if (it && it.actual > it.planned && it.planned > 0) {
                 return chartTheme.negativeColor;
               }
-              return it?.color || chartTheme.accentColor;
+              return chartTheme.accentColor;
             },
-            borderRadius: [0, 4, 4, 0],
+            borderRadius: [0, 2, 2, 0],
           },
-          barMaxWidth: 14,
+          barMaxWidth: 12,
         },
       ],
     };
@@ -511,31 +539,84 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
     return { total: list.length, over, warning, onTrack, unspent };
   }, [budget?.items]);
 
+  /** Status chip and meter tones: over → negative, near limit → warning, under → positive. */
+  const statusTone = (isOver: boolean, percentUsed: number) =>
+    isOver ? "negative" : percentUsed >= 80 ? "warning" : "positive";
+  const chipClass = {
+    negative: "bg-negative-subtle text-negative",
+    warning: "bg-warning-subtle text-warning",
+    positive: "bg-positive-subtle text-positive",
+  } as const;
+  const meterClass = {
+    negative: "bg-negative",
+    warning: "bg-warning",
+    positive: "bg-positive",
+  } as const;
+
+  const sortHeader = (
+    field: SortField,
+    label: string,
+    defaultDirection: SortDirection,
+    align: "left" | "right" = "left",
+    extra = ""
+  ) => (
+    <th
+      className={`h-10 px-4 font-normal cursor-pointer hover:text-main ${
+        align === "right" ? "text-right" : ""
+      } ${extra}`}
+      onClick={() => {
+        if (sortField === field) setSortDirection((d) => (d === "ASC" ? "DESC" : "ASC"));
+        else {
+          setSortField(field);
+          setSortDirection(defaultDirection);
+        }
+      }}
+    >
+      <div className={`flex items-center gap-1 ${align === "right" ? "justify-end" : ""}`}>
+        <span>{label}</span>
+        <ArrowUpDown className="w-4 h-4 text-muted" strokeWidth={1.5} />
+      </div>
+    </th>
+  );
+
+  const filterButton = (
+    status: FilterStatus,
+    label: string,
+    count: number,
+    dot?: string
+  ) => (
+    <button
+      onClick={() => setStatusFilter(status)}
+      className={`h-8 px-3 inline-flex items-center gap-2 rounded-lg text-xs transition-colors cursor-pointer ${
+        statusFilter === status
+          ? "bg-surface text-main border border-default"
+          : "text-sub border border-transparent hover:text-main"
+      }`}
+    >
+      {dot && <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />}
+      <span>{label}</span>
+      <span className="font-mono text-muted">{count}</span>
+    </button>
+  );
+
+  const overallTone =
+    overallPercentSpent > 100 ? "negative" : overallPercentSpent > monthElapsedPercent ? "warning" : "positive";
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
-      {/* View Switcher: Monthly Envelopes vs Cash-Flow Forecast */}
-      <div className="flex items-center gap-2">
+      {/* View switcher: monthly envelopes vs cash flow forecast */}
+      <div className={`${segmentTrack} w-fit`}>
         <button
           onClick={() => setBudgetSubTab("ledger")}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-            budgetSubTab === "ledger"
-              ? "bg-accent-main text-accent-contrast shadow-xs"
-              : "bg-surface text-sub border border-default hover:bg-surface-hover"
-          }`}
+          className={segmentButton(budgetSubTab === "ledger")}
         >
-          <PiggyBank className="w-4 h-4" />
-          <span>Monthly Budget Envelopes</span>
+          Monthly envelopes
         </button>
         <button
           onClick={() => setBudgetSubTab("forecast")}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-            budgetSubTab === "forecast"
-              ? "bg-accent-main text-accent-contrast shadow-xs"
-              : "bg-surface text-sub border border-default hover:bg-surface-hover"
-          }`}
+          className={segmentButton(budgetSubTab === "forecast")}
         >
-          <TrendingUp className="w-4 h-4" />
-          <span>Cash Flow Forecast (30/60/90 Days)</span>
+          Cash flow forecast
         </button>
       </div>
 
@@ -543,24 +624,16 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
         <CashFlowForecastView />
       ) : (
         <>
-      {/* Header & Month Navigator */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-surface border border-default shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="p-3 rounded-2xl bg-accent-subtle border border-accent-main/30 text-accent-subtle">
-            <PiggyBank className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-main flex items-center gap-2">
-              Monthly Budget & Expense Envelopes
-            </h1>
-            <p className="text-xs text-muted mt-0.5">
-              Set monthly spending ceilings, visualize burn pace, and track live category actuals.
-            </p>
-          </div>
+      {/* Header and month navigator */}
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-medium text-main">Monthly budget</h1>
+          <p className="text-sm text-sub mt-1">
+            Spending ceilings, burn pace and live category actuals
+          </p>
         </div>
 
-        <div className="flex items-center flex-wrap gap-2.5">
-          {/* Add Category Button */}
+        <div className="flex items-center flex-wrap gap-2">
           <button
             onClick={() => {
               setIsAddModalOpen(true);
@@ -568,119 +641,78 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                 setSelectedExistingCatId(unbudgetedCategories[0].id);
               }
             }}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs transition-all cursor-pointer"
+            className={primaryButton}
           >
-            <Plus className="w-4 h-4" />
-            <span>Add Category</span>
+            <Plus className="w-4 h-4" strokeWidth={1.5} />
+            <span>Add category</span>
           </button>
 
-          {/* Month Switcher */}
-          <div className="flex items-center bg-surface-subtle p-1 rounded-xl border border-default">
-            <button
-              onClick={handlePrevMonth}
-              className="p-1.5 rounded-lg text-muted hover:text-main hover:bg-surface transition-colors cursor-pointer"
-              title="Previous Month"
-            >
-              <ChevronLeft className="w-4 h-4" />
+          {/* Month switcher */}
+          <div className="flex items-center h-9 px-0.5 rounded-lg border border-default bg-surface">
+            <button onClick={handlePrevMonth} className={iconButton} title="Previous month">
+              <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
             </button>
-            <span className="text-xs font-bold font-mono text-main px-3.5 min-w-[130px] text-center">
-              {monthName}
-            </span>
-            <button
-              onClick={handleNextMonth}
-              className="p-1.5 rounded-lg text-muted hover:text-main hover:bg-surface transition-colors cursor-pointer"
-              title="Next Month"
-            >
-              <ChevronRight className="w-4 h-4" />
+            <span className="text-sm text-main px-2 min-w-[132px] text-center">{monthName}</span>
+            <button onClick={handleNextMonth} className={iconButton} title="Next month">
+              <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
             </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Analytics Graphics & Burn Rate Overview */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Burn Rate & Radial Gauge Card */}
-        <div className="lg:col-span-4 p-6 rounded-2xl bg-surface border border-default shadow-xs flex flex-col justify-between">
+      {/* Burn rate overview and category chart */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* Burn rate and radial gauge card */}
+        <div className={`${card} lg:col-span-4 p-6 flex flex-col justify-between`}>
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted">
-                Overall Budget Health
-              </span>
-              <span
-                className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono ${
-                  overallPercentSpent > 100
-                    ? "bg-negative-subtle text-negative border border-rose-500/30"
-                    : overallPercentSpent > monthElapsedPercent
-                    ? "bg-amber-500/15 text-amber-500 border border-amber-500/30"
-                    : "bg-positive-subtle text-positive border border-emerald-500/30"
-                }`}
-              >
+              <h2 className="text-base font-medium text-main">Overall budget health</h2>
+              <span className={`rounded-md px-1.5 py-0.5 text-xs ${chipClass[overallTone]}`}>
                 {overallPercentSpent > 100
-                  ? "Over Budget"
+                  ? "Over budget"
                   : overallPercentSpent > monthElapsedPercent
-                  ? "Over Pace"
-                  : "On Track"}
+                  ? "Over pace"
+                  : "On track"}
               </span>
             </div>
 
-            {/* Gauge and Central Numbers */}
+            {/* Gauge and central figure */}
             <div className="relative h-44 my-2 flex items-center justify-center">
               <LazyChart option={overallGaugeOptions} className="h-full" />
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-2xl font-black font-mono text-main">
+                <span className="text-2xl font-medium font-mono text-main">
                   {overallPercentSpent}%
                 </span>
-                <span className="text-[10px] font-medium text-muted uppercase tracking-wider">
-                  Used
-                </span>
+                <span className="text-xs text-muted">used</span>
               </div>
             </div>
           </div>
 
-          <div className="space-y-2.5 pt-3 border-t border-subtle text-xs">
+          <div className="space-y-2 pt-4 border-t border-subtle text-xs">
             <div className="flex items-center justify-between">
-              <span className="text-muted">Month Timeline:</span>
-              <span className="text-main font-medium">
-                Day {currentDay} of {daysInMonth} ({monthElapsedPercent}%)
+              <span className="text-muted">Month timeline</span>
+              <span className="text-main font-mono">
+                Day {currentDay} of {daysInMonth} · {monthElapsedPercent}%
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-muted">Daily Allowance:</span>
-              <span className="text-positive font-bold font-mono">
-                ${dailySafeSpend.toFixed(2)} / day
+              <span className="text-muted">Daily allowance</span>
+              <span className="text-main">
+                <Money value={dailySafeSpend} /> <span className="text-muted">per day</span>
               </span>
             </div>
           </div>
         </div>
 
-        {/* Category Breakdown Bar Chart */}
-        <div className="lg:col-span-8 p-6 rounded-2xl bg-surface border border-default shadow-xs flex flex-col">
+        {/* Category breakdown bar chart */}
+        <div className={`${card} lg:col-span-8 p-6 flex flex-col`}>
           <div className="flex items-center justify-between pb-2">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-accent-main" />
-              <span className="text-xs font-bold uppercase tracking-wider text-muted">
-                Category Spending vs. Target Comparison
-              </span>
-            </div>
-            <div className="flex items-center gap-1 bg-surface-subtle p-0.5 rounded-lg border border-default text-[11px]">
-              <button
-                onClick={() => setChartMode("top8")}
-                className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                  chartMode === "top8"
-                    ? "bg-accent-main text-accent-contrast font-semibold shadow-xs"
-                    : "text-muted hover:text-main"
-                }`}
-              >
-                Top Spenders
+            <h2 className="text-base font-medium text-main">Spending vs target</h2>
+            <div className={segmentTrack}>
+              <button onClick={() => setChartMode("top8")} className={segmentButton(chartMode === "top8")}>
+                Top spenders
               </button>
-              <button
-                onClick={() => setChartMode("all")}
-                className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                  chartMode === "all"
-                    ? "bg-accent-main text-accent-contrast font-semibold shadow-xs"
-                    : "text-muted hover:text-main"
-                }`}
-              >
+              <button onClick={() => setChartMode("all")} className={segmentButton(chartMode === "all")}>
                 All
               </button>
             </div>
@@ -690,344 +722,206 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             {budget?.items && budget.items.length > 0 ? (
               <LazyChart option={categoryBarChartOptions} className="h-full" />
             ) : (
-              <div className="flex items-center justify-center h-full text-muted text-xs">
-                No budget targets or expenses recorded for this month.
+              <div className="flex items-center justify-center h-full text-muted text-sm">
+                No budget targets or spending this month
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* KPI Stat Cards */}
+      {/* KPI stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-5 rounded-2xl bg-surface border border-default shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted font-semibold uppercase tracking-wider">Total Planned Target</span>
-            <DollarSign className="w-4 h-4 text-accent-main" />
+        <div className={`${card} p-5`}>
+          <div className="text-sm text-sub">Planned</div>
+          <div className="mt-2 text-2xl font-medium leading-none">
+            <Money value={totalPlannedExpenses} className="text-main" />
           </div>
-          <div className="mt-2 text-2xl font-bold text-main font-mono">
-            ${totalPlannedExpenses.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-          <div className="text-[11px] text-muted mt-1">Sum of all category targets</div>
+          <div className="mt-2 text-xs text-muted">Sum of all category targets</div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-surface border border-default shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted font-semibold uppercase tracking-wider">Actual Spent So Far</span>
-            <TrendingDown className="w-4 h-4 text-negative" />
+        <div className={`${card} p-5`}>
+          <div className="text-sm text-sub">Spent so far</div>
+          <div className="mt-2 text-2xl font-medium leading-none">
+            <Money value={totalActualExpenses} className="text-main" />
           </div>
-          <div className="mt-2 text-2xl font-bold text-negative font-mono">
-            ${totalActualExpenses.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-          <div className="text-[11px] text-muted mt-1">
+          <div className="mt-2 text-xs text-muted">
             {totalPlannedExpenses > 0
-              ? `${overallPercentSpent}% of total planned envelope`
+              ? `${overallPercentSpent}% of planned`
               : "No target set"}
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-surface border border-default shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted font-semibold uppercase tracking-wider">Remaining Cushion</span>
-            <TrendingUp
-              className={`w-4 h-4 ${remainingBudget >= 0 ? "text-positive" : "text-negative"}`}
+        <div className={`${card} p-5`}>
+          <div className="text-sm text-sub">Remaining</div>
+          <div className="mt-2 text-2xl font-medium leading-none">
+            <Money
+              value={remainingBudget}
+              className={remainingBudget >= 0 ? "text-main" : "text-negative"}
             />
           </div>
-          <div
-            className={`mt-2 text-2xl font-bold font-mono ${
-              remainingBudget >= 0 ? "text-positive" : "text-negative"
-            }`}
-          >
-            ${remainingBudget.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-          <div className="text-[11px] text-muted mt-1">
-            {remainingBudget >= 0 ? "Within budget parameters" : "Over total planned budget"}
+          <div className="mt-2 text-xs text-muted">
+            {remainingBudget >= 0 ? "Within budget" : "Over the planned total"}
           </div>
         </div>
       </div>
 
-      {/* Main Budget Ledger Section */}
-      <div className="rounded-2xl border border-default bg-surface overflow-hidden shadow-xs">
-        {/* Controls Toolbar: Search, Filters, View Mode Toggle */}
-        <div className="p-4 sm:p-5 border-b border-subtle flex flex-col md:flex-row md:items-center justify-between gap-3 bg-surface-subtle/50">
-          {/* Status Filter Pills */}
-          <div className="flex items-center flex-wrap gap-1.5 text-xs">
-            <button
-              onClick={() => setStatusFilter("ALL")}
-              className={`px-3 py-1.5 rounded-xl font-semibold transition-all cursor-pointer ${
-                statusFilter === "ALL"
-                  ? "bg-accent-main text-accent-contrast shadow-xs"
-                  : "bg-surface text-sub border border-default hover:bg-surface-hover"
-              }`}
-            >
-              All ({statusCounts.total})
-            </button>
-            {statusCounts.over > 0 && (
-              <button
-                onClick={() => setStatusFilter("OVER")}
-                className={`px-3 py-1.5 rounded-xl font-semibold transition-all cursor-pointer ${
-                  statusFilter === "OVER"
-                    ? "bg-negative-subtle text-negative border border-rose-500/40"
-                    : "bg-surface text-negative border border-default hover:bg-surface-hover"
-                }`}
-              >
-                Over ({statusCounts.over})
-              </button>
-            )}
-            {statusCounts.warning > 0 && (
-              <button
-                onClick={() => setStatusFilter("WARNING")}
-                className={`px-3 py-1.5 rounded-xl font-semibold transition-all cursor-pointer ${
-                  statusFilter === "WARNING"
-                    ? "bg-amber-500/20 text-amber-500 border border-amber-500/40"
-                    : "bg-surface text-amber-500 border border-default hover:bg-surface-hover"
-                }`}
-              >
-                Near Limit ({statusCounts.warning})
-              </button>
-            )}
-            <button
-              onClick={() => setStatusFilter("ON_TRACK")}
-              className={`px-3 py-1.5 rounded-xl font-semibold transition-all cursor-pointer ${
-                statusFilter === "ON_TRACK"
-                  ? "bg-positive-subtle text-positive border border-emerald-500/40"
-                  : "bg-surface text-positive border border-default hover:bg-surface-hover"
-              }`}
-            >
-              On Track ({statusCounts.onTrack})
-            </button>
-            <button
-              onClick={() => setStatusFilter("UNSPENT")}
-              className={`px-3 py-1.5 rounded-xl font-semibold transition-all cursor-pointer ${
-                statusFilter === "UNSPENT"
-                  ? "bg-surface-subtle text-main border border-default"
-                  : "bg-surface text-muted border border-default hover:bg-surface-hover"
-              }`}
-            >
-              Unspent ({statusCounts.unspent})
-            </button>
+      {/* Main budget ledger section */}
+      <div className={`${card} overflow-hidden`}>
+        {/* Controls toolbar: filters, search, view mode */}
+        <div className="p-4 border-b border-subtle flex flex-col md:flex-row md:items-center justify-between gap-4">
+          {/* Status filters */}
+          <div className="flex items-center flex-wrap gap-1">
+            {filterButton("ALL", "All", statusCounts.total)}
+            {statusCounts.over > 0 && filterButton("OVER", "Over", statusCounts.over, "bg-negative")}
+            {statusCounts.warning > 0 &&
+              filterButton("WARNING", "Near limit", statusCounts.warning, "bg-warning")}
+            {filterButton("ON_TRACK", "On track", statusCounts.onTrack, "bg-positive")}
+            {filterButton("UNSPENT", "Unspent", statusCounts.unspent, "bg-[var(--text-muted)]")}
           </div>
 
-          {/* Search & Layout Switcher */}
+          {/* Search and layout switcher */}
           <div className="flex items-center gap-2">
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search
+                className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2"
+                strokeWidth={1.5}
+              />
               <input
                 type="text"
-                placeholder="Filter categories..."
+                placeholder="Filter categories"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 pr-3 py-1.5 rounded-xl bg-input border border-default text-main text-xs focus:outline-hidden focus:border-accent-main w-48 sm:w-56"
+                className={`${inputClass} pl-9 pr-8 w-48 sm:w-56`}
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-main"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-main cursor-pointer"
+                  aria-label="Clear search"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-4 h-4" strokeWidth={1.5} />
                 </button>
               )}
             </div>
 
-            {/* Desktop / Mobile View Mode Switcher */}
-            <div className="flex items-center bg-surface-subtle p-0.5 rounded-xl border border-default">
+            <div className={segmentTrack}>
               <button
                 onClick={() => setViewMode("table")}
-                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                  viewMode === "table"
-                    ? "bg-accent-main text-accent-contrast shadow-xs"
-                    : "text-muted hover:text-main"
+                className={`h-7 w-8 flex items-center justify-center rounded-md transition-colors cursor-pointer ${
+                  viewMode === "table" ? "bg-surface text-main" : "text-muted hover:text-main"
                 }`}
-                title="Tabular Ledger (Desktop view)"
+                title="Table"
               >
-                <LayoutList className="w-4 h-4" />
+                <LayoutList className="w-4 h-4" strokeWidth={1.5} />
               </button>
               <button
                 onClick={() => setViewMode("cards")}
-                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                  viewMode === "cards"
-                    ? "bg-accent-main text-accent-contrast shadow-xs"
-                    : "text-muted hover:text-main"
+                className={`h-7 w-8 flex items-center justify-center rounded-md transition-colors cursor-pointer ${
+                  viewMode === "cards" ? "bg-surface text-main" : "text-muted hover:text-main"
                 }`}
-                title="Envelope Cards (Mobile view)"
+                title="Cards"
               >
-                <LayoutGrid className="w-4 h-4" />
+                <LayoutGrid className="w-4 h-4" strokeWidth={1.5} />
               </button>
             </div>
           </div>
         </div>
 
-        {/* Content Area */}
+        {/* Content area */}
         {isLoading ? (
-          <div className="py-20 text-center text-muted">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-main mx-auto mb-3"></div>
-            Loading monthly budget ledger...
+          <div className="py-20 flex items-center justify-center text-sm text-muted">
+            <div className="animate-spin rounded-full h-5 w-5 border-2 border-subtle border-t-[var(--accent-primary)] mr-3"></div>
+            Loading budget…
           </div>
         ) : filteredAndSortedItems.length === 0 ? (
-          <div className="py-16 text-center text-muted px-4">
-            <PiggyBank className="w-12 h-12 text-muted mx-auto mb-3 opacity-40" />
-            <div className="text-sm font-semibold text-main">No matching budget categories</div>
-            <p className="text-xs text-muted mt-1 max-w-sm mx-auto">
-              Add your first budget target or clear active search filters to view your envelopes.
+          <div className="py-16 text-center px-4">
+            <div className="text-sm font-medium text-main">No matching budget categories</div>
+            <p className="text-sm text-sub mt-1 max-w-sm mx-auto">
+              Add a budget target, or clear the search and filters
             </p>
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              Add Category Target
+            <button onClick={() => setIsAddModalOpen(true)} className={`${primaryButton} mt-4`}>
+              <Plus className="w-4 h-4" strokeWidth={1.5} />
+              Add category target
             </button>
           </div>
         ) : viewMode === "table" ? (
-          /* High-Density Tabular Ledger for Desktop */
+          /* Tabular ledger for desktop */
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="w-full text-left text-sm border-collapse">
               <thead>
-                <tr className="border-b border-subtle bg-surface-subtle text-muted uppercase tracking-wider font-semibold">
-                  <th
-                    className="py-3.5 px-4 cursor-pointer hover:text-main"
-                    onClick={() => {
-                      if (sortField === "NAME") setSortDirection((d) => (d === "ASC" ? "DESC" : "ASC"));
-                      else {
-                        setSortField("NAME");
-                        setSortDirection("ASC");
-                      }
-                    }}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Category</span>
-                      <ArrowUpDown className="w-3 h-3 opacity-60" />
-                    </div>
+                <tr className="border-b border-subtle text-xs text-muted">
+                  {sortHeader("NAME", "Category", "ASC")}
+                  <th className="h-10 px-4 font-normal">Status</th>
+                  {sortHeader("PLANNED", "Target", "DESC", "right")}
+                  {sortHeader("ACTUAL", "Spent", "DESC", "right")}
+                  {sortHeader("REMAINING", "Remaining", "ASC", "right")}
+                  {sortHeader("PERCENT", "Used", "DESC", "left", "w-48")}
+                  <th className="h-10 px-4 font-normal">
+                    <span className="sr-only">Actions</span>
                   </th>
-                  <th className="py-3.5 px-3">Status</th>
-                  <th
-                    className="py-3.5 px-4 text-right cursor-pointer hover:text-main"
-                    onClick={() => {
-                      if (sortField === "PLANNED") setSortDirection((d) => (d === "ASC" ? "DESC" : "ASC"));
-                      else {
-                        setSortField("PLANNED");
-                        setSortDirection("DESC");
-                      }
-                    }}
-                  >
-                    <div className="flex items-center justify-end gap-1.5">
-                      <span>Target (Planned)</span>
-                      <ArrowUpDown className="w-3 h-3 opacity-60" />
-                    </div>
-                  </th>
-                  <th
-                    className="py-3.5 px-4 text-right cursor-pointer hover:text-main"
-                    onClick={() => {
-                      if (sortField === "ACTUAL") setSortDirection((d) => (d === "ASC" ? "DESC" : "ASC"));
-                      else {
-                        setSortField("ACTUAL");
-                        setSortDirection("DESC");
-                      }
-                    }}
-                  >
-                    <div className="flex items-center justify-end gap-1.5">
-                      <span>Actual Spent</span>
-                      <ArrowUpDown className="w-3 h-3 opacity-60" />
-                    </div>
-                  </th>
-                  <th
-                    className="py-3.5 px-4 text-right cursor-pointer hover:text-main"
-                    onClick={() => {
-                      if (sortField === "REMAINING") setSortDirection((d) => (d === "ASC" ? "DESC" : "ASC"));
-                      else {
-                        setSortField("REMAINING");
-                        setSortDirection("ASC");
-                      }
-                    }}
-                  >
-                    <div className="flex items-center justify-end gap-1.5">
-                      <span>Remaining</span>
-                      <ArrowUpDown className="w-3 h-3 opacity-60" />
-                    </div>
-                  </th>
-                  <th
-                    className="py-3.5 px-4 w-48 cursor-pointer hover:text-main"
-                    onClick={() => {
-                      if (sortField === "PERCENT") setSortDirection((d) => (d === "ASC" ? "DESC" : "ASC"));
-                      else {
-                        setSortField("PERCENT");
-                        setSortDirection("DESC");
-                      }
-                    }}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Envelope Burn</span>
-                      <ArrowUpDown className="w-3 h-3 opacity-60" />
-                    </div>
-                  </th>
-                  <th className="py-3.5 px-4 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-subtle font-sans">
+              <tbody className="divide-y divide-subtle">
                 {filteredAndSortedItems.map((item) => {
                   const cat = item.category;
                   if (!cat) return null;
                   const isEditing = editingTargetId === item.category_id;
                   const parentCat = categories.find((c) => c.id === cat.parent_id);
+                  const tone = statusTone(item.isOver, item.percentUsed);
 
                   return (
-                    <tr
-                      key={item.category_id}
-                      className="hover:bg-surface-hover transition-colors group"
-                    >
-                      {/* Category Name & Parent Group */}
+                    <tr key={item.category_id} className="bg-surface-hover transition-colors group">
+                      {/* Category name and parent group */}
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-3">
                           <span
-                            className="w-3 h-3 rounded-full shrink-0 shadow-2xs"
+                            className="w-2 h-2 rounded-full shrink-0"
                             style={{ backgroundColor: cat.color || chartTheme.accentColor }}
                           ></span>
                           <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-semibold text-main">{cat.name}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-main">{cat.name}</span>
                               {cat.is_rollover && (
-                                <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded shadow-2xs" title="Envelope rollover enabled">
+                                <span
+                                  className="rounded-md px-1.5 py-0.5 text-[11px] bg-surface-subtle text-sub"
+                                  title="Envelope rollover enabled"
+                                >
                                   Rollover
                                 </span>
                               )}
                             </div>
                             {parentCat && (
-                              <div className="text-[10px] text-muted font-medium">
-                                {parentCat.name}
-                              </div>
+                              <div className="text-xs text-muted">{parentCat.name}</div>
                             )}
                           </div>
                         </div>
                       </td>
 
-                      {/* Status Badge */}
-                      <td className="py-3 px-3">
+                      {/* Status chip */}
+                      <td className="py-3 px-4">
                         <span
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold font-mono inline-flex items-center gap-1 ${
-                            item.isOver
-                              ? "bg-negative-subtle text-negative border border-rose-500/30"
-                              : item.percentUsed >= 80
-                              ? "bg-amber-500/15 text-amber-500 border border-amber-500/30"
-                              : item.actual_amount === 0
+                          className={`rounded-md px-1.5 py-0.5 text-xs whitespace-nowrap ${
+                            !item.isOver && item.percentUsed < 80 && item.actual_amount === 0
                               ? "bg-surface-subtle text-muted"
-                              : "bg-positive-subtle text-positive border border-emerald-500/30"
+                              : chipClass[tone]
                           }`}
                         >
                           {item.isOver
-                            ? "Over Limit"
+                            ? "Over limit"
                             : item.percentUsed >= 80
-                            ? "Near Limit"
+                            ? "Near limit"
                             : item.actual_amount === 0
                             ? "Unspent"
-                            : "On Track"}
+                            : "On track"}
                         </span>
                       </td>
 
-                      {/* Target Planned (Inline Editable) */}
-                      <td className="py-3 px-4 text-right font-mono">
+                      {/* Target (inline editable) */}
+                      <td className="py-3 px-4 text-right">
                         {isEditing ? (
-                          <div className="flex items-center justify-end gap-1.5">
-                            <span className="text-muted">$</span>
+                          <div className="flex items-center justify-end gap-1">
+                            <span className="text-muted font-mono">$</span>
                             <input
                               type="number"
                               step="10"
@@ -1038,21 +932,21 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                                 if (e.key === "Escape") setEditingTargetId(null);
                               }}
                               autoFocus
-                              className="w-20 px-1.5 py-0.5 bg-input border border-accent-main rounded text-main text-xs font-mono text-right"
+                              className="w-24 h-8 px-2 rounded-lg border border-[var(--accent-primary)] bg-input text-sm text-main font-mono text-right focus:outline-none"
                             />
                             <button
                               onClick={() => handleSavePlannedAmount(item.category_id, targetInput)}
-                              className="p-1 rounded bg-accent-main text-accent-contrast cursor-pointer"
-                              title="Save Target"
+                              className="h-8 w-8 flex items-center justify-center rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast transition-colors cursor-pointer"
+                              title="Save target"
                             >
-                              <Save className="w-3 h-3" />
+                              <Save className="w-4 h-4" strokeWidth={1.5} />
                             </button>
                             <button
                               onClick={() => setEditingTargetId(null)}
-                              className="p-1 rounded bg-surface text-muted hover:text-main cursor-pointer"
+                              className={iconButton}
                               title="Cancel"
                             >
-                              <X className="w-3 h-3" />
+                              <X className="w-4 h-4" strokeWidth={1.5} />
                             </button>
                           </div>
                         ) : (
@@ -1062,98 +956,86 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                                 setEditingTargetId(item.category_id);
                                 setTargetInput(item.planned_amount);
                               }}
-                              className="cursor-pointer hover:text-accent-main flex items-center justify-end gap-1.5 group/edit"
+                              className="cursor-pointer flex items-center justify-end gap-1 group/edit"
                               title="Click to edit target"
                             >
-                              <span className="font-semibold text-main">
-                                ${item.planned_amount.toFixed(2)}
-                              </span>
-                              <Edit2 className="w-3 h-3 text-muted opacity-0 group-hover/edit:opacity-100 transition-opacity" />
+                              <Edit2
+                                className="w-4 h-4 text-muted opacity-0 group-hover/edit:opacity-100 transition-opacity"
+                                strokeWidth={1.5}
+                              />
+                              <Money value={item.planned_amount} className="text-main" />
                             </div>
                             {item.rollover_amount !== undefined && item.rollover_amount !== 0 && (
-                              <div className="text-[10px] font-sans flex items-center justify-end gap-1 mt-0.5">
-                                <span className={item.rollover_amount > 0 ? "text-positive font-semibold font-mono" : "text-negative font-semibold font-mono"}>
-                                  {item.rollover_amount > 0 ? "+" : ""}${item.rollover_amount.toFixed(2)} roll
-                                </span>
+                              <div className="text-[11px] text-muted mt-0.5">
+                                <Money
+                                  value={item.rollover_amount}
+                                  signed
+                                  className={item.rollover_amount > 0 ? "text-positive" : "text-negative"}
+                                />{" "}
+                                rollover
                               </div>
                             )}
                             {item.available_amount !== undefined && item.available_amount !== item.planned_amount && (
-                              <div className="text-[10px] text-muted font-sans font-mono mt-0.5">
-                                Avail: ${item.available_amount.toFixed(2)}
+                              <div className="text-[11px] text-muted mt-0.5">
+                                Available <Money value={item.available_amount} />
                               </div>
                             )}
                           </>
                         )}
                       </td>
 
-                      {/* Actual Spent */}
-                      <td className="py-3 px-4 text-right font-mono">
-                        <span className="font-semibold text-main">
-                          ${item.actual_amount.toFixed(2)}
-                        </span>
-                        <div className="text-[10px] text-muted font-sans">
-                          {item.percentUsed}%
-                        </div>
+                      {/* Spent */}
+                      <td className="py-3 px-4 text-right">
+                        <Money value={item.actual_amount} className="text-main" />
+                        <div className="text-[11px] text-muted font-mono">{item.percentUsed}%</div>
                       </td>
 
                       {/* Remaining */}
-                      <td className="py-3 px-4 text-right font-mono">
-                        <span
-                          className={`font-semibold ${
-                            item.remaining_amount >= 0 ? "text-positive" : "text-negative"
-                          }`}
-                        >
-                          {item.remaining_amount >= 0
-                            ? `$${item.remaining_amount.toFixed(2)}`
-                            : `-$${Math.abs(item.remaining_amount).toFixed(2)}`}
-                        </span>
+                      <td className="py-3 px-4 text-right">
+                        <Money
+                          value={item.remaining_amount}
+                          className={item.remaining_amount >= 0 ? "text-main" : "text-negative"}
+                        />
                       </td>
 
-                      {/* Progress Bar Meter */}
+                      {/* Progress meter */}
                       <td className="py-3 px-4">
-                        <div className="space-y-1">
-                          <div className="w-full h-2 rounded-full bg-surface-subtle overflow-hidden border border-default">
-                            <div
-                              className={`h-full rounded-full transition-all duration-300 ${
-                                item.isOver
-                                  ? "bg-rose-500"
-                                  : item.percentUsed >= 80
-                                  ? "bg-amber-400"
-                                  : "bg-emerald-500"
-                              }`}
-                              style={{ width: `${Math.min(100, item.percentUsed)}%` }}
-                            ></div>
-                          </div>
+                        <div className="w-full h-1.5 rounded-full bg-surface-subtle overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-[width] duration-300 ${meterClass[tone]}`}
+                            style={{ width: `${Math.min(100, item.percentUsed)}%` }}
+                          ></div>
                         </div>
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                      <td className="py-3 px-4">
+                        <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => handleToggleCategoryRollover(cat)}
-                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                            aria-pressed={cat.is_rollover}
+                            className={
                               cat.is_rollover
-                                ? "text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20"
-                                : "text-muted hover:text-main hover:bg-surface"
-                            }`}
-                            title={cat.is_rollover ? "Rollover enabled (click to disable)" : "Rollover disabled (click to enable)"}
+                                ? "h-8 w-8 flex items-center justify-center rounded-lg bg-accent-subtle text-accent-subtle transition-colors cursor-pointer"
+                                : iconButton
+                            }
+                            title={cat.is_rollover ? "Rollover on (click to turn off)" : "Rollover off (click to turn on)"}
                           >
-                            <RefreshCw className="w-3.5 h-3.5" />
+                            <RefreshCw className="w-4 h-4" strokeWidth={1.5} />
                           </button>
                           <button
                             onClick={() => handleOpenDrilldown(cat)}
-                            className="p-1.5 rounded-lg text-muted hover:text-accent-main hover:bg-surface transition-colors cursor-pointer"
+                            className={iconButton}
                             title="View category transactions"
                           >
-                            <ExternalLink className="w-3.5 h-3.5" />
+                            <ExternalLink className="w-4 h-4" strokeWidth={1.5} />
                           </button>
                           <button
                             onClick={() => handleRemoveCategoryFromBudget(item.category_id)}
-                            className="p-1.5 rounded-lg text-muted hover:text-negative hover:bg-negative-subtle transition-colors cursor-pointer"
+                            className={`${iconButton} hover:text-negative`}
                             title="Remove category target from budget"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                           </button>
                         </div>
                       </td>
@@ -1164,36 +1046,31 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             </table>
           </div>
         ) : (
-          /* Touch-Friendly Card / Envelope View for Mobile & Tablet */
+          /* Card / envelope view for mobile and tablet */
           <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredAndSortedItems.map((item) => {
               const cat = item.category;
               if (!cat) return null;
               const isEditing = editingTargetId === item.category_id;
+              const tone = statusTone(item.isOver, item.percentUsed);
 
               return (
                 <div
                   key={item.category_id}
-                  className="p-4 rounded-2xl bg-surface-subtle border border-subtle space-y-3 shadow-xs flex flex-col justify-between"
+                  className="p-4 rounded-xl border border-subtle space-y-3 flex flex-col justify-between"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex items-start gap-2">
                       <span
-                        className="w-3.5 h-3.5 rounded-full shrink-0"
+                        className="w-2 h-2 rounded-full shrink-0 mt-1.5"
                         style={{ backgroundColor: cat.color || chartTheme.accentColor }}
                       ></span>
                       <div>
-                        <div className="text-sm font-semibold text-main">{cat.name}</div>
+                        <div className="text-sm font-medium text-main">{cat.name}</div>
                         <span
-                          className={`mt-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold font-mono inline-block ${
-                            item.isOver
-                              ? "bg-negative-subtle text-negative border border-rose-500/30"
-                              : item.percentUsed >= 80
-                              ? "bg-amber-500/20 text-amber-500 border border-amber-500/30"
-                              : "bg-positive-subtle text-positive border border-emerald-500/30"
-                          }`}
+                          className={`mt-1 inline-block rounded-md px-1.5 py-0.5 text-xs ${chipClass[tone]}`}
                         >
-                          {item.isOver ? "Over Budget" : `${item.percentUsed}% Spent`}
+                          {item.isOver ? "Over budget" : `${item.percentUsed}% spent`}
                         </span>
                       </div>
                     </div>
@@ -1201,47 +1078,46 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleOpenDrilldown(cat)}
-                        className="p-1 text-muted hover:text-accent-main cursor-pointer"
+                        className={iconButton}
                         title="View transactions"
                       >
-                        <ExternalLink className="w-3.5 h-3.5" />
+                        <ExternalLink className="w-4 h-4" strokeWidth={1.5} />
                       </button>
                       <button
                         onClick={() => handleRemoveCategoryFromBudget(item.category_id)}
-                        className="p-1 text-muted hover:text-negative cursor-pointer"
+                        className={`${iconButton} hover:text-negative`}
                         title="Remove category"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                       </button>
                     </div>
                   </div>
 
-                  {/* Numbers */}
-                  <div className="space-y-1.5 text-xs font-mono">
-                    <div className="flex items-center justify-between text-muted">
-                      <span>Spent:</span>
-                      <span className="font-bold text-main">
-                        ${item.actual_amount.toFixed(2)}
-                      </span>
+                  {/* Figures */}
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted">Spent</span>
+                      <Money value={item.actual_amount} className="text-main" />
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <span className="text-muted">Target:</span>
+                      <span className="text-muted">Target</span>
                       {isEditing ? (
                         <div className="flex items-center gap-1">
-                          <span>$</span>
+                          <span className="text-muted font-mono">$</span>
                           <input
                             type="number"
                             step="10"
                             value={targetInput}
                             onChange={(e) => setTargetInput(parseFloat(e.target.value) || 0)}
-                            className="w-16 px-1 py-0.5 bg-input border border-accent-main rounded text-main text-xs font-mono text-right"
+                            className="w-20 h-7 px-2 rounded-lg border border-[var(--accent-primary)] bg-input text-xs text-main font-mono text-right focus:outline-none"
                           />
                           <button
                             onClick={() => handleSavePlannedAmount(item.category_id, targetInput)}
-                            className="p-1 rounded bg-accent-main text-accent-contrast cursor-pointer"
+                            className="h-7 w-7 flex items-center justify-center rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast transition-colors cursor-pointer"
+                            title="Save target"
                           >
-                            <Save className="w-3 h-3" />
+                            <Save className="w-4 h-4" strokeWidth={1.5} />
                           </button>
                         </div>
                       ) : (
@@ -1250,54 +1126,43 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                             setEditingTargetId(item.category_id);
                             setTargetInput(item.planned_amount);
                           }}
-                          className="font-bold text-main hover:text-accent-main flex items-center gap-1 cursor-pointer"
+                          className="text-main hover:text-accent-subtle flex items-center gap-1 cursor-pointer transition-colors"
                         >
-                          <span>${item.planned_amount.toFixed(2)}</span>
-                          <Edit2 className="w-3 h-3 text-muted" />
+                          <Money value={item.planned_amount} />
+                          <Edit2 className="w-4 h-4 text-muted" strokeWidth={1.5} />
                         </button>
                       )}
                     </div>
 
                     {item.rollover_amount !== undefined && item.rollover_amount !== 0 && (
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-muted">Rollover Balance:</span>
-                        <span className={item.rollover_amount > 0 ? "text-positive font-bold font-mono" : "text-negative font-bold font-mono"}>
-                          {item.rollover_amount > 0 ? "+" : ""}${item.rollover_amount.toFixed(2)}
-                        </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted">Rollover balance</span>
+                        <Money
+                          value={item.rollover_amount}
+                          signed
+                          className={item.rollover_amount > 0 ? "text-positive" : "text-negative"}
+                        />
                       </div>
                     )}
                     {item.available_amount !== undefined && item.available_amount !== item.planned_amount && (
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-muted">Available Envelope:</span>
-                        <span className="font-bold font-mono text-main">
-                          ${item.available_amount.toFixed(2)}
-                        </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted">Available</span>
+                        <Money value={item.available_amount} className="text-main" />
                       </div>
                     )}
-                    <div className="flex items-center justify-between pt-1 border-t border-subtle">
-                      <span className="text-muted">Remaining:</span>
-                      <span
-                        className={`font-bold ${
-                          item.remaining_amount >= 0 ? "text-positive" : "text-negative"
-                        }`}
-                      >
-                        {item.remaining_amount >= 0
-                          ? `$${item.remaining_amount.toFixed(2)}`
-                          : `-$${Math.abs(item.remaining_amount).toFixed(2)}`}
-                      </span>
+                    <div className="flex items-center justify-between pt-2 border-t border-subtle">
+                      <span className="text-muted">Remaining</span>
+                      <Money
+                        value={item.remaining_amount}
+                        className={item.remaining_amount >= 0 ? "text-main" : "text-negative"}
+                      />
                     </div>
                   </div>
 
-                  {/* Progress bar */}
-                  <div className="w-full h-2 rounded-full bg-surface overflow-hidden border border-default">
+                  {/* Progress meter */}
+                  <div className="w-full h-1.5 rounded-full bg-surface-subtle overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all duration-300 ${
-                        item.isOver
-                          ? "bg-rose-500"
-                          : item.percentUsed >= 80
-                          ? "bg-amber-400"
-                          : "bg-emerald-500"
-                      }`}
+                      className={`h-full rounded-full transition-[width] duration-300 ${meterClass[tone]}`}
                       style={{ width: `${Math.min(100, item.percentUsed)}%` }}
                     ></div>
                   </div>
@@ -1308,7 +1173,6 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
         )}
       </div>
 
-
         </>
       )}
 
@@ -1316,73 +1180,62 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       {/* ADD / CREATE CATEGORY MODAL                                   */}
       {/* ------------------------------------------------------------- */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-surface border border-default rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95">
-            {/* Modal Header */}
-            <div className="p-5 border-b border-subtle bg-surface-subtle flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-accent-subtle text-accent-subtle">
-                  <FolderPlus className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-main">Add Category to Budget</h3>
-                  <p className="text-xs text-muted">
-                    Configure a monthly spending envelope for {monthName}
-                  </p>
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+          <div className="bg-surface border border-default rounded-xl w-full max-w-lg shadow-xl overflow-hidden animate-in zoom-in-95">
+            {/* Modal header */}
+            <div className="p-5 border-b border-subtle flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-medium text-main">Add category to budget</h3>
+                <p className="text-sm text-sub mt-1">
+                  Set a monthly spending envelope for {monthName}
+                </p>
               </div>
               <button
                 onClick={() => setIsAddModalOpen(false)}
-                className="p-1.5 rounded-lg text-muted hover:text-main"
+                className={iconButton}
+                aria-label="Close"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4" strokeWidth={1.5} />
               </button>
             </div>
 
-            {/* Tab Switcher */}
-            <div className="flex border-b border-subtle bg-surface-subtle/50 p-1.5 gap-2 text-xs">
-              <button
-                onClick={() => setAddModalTab("existing")}
-                className={`flex-1 py-2 rounded-xl font-semibold transition-all cursor-pointer ${
-                  addModalTab === "existing"
-                    ? "bg-accent-main text-accent-contrast shadow-xs"
-                    : "text-muted hover:text-main"
-                }`}
-              >
-                Existing Category ({unbudgetedCategories.length})
-              </button>
-              <button
-                onClick={() => setAddModalTab("new")}
-                className={`flex-1 py-2 rounded-xl font-semibold transition-all cursor-pointer ${
-                  addModalTab === "new"
-                    ? "bg-accent-main text-accent-contrast shadow-xs"
-                    : "text-muted hover:text-main"
-                }`}
-              >
-                + Create New Category
-              </button>
+            {/* Tab switcher */}
+            <div className="px-5 pt-4">
+              <div className={segmentTrack}>
+                <button
+                  onClick={() => setAddModalTab("existing")}
+                  className={`flex-1 ${segmentButton(addModalTab === "existing")}`}
+                >
+                  Existing category{" "}
+                  <span className="font-mono text-muted">{unbudgetedCategories.length}</span>
+                </button>
+                <button
+                  onClick={() => setAddModalTab("new")}
+                  className={`flex-1 ${segmentButton(addModalTab === "new")}`}
+                >
+                  New category
+                </button>
+              </div>
             </div>
 
-            {/* Modal Body */}
-            <div className="p-6 space-y-4">
+            {/* Modal body */}
+            <div className="p-5 space-y-4">
               {addModalTab === "existing" ? (
-                /* Tab 1: Pick Existing Category */
+                /* Tab 1: pick an existing category */
                 <div className="space-y-4">
                   {unbudgetedCategories.length === 0 ? (
-                    <div className="text-center py-6 text-muted text-xs">
-                      All existing expense categories are already in your budget. Switch to "Create
-                      New Category" to add a new one.
+                    <div className="text-center py-6 text-muted text-sm">
+                      All expense categories are already in your budget. Switch to “New category” to
+                      add one.
                     </div>
                   ) : (
                     <>
                       <div>
-                        <label className="block text-xs font-semibold text-muted mb-1.5">
-                          Select Category
-                        </label>
+                        <label className="block text-xs text-sub mb-2">Category</label>
                         <select
                           value={selectedExistingCatId}
                           onChange={(e) => setSelectedExistingCatId(e.target.value)}
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-default text-main text-xs focus:outline-hidden focus:border-accent-main"
+                          className={inputClass}
                         >
                           {unbudgetedCategories.map((c) => (
                             <option key={c.id} value={c.id}>
@@ -1393,11 +1246,9 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-muted mb-1.5">
-                          Monthly Planned Target ($)
-                        </label>
+                        <label className="block text-xs text-sub mb-2">Monthly target</label>
                         <div className="relative">
-                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted text-xs">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm font-mono">
                             $
                           </span>
                           <input
@@ -1406,7 +1257,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                             step="10"
                             value={existingCatTarget}
                             onChange={(e) => setExistingCatTarget(parseFloat(e.target.value) || 0)}
-                            className="w-full pl-8 pr-3.5 py-2.5 rounded-xl bg-input border border-default text-main text-xs font-mono focus:outline-hidden focus:border-accent-main"
+                            className={`${inputClass} pl-7 font-mono`}
                           />
                         </div>
                       </div>
@@ -1414,31 +1265,27 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   )}
                 </div>
               ) : (
-                /* Tab 2: Create Brand New Category */
+                /* Tab 2: create a new category */
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold text-muted mb-1.5">
-                      Category Name
-                    </label>
+                    <label className="block text-xs text-sub mb-2">Category name</label>
                     <input
                       type="text"
-                      placeholder="e.g. Pet Care, Gym & Fitness, House Cleaning"
+                      placeholder="Pet care"
                       value={newCatName}
                       onChange={(e) => setNewCatName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-default text-main text-xs focus:outline-hidden focus:border-accent-main"
+                      className={inputClass}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-muted mb-1.5">
-                      Parent Group (Optional)
-                    </label>
+                    <label className="block text-xs text-sub mb-2">Parent group (optional)</label>
                     <select
                       value={newCatParentId}
                       onChange={(e) => setNewCatParentId(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-default text-main text-xs focus:outline-hidden focus:border-accent-main"
+                      className={inputClass}
                     >
-                      <option value="">-- No Parent (Top-Level Category) --</option>
+                      <option value="">None (top-level category)</option>
                       {parentCategories.map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
@@ -1448,19 +1295,19 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-muted mb-1.5">
-                      Category Color
-                    </label>
+                    <label className="block text-xs text-sub mb-2">Category color</label>
                     <div className="flex items-center flex-wrap gap-2">
                       {PRESET_COLORS.map((color) => (
                         <button
                           key={color}
                           type="button"
                           onClick={() => setNewCatColor(color)}
-                          className={`w-6 h-6 rounded-full transition-transform cursor-pointer ${
+                          aria-label={`Color ${color}`}
+                          aria-pressed={newCatColor === color}
+                          className={`w-6 h-6 rounded-full transition-opacity cursor-pointer ${
                             newCatColor === color
-                              ? "scale-125 ring-2 ring-accent-main ring-offset-2 ring-offset-surface"
-                              : "hover:scale-110 opacity-80"
+                              ? "ring-2 ring-accent-main ring-offset-2 ring-offset-surface"
+                              : "opacity-70 hover:opacity-100"
                           }`}
                           style={{ backgroundColor: color }}
                         />
@@ -1468,7 +1315,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-2.5 p-3 rounded-xl bg-surface-subtle border border-default">
+                  <div className="flex items-start gap-3 p-4 rounded-lg bg-surface-subtle">
                     <input
                       type="checkbox"
                       id="newCatIsRollover"
@@ -1476,20 +1323,18 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       onChange={(e) => setNewCatIsRollover(e.target.checked)}
                       className="mt-0.5 rounded-md border-default text-accent-main focus:ring-accent-main cursor-pointer"
                     />
-                    <label htmlFor="newCatIsRollover" className="text-xs cursor-pointer">
-                      <span className="font-semibold text-main block">Enable Rollover Envelope</span>
-                      <span className="text-muted block text-[11px] mt-0.5">
-                        Surplus budget rolls over to increase next month's envelope; overspending reduces next month's available funds.
+                    <label htmlFor="newCatIsRollover" className="text-sm cursor-pointer">
+                      <span className="text-main block">Roll over unspent budget</span>
+                      <span className="text-muted block text-xs mt-1">
+                        Surplus adds to next month's envelope; overspending reduces it
                       </span>
                     </label>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-muted mb-1.5">
-                      Monthly Planned Target ($)
-                    </label>
+                    <label className="block text-xs text-sub mb-2">Monthly target</label>
                     <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted text-xs">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm font-mono">
                         $
                       </span>
                       <input
@@ -1498,7 +1343,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                         step="10"
                         value={newCatTarget}
                         onChange={(e) => setNewCatTarget(parseFloat(e.target.value) || 0)}
-                        className="w-full pl-8 pr-3.5 py-2.5 rounded-xl bg-input border border-default text-main text-xs font-mono focus:outline-hidden focus:border-accent-main"
+                        className={`${inputClass} pl-7 font-mono`}
                       />
                     </div>
                   </div>
@@ -1506,12 +1351,9 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
               )}
             </div>
 
-            {/* Modal Footer */}
-            <div className="p-5 border-t border-subtle bg-surface-subtle flex items-center justify-end gap-2.5">
-              <button
-                onClick={() => setIsAddModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-default text-sub text-xs font-semibold hover:bg-surface-hover"
-              >
+            {/* Modal footer */}
+            <div className="p-5 border-t border-subtle flex items-center justify-end gap-2">
+              <button onClick={() => setIsAddModalOpen(false)} className={secondaryButton}>
                 Cancel
               </button>
               <button
@@ -1525,13 +1367,13 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   (addModalTab === "existing" && !selectedExistingCatId) ||
                   (addModalTab === "new" && !newCatName.trim())
                 }
-                className="px-5 py-2 rounded-xl bg-accent-main hover:bg-accent-main disabled:opacity-50 text-accent-contrast text-xs font-semibold shadow-xs flex items-center gap-2 cursor-pointer"
+                className={primaryButton}
               >
                 {isSubmittingCat && (
-                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
                 )}
                 <span>
-                  {addModalTab === "existing" ? "Add to Budget" : "Create & Add to Budget"}
+                  {addModalTab === "existing" ? "Add to budget" : "Create and add to budget"}
                 </span>
               </button>
             </div>
@@ -1543,76 +1385,70 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       {/* TRANSACTION DRILLDOWN MODAL                                   */}
       {/* ------------------------------------------------------------- */}
       {drilldownCategory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-surface border border-default rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+          <div className="bg-surface border border-default rounded-xl w-full max-w-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95">
             {/* Header */}
-            <div className="p-5 border-b border-subtle bg-surface-subtle flex items-center justify-between">
-              <div className="flex items-center gap-3">
+            <div className="p-5 border-b border-subtle flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
                 <span
-                  className="w-4 h-4 rounded-full"
+                  className="w-2 h-2 rounded-full mt-2 shrink-0"
                   style={{ backgroundColor: drilldownCategory.color || chartTheme.accentColor }}
                 ></span>
                 <div>
-                  <h3 className="text-base font-bold text-main">
-                    {drilldownCategory.name} Transactions
+                  <h3 className="text-base font-medium text-main">
+                    {drilldownCategory.name} transactions
                   </h3>
-                  <p className="text-xs text-muted">
-                    Actual charges in {monthName}
-                  </p>
+                  <p className="text-sm text-sub mt-1">Charges in {monthName}</p>
                 </div>
               </div>
               <button
                 onClick={() => setDrilldownCategory(null)}
-                className="p-1.5 rounded-lg text-muted hover:text-main"
+                className={iconButton}
+                aria-label="Close"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4" strokeWidth={1.5} />
               </button>
             </div>
 
-            {/* Transaction List */}
-            <div className="p-5 flex-1 overflow-y-auto space-y-2">
+            {/* Transaction list */}
+            <div className="p-5 flex-1 overflow-y-auto">
               {isLoadingTransactions ? (
-                <div className="py-12 text-center text-muted text-xs">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent-main mx-auto mb-2"></div>
-                  Fetching matching transactions...
+                <div className="py-12 flex items-center justify-center text-muted text-sm">
+                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-subtle border-t-[var(--accent-primary)] mr-3"></div>
+                  Loading transactions…
                 </div>
               ) : drilldownTransactions.length === 0 ? (
-                <div className="py-12 text-center text-muted text-xs">
-                  No transactions recorded for {drilldownCategory.name} in {monthName}.
+                <div className="py-12 text-center text-muted text-sm">
+                  No {drilldownCategory.name} transactions in {monthName}
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <div className="text-xs text-muted font-semibold mb-2">
-                    {drilldownTransactions.length} transaction(s) recorded:
+                <div>
+                  <div className="text-xs text-muted mb-2">
+                    <span className="font-mono">{drilldownTransactions.length}</span>{" "}
+                    {drilldownTransactions.length === 1 ? "transaction" : "transactions"}
                   </div>
-                  {drilldownTransactions.map((t) => (
-                    <div
-                      key={t.id}
-                      className="p-3 rounded-xl bg-surface-subtle border border-subtle flex items-center justify-between text-xs"
-                    >
-                      <div>
-                        <div className="font-semibold text-main">
-                          {t.normalized_payee || t.raw_payee}
+                  <ul className="divide-y divide-subtle">
+                    {drilldownTransactions.map((t) => (
+                      <li key={t.id} className="h-14 flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="text-sm text-main truncate">
+                            {t.normalized_payee || t.raw_payee}
+                          </div>
+                          <div className="text-xs text-muted font-mono truncate">
+                            {t.transaction_date} · {t.raw_payee}
+                          </div>
                         </div>
-                        <div className="text-[10px] text-muted mt-0.5 font-mono">
-                          {t.transaction_date} • {t.raw_payee}
-                        </div>
-                      </div>
-                      <div className="font-bold font-mono text-main text-sm">
-                        ${Math.abs(t.amount).toFixed(2)}
-                      </div>
-                    </div>
-                  ))}
+                        <Money value={Math.abs(t.amount)} className="text-sm text-main shrink-0" />
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
             </div>
 
             {/* Footer */}
-            <div className="p-4 border-t border-subtle bg-surface-subtle flex justify-end">
-              <button
-                onClick={() => setDrilldownCategory(null)}
-                className="px-4 py-2 rounded-xl border border-default text-sub text-xs font-semibold hover:bg-surface-hover cursor-pointer"
-              >
+            <div className="p-4 border-t border-subtle flex justify-end">
+              <button onClick={() => setDrilldownCategory(null)} className={secondaryButton}>
                 Close
               </button>
             </div>

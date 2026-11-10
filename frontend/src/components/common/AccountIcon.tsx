@@ -35,14 +35,14 @@ export const AccountIcon: React.FC<AccountIconProps> = ({
   const IconComponent = ICON_MAP[effectiveIconId] || Wallet;
 
   const sizeClasses = {
-    xs: { icon: "w-3 h-3", container: "p-1 rounded-md", badge: "w-2 h-2 p-0.5" },
-    sm: { icon: "w-3.5 h-3.5", container: "p-1.5 rounded-lg", badge: "w-2.5 h-2.5 p-0.5" },
-    md: { icon: "w-4 h-4", container: "p-2 rounded-xl", badge: "w-3 h-3 p-0.5" },
-    lg: { icon: "w-5 h-5", container: "p-2.5 rounded-xl", badge: "w-3.5 h-3.5 p-0.5" },
-    xl: { icon: "w-6 h-6", container: "p-3 rounded-2xl", badge: "w-4 h-4 p-1" },
+    xs: { icon: "w-3 h-3", container: "w-5 h-5 rounded-md", badge: "w-2 h-2 p-0.5" },
+    sm: { icon: "w-3.5 h-3.5", container: "w-6 h-6 rounded-md", badge: "w-2.5 h-2.5 p-0.5" },
+    md: { icon: "w-4 h-4", container: "w-8 h-8 rounded-lg", badge: "w-3 h-3 p-0.5" },
+    lg: { icon: "w-5 h-5", container: "w-10 h-10 rounded-lg", badge: "w-3.5 h-3.5 p-0.5" },
+    xl: { icon: "w-6 h-6", container: "w-12 h-12 rounded-xl", badge: "w-4 h-4 p-1" },
   }[size];
 
-  const defaultTitle = editable || onClick ? "Click to customize icon & color" : undefined;
+  const defaultTitle = editable || onClick ? "Customize icon and colour" : undefined;
 
   if (!showBackground) {
     return (
@@ -54,7 +54,7 @@ export const AccountIcon: React.FC<AccountIconProps> = ({
         className={`relative inline-flex items-center justify-center ${onClick || editable ? "cursor-pointer hover:opacity-80 transition-opacity" : ""} ${className}`}
       >
         <IconComponent
-          className={sizeClasses.icon}
+          className={`${sizeClasses.icon} stroke-[1.5]`}
           style={{ color: effectiveColorHex }}
         />
       </button>
@@ -63,11 +63,11 @@ export const AccountIcon: React.FC<AccountIconProps> = ({
 
   const containerContent = (
     <div
-      className={`relative inline-flex items-center justify-center shrink-0 border transition-all ${
+      className={`relative inline-flex items-center justify-center shrink-0 border transition-colors ${
         sizeClasses.container
       } ${swatch.twBg} ${swatch.twBorder} ${
         onClick || editable
-          ? "cursor-pointer group-hover:scale-105 group-hover:ring-2 group-hover:ring-accent-main/40"
+          ? "cursor-pointer group-hover:ring-2 group-hover:ring-accent-main/40"
           : ""
       }`}
       style={{
@@ -76,15 +76,15 @@ export const AccountIcon: React.FC<AccountIconProps> = ({
       }}
     >
       <IconComponent
-        className={sizeClasses.icon}
+        className={`${sizeClasses.icon} stroke-[1.5]`}
         style={{ color: effectiveColorHex }}
       />
       {editable && (
         <div
-          className="absolute -bottom-1 -right-1 rounded-full bg-surface border border-default text-accent-main p-0.5 shadow-xs transition-colors group-hover:bg-accent-main group-hover:text-accent-contrast"
-          title="Customize glyph & color"
+          className="absolute -bottom-1 -right-1 rounded-full bg-surface border border-default text-muted p-0.5 transition-colors group-hover:bg-accent-main group-hover:text-accent-contrast"
+          title="Customize icon and colour"
         >
-          <Palette className="w-2.5 h-2.5" />
+          <Palette className="w-2.5 h-2.5" strokeWidth={1.5} />
         </div>
       )}
     </div>
@@ -96,7 +96,7 @@ export const AccountIcon: React.FC<AccountIconProps> = ({
         type="button"
         onClick={onClick}
         title={title || defaultTitle}
-        className={`group relative inline-flex shrink-0 transition-transform ${className}`}
+        className={`group relative inline-flex shrink-0 cursor-pointer ${className}`}
       >
         {containerContent}
       </button>

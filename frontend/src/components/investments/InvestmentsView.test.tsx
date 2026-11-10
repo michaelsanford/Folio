@@ -79,9 +79,9 @@ describe("InvestmentsView Automated Quotes and BoC FX", () => {
     renderWithTheme(<InvestmentsView accounts={[mockAccount]} onDataModified={vi.fn()} />);
 
     // Check Canadian market coverage strip
-    expect(screen.getByText(/Market Coverage:/i)).toBeDefined();
+    expect(screen.getByText(/Market coverage:/i)).toBeDefined();
     expect(screen.getByText(/\.TO/i)).toBeDefined();
-    expect(screen.getByText(/Bank of Canada Valet FX Daily/i)).toBeDefined();
+    expect(screen.getByText(/Bank of Canada Valet FX daily/i)).toBeDefined();
 
     // Verify BoC FX rate badge loads
     await waitFor(() => {
@@ -90,7 +90,7 @@ describe("InvestmentsView Automated Quotes and BoC FX", () => {
     });
   });
 
-  it("renders Update Quotes (TSX / BoC) button and triggers automated quotes on click", async () => {
+  it("renders Update quotes (TSX / BoC) button and triggers automated quotes on click", async () => {
     const onDataModified = vi.fn();
     vi.spyOn(api, "fetchAutomatedQuotes").mockResolvedValueOnce({
       quotes_fetched: 2,
@@ -108,7 +108,7 @@ describe("InvestmentsView Automated Quotes and BoC FX", () => {
     renderWithTheme(<InvestmentsView accounts={[mockAccount]} onDataModified={onDataModified} />);
 
     const updateQuotesBtn = screen.getByRole("button", {
-      name: /Update Quotes \(TSX \/ BoC\)/i,
+      name: /Update quotes \(TSX \/ BoC\)/i,
     });
     expect(updateQuotesBtn).toBeDefined();
 
@@ -131,7 +131,7 @@ describe("InvestmentsView Automated Quotes and BoC FX", () => {
     renderWithTheme(<InvestmentsView accounts={[mockAccount]} onDataModified={vi.fn()} />);
 
     const updateQuotesBtn = screen.getByRole("button", {
-      name: /Update Quotes \(TSX \/ BoC\)/i,
+      name: /Update quotes \(TSX \/ BoC\)/i,
     });
     fireEvent.click(updateQuotesBtn);
 
