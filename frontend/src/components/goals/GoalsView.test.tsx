@@ -44,7 +44,7 @@ describe("GoalsView", () => {
         onDataModified={vi.fn()}
       />
     );
-    expect(await screen.findByText("Goals & Savings Envelopes")).toBeDefined();
+    expect(await screen.findByText("Goals & savings envelopes")).toBeDefined();
     await waitFor(() => {
       expect(api.goals.getGoals).toHaveBeenCalled();
     });

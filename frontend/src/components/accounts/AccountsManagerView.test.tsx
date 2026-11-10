@@ -76,10 +76,10 @@ describe("AccountsManagerView Household Features", () => {
     );
 
     expect(screen.getByText("Michael")).toBeDefined();
-    expect(screen.getByText("Joint / Shared")).toBeDefined();
+    expect(screen.getByText("Joint / shared")).toBeDefined();
   });
 
-  it("renders Account Ownership dropdown and Canadian note in modal", () => {
+  it("renders Owner dropdown and Canadian note in modal", () => {
     render(
       <AccountsManagerView
         accounts={mockAccounts}
@@ -91,13 +91,13 @@ describe("AccountsManagerView Household Features", () => {
     const addAccountBtn = screen.getByRole("button", { name: /Add Account/i });
     fireEvent.click(addAccountBtn);
 
-    expect(screen.getByText("Account Ownership (Household Member)")).toBeDefined();
+    expect(screen.getByText("Owner")).toBeDefined();
     expect(
       screen.getByText(/In Canada, registered accounts \(TFSA, RRSP, FHSA\) are individual legal registrations/i)
     ).toBeDefined();
 
     // Check options
-    expect(screen.getByText("Joint / Shared Household")).toBeDefined();
+    expect(screen.getByText("Joint / shared household")).toBeDefined();
     expect(screen.getByText("Michael (Primary)")).toBeDefined();
     expect(screen.getByText("Sarah (Partner)")).toBeDefined();
   });

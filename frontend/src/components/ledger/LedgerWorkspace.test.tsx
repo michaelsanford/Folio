@@ -105,10 +105,10 @@ describe("LedgerWorkspace Household Features", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("All Household")).toBeDefined();
+      expect(screen.getByText("All members")).toBeDefined();
     });
 
-    const filterSelect = screen.getByDisplayValue("All Household");
+    const filterSelect = screen.getByDisplayValue("All members");
     fireEvent.change(filterSelect, { target: { value: "member-1" } });
 
     await waitFor(() => {
@@ -148,8 +148,8 @@ describe("LedgerWorkspace Household Features", () => {
     const addBtn = screen.getByRole("button", { name: /Add Transaction/i });
     fireEvent.click(addBtn);
 
-    expect(screen.getByText("Household Member Attribution")).toBeDefined();
-    expect(screen.getAllByText("Joint / Unassigned").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("Household member")).toBeDefined();
+    expect(screen.getAllByText("Joint / unassigned").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("Michael (Primary)")).toBeDefined();
     expect(screen.getByText("Sarah (Partner)")).toBeDefined();
   });
@@ -201,8 +201,8 @@ describe("LedgerWorkspace Household Features", () => {
           min_confidence: 0.75,
         })
       );
-      expect(screen.getByText("Auto-Classification Complete")).toBeDefined();
-      expect(screen.getByText("5 transactions classified, 0 remaining uncategorized.")).toBeDefined();
+      expect(screen.getByText("Auto-classification complete")).toBeDefined();
+      expect(screen.getByText("5 transactions classified, 0 remaining uncategorized")).toBeDefined();
       expect(onDataModified).toHaveBeenCalled();
     });
   });

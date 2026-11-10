@@ -15,11 +15,14 @@ import {
   Palette,
   Sun,
   Moon,
+  BookOpen,
 } from "lucide-react";
 import type { Account, HouseholdMember } from "../../types";
 import { isAssetAccount } from "../../constants/canadianAccountTypes";
 import { useTheme } from "../../context/ThemeContext";
 import { ThemePickerModal } from "../common/ThemePickerModal";
+import { Money } from "../common/Money";
+import { formatMoney } from "../../utils/format";
 
 export type NavTab =
   | "dashboard"
@@ -40,6 +43,16 @@ interface AppLayoutProps {
   onManageHousehold?: () => void;
   children: React.ReactNode;
 }
+
+const iconButton =
+  "h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer";
+
+const Wordmark: React.FC = () => (
+  <div className="flex items-center gap-2">
+    <BookOpen className="w-[18px] h-[18px] text-accent-main" strokeWidth={1.5} />
+    <span className="text-base font-semibold text-main leading-none">Folio</span>
+  </div>
+);
 
 export const AppLayout: React.FC<AppLayoutProps> = ({
   activeTab,
@@ -68,95 +81,47 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     { id: "accounts" as NavTab, label: "Accounts", icon: Wallet },
     { id: "ledger" as NavTab, label: "Ledger", icon: ReceiptText },
     { id: "budgeting" as NavTab, label: "Budget", icon: PiggyBank },
-    { id: "goals" as NavTab, label: "Goals & CRA", icon: Target },
+    { id: "goals" as NavTab, label: "Goals", icon: Target },
     { id: "loans" as NavTab, label: "Loans", icon: Landmark },
     { id: "investments" as NavTab, label: "Investments", icon: TrendingUp },
     { id: "ingestion" as NavTab, label: "Import", icon: UploadCloud },
-    { id: "rules" as NavTab, label: "Auto / Settings", icon: Sliders },
+    { id: "rules" as NavTab, label: "Rules", icon: Sliders },
   ];
 
-  return (
-    <div className="flex h-screen bg-canvas text-main overflow-hidden transition-colors duration-200">
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 border-r border-default bg-sidebar shrink-0 select-none">
-        {/* Brand */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-subtle">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-accent-main text-accent-contrast flex items-center justify-center shadow-xs">
-              <Wallet className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="font-bold text-base tracking-tight text-main block leading-none">
-                Folio
-              </span>
-              <span className="text-[10px] text-accent-subtle font-semibold tracking-wider uppercase">
-                Finance & Ledger
-              </span>
-            </div>
-          </div>
+  const ModeIcon = resolvedMode === "dark" ? Sun : Moon;
 
-          {/* Quick theme modal trigger */}
+  return (
+    <div className="flex h-screen bg-canvas text-main overflow-hidden">
+      {/* Desktop Sidebar */}
+      <aside className="hidden md:flex flex-col w-64 border-r border-subtle bg-sidebar shrink-0 select-none">
+        {/* Brand */}
+        <div className="flex items-center justify-between h-14 px-4">
+          <Wordmark />
           <button
             onClick={() => setIsThemeModalOpen(true)}
-            className="p-1.5 rounded-lg border border-subtle bg-surface hover:bg-surface-hover text-muted hover:text-main transition-colors"
-            title="Appearance & Theme"
-            aria-label="Appearance & Theme"
+            className={iconButton}
+            title="Appearance"
+            aria-label="Appearance"
           >
-            <Palette className="w-4 h-4" />
+            <Palette className="w-4 h-4" strokeWidth={1.5} />
           </button>
         </div>
 
-        {/* Net Worth Snapshot */}
-        <div className="px-4 py-3.5 mx-3 my-3 rounded-xl bg-surface border border-default shadow-2xs">
-          <div className="text-[11px] font-medium text-muted uppercase tracking-wider">
-            Total Net Worth
-          </div>
-          <div
-            className={`text-lg font-bold font-mono tracking-tight mt-0.5 ${
-              netWorth >= 0 ? "text-positive" : "text-negative"
-            }`}
-          >
-            ${netWorth.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-          <div className="flex items-center justify-between text-[11px] font-mono text-muted mt-2 pt-2 border-t border-subtle">
-            <span>Assets: ${totalAssets.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
-            <span>Debt: ${totalLiabilities.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
+        {/* Net worth snapshot */}
+        <div className="mx-3 mb-4 p-3 rounded-lg bg-surface border border-subtle">
+          <div className="text-xs text-muted">Net worth</div>
+          <Money
+            value={netWorth}
+            className={`block mt-1 text-lg font-medium ${netWorth < 0 ? "text-negative" : "text-main"}`}
+          />
+          <div className="flex items-center justify-between mt-2 text-[11px] font-mono text-muted">
+            <span>Assets {formatMoney(totalAssets, { cents: false })}</span>
+            <span>Debt {formatMoney(totalLiabilities, { cents: false })}</span>
           </div>
         </div>
 
-        {/* Household Collaboration Quick-Bar */}
-        {householdMembers && (
-          <div className="px-3 mb-2">
-            <button
-              onClick={onManageHousehold}
-              className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-surface border border-default hover:bg-surface-hover text-xs transition-colors shadow-2xs cursor-pointer group"
-              title="Manage Household Members"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <Users className="w-3.5 h-3.5 text-accent-main shrink-0" />
-                <span className="font-semibold text-main truncate text-[11px]">
-                  {householdMembers.length === 0
-                    ? "Add Household Members"
-                    : `${householdMembers.length} Household Member${householdMembers.length === 1 ? "" : "s"}`}
-                </span>
-              </div>
-              <div className="flex -space-x-1.5 shrink-0">
-                {householdMembers.slice(0, 3).map((m) => (
-                  <span
-                    key={m.id}
-                    className="w-4 h-4 rounded-full border border-surface text-[8px] flex items-center justify-center font-bold text-white shadow-2xs"
-                    style={{ backgroundColor: m.color || "#3B82F6" }}
-                  >
-                    {m.name.charAt(0)}
-                  </span>
-                ))}
-              </div>
-            </button>
-          </div>
-        )}
-
-        {/* Navigation Links */}
-        <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
+        {/* Navigation */}
+        <nav className="flex-1 px-3 flex flex-col gap-0.5 overflow-y-auto" aria-label="Main">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -164,45 +129,75 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <button
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-100 cursor-pointer ${
+                aria-current={isActive ? "page" : undefined}
+                className={`relative w-full h-9 shrink-0 flex items-center gap-2.5 px-3 rounded-lg text-sm transition-colors cursor-pointer ${
                   isActive
-                    ? "bg-accent-subtle text-accent-subtle border border-accent-main/30 shadow-2xs"
-                    : "text-sub hover:text-main hover:bg-surface-hover"
+                    ? "bg-surface-subtle text-main font-medium"
+                    : "text-sub hover:text-main bg-surface-hover"
                 }`}
               >
-                <Icon className={`w-4 h-4 ${isActive ? "text-accent-main" : "text-muted"}`} />
+                {isActive && (
+                  <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-accent-main" />
+                )}
+                <Icon
+                  className={`w-4 h-4 shrink-0 ${isActive ? "text-accent-main" : "text-muted"}`}
+                  strokeWidth={1.5}
+                />
                 {item.label}
               </button>
             );
           })}
         </nav>
 
-        {/* Sidebar Footer: Mode & Theme Info */}
-        <div className="p-3 border-t border-subtle bg-surface-subtle/50 flex items-center justify-between gap-2">
+        {/* Household */}
+        {householdMembers && (
+          <div className="px-3 pt-3">
+            <button
+              onClick={onManageHousehold}
+              className="w-full h-9 flex items-center justify-between gap-2 px-3 rounded-lg text-sm text-sub hover:text-main bg-surface-hover transition-colors cursor-pointer"
+              title="Manage household"
+            >
+              <span className="flex items-center gap-2.5 min-w-0">
+                <Users className="w-4 h-4 text-muted shrink-0" strokeWidth={1.5} />
+                <span className="truncate">
+                  {householdMembers.length === 0 ? "Add household" : "Household"}
+                </span>
+              </span>
+              <span className="flex -space-x-1 shrink-0">
+                {householdMembers.slice(0, 3).map((m) => (
+                  <span
+                    key={m.id}
+                    className="w-5 h-5 rounded-full ring-2 ring-[var(--bg-sidebar)] text-[11px] flex items-center justify-center font-medium text-white"
+                    style={{ backgroundColor: m.color || "#6b7280" }}
+                    title={m.name}
+                  >
+                    {m.name.charAt(0)}
+                  </span>
+                ))}
+              </span>
+            </button>
+          </div>
+        )}
+
+        {/* Footer: theme + mode */}
+        <div className="p-3 mt-3 border-t border-subtle flex items-center justify-between gap-2">
           <button
             onClick={() => setIsThemeModalOpen(true)}
-            className="flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-subtle bg-surface hover:bg-surface-hover text-left transition-colors cursor-pointer"
+            className="flex-1 min-w-0 h-8 flex items-center gap-2 px-2 rounded-lg bg-surface-hover text-left transition-colors cursor-pointer"
           >
-            <div
-              className="w-3.5 h-3.5 rounded-full border border-subtle shrink-0"
+            <span
+              className="w-2.5 h-2.5 rounded-full shrink-0"
               style={{ backgroundColor: activeThemeDef.accentHex }}
             />
-            <span className="text-[11px] font-medium text-sub truncate">
-              {activeThemeDef.name}
-            </span>
+            <span className="text-xs text-sub truncate">{activeThemeDef.name}</span>
           </button>
-
           <button
             onClick={toggleMode}
-            className="p-1.5 rounded-lg border border-subtle bg-surface hover:bg-surface-hover text-muted hover:text-main transition-colors cursor-pointer"
-            title={`Switch to ${resolvedMode === "dark" ? "Light" : "Dark"} Mode`}
-            aria-label="Toggle Color Mode"
+            className={iconButton}
+            title={`Switch to ${resolvedMode === "dark" ? "light" : "dark"} mode`}
+            aria-label="Toggle colour mode"
           >
-            {resolvedMode === "dark" ? (
-              <Sun className="w-4 h-4" />
-            ) : (
-              <Moon className="w-4 h-4" />
-            )}
+            <ModeIcon className="w-4 h-4" strokeWidth={1.5} />
           </button>
         </div>
       </aside>
@@ -210,44 +205,33 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile Header */}
-        <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-default bg-sidebar">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-accent-main text-accent-contrast flex items-center justify-center">
-              <Wallet className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="font-bold text-sm tracking-tight text-main">Folio</span>
-              <span className="text-[10px] text-muted ml-1.5 font-medium">({activeThemeDef.name})</span>
-            </div>
-          </div>
+        <header className="md:hidden flex items-center justify-between h-14 px-4 border-b border-subtle bg-sidebar">
+          <Wordmark />
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setIsThemeModalOpen(true)}
-              className="p-2 text-muted hover:text-main"
-              aria-label="Open Theme Settings"
-            >
-              <Palette className="w-5 h-5" />
+            <button onClick={() => setIsThemeModalOpen(true)} className={iconButton} aria-label="Appearance">
+              <Palette className="w-[18px] h-[18px]" strokeWidth={1.5} />
             </button>
-            <button
-              onClick={toggleMode}
-              className="p-2 text-muted hover:text-main"
-              aria-label="Toggle Color Mode"
-            >
-              {resolvedMode === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            <button onClick={toggleMode} className={iconButton} aria-label="Toggle colour mode">
+              <ModeIcon className="w-[18px] h-[18px]" strokeWidth={1.5} />
             </button>
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 text-muted hover:text-main"
-              aria-label="Toggle Navigation Menu"
+              className={iconButton}
+              aria-label="Toggle navigation menu"
+              aria-expanded={mobileMenuOpen}
             >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5 text-main" />}
+              {mobileMenuOpen ? (
+                <X className="w-[18px] h-[18px]" strokeWidth={1.5} />
+              ) : (
+                <Menu className="w-[18px] h-[18px]" strokeWidth={1.5} />
+              )}
             </button>
           </div>
         </header>
 
-        {/* Mobile Dropdown Drawer */}
+        {/* Mobile menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden p-4 border-b border-default bg-sidebar space-y-2 animate-in fade-in">
+          <div className="md:hidden p-3 border-b border-subtle bg-sidebar flex flex-col gap-0.5 animate-in fade-in">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -258,13 +242,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                     onTabChange(item.id);
                     setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-semibold ${
-                    isActive
-                      ? "bg-accent-subtle text-accent-subtle border border-accent-main/30"
-                      : "text-sub hover:bg-surface-hover"
+                  className={`w-full h-10 flex items-center gap-2.5 px-3 rounded-lg text-sm transition-colors ${
+                    isActive ? "bg-surface-subtle text-main font-medium" : "text-sub bg-surface-hover"
                   }`}
                 >
-                  <Icon className={`w-4 h-4 ${isActive ? "text-accent-main" : "text-muted"}`} />
+                  <Icon
+                    className={`w-4 h-4 ${isActive ? "text-accent-main" : "text-muted"}`}
+                    strokeWidth={1.5}
+                  />
                   {item.label}
                 </button>
               );
@@ -273,12 +258,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         )}
 
         {/* Main Body */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-8 pb-24 md:pb-8 max-w-full">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 pt-4 pb-24 sm:px-6 md:p-8 max-w-full">
           {children}
         </main>
 
         {/* Mobile Bottom Navigation */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-default bg-sidebar py-2 px-1">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around h-16 px-1 border-t border-subtle bg-sidebar">
           {navItems.slice(0, 5).map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -286,12 +271,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <button
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
-                className={`flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-medium transition-colors ${
-                  isActive ? "text-accent-main font-semibold" : "text-muted"
+                className={`flex flex-col items-center gap-1 px-2 py-1 text-[11px] transition-colors ${
+                  isActive ? "text-main font-medium" : "text-muted"
                 }`}
               >
-                <Icon className={`w-4 h-4 ${isActive ? "text-accent-main" : "text-muted"}`} />
-                <span>{item.label.split(" ")[0]}</span>
+                <Icon
+                  className={`w-[18px] h-[18px] ${isActive ? "text-accent-main" : "text-muted"}`}
+                  strokeWidth={1.5}
+                />
+                <span>{item.label}</span>
               </button>
             );
           })}

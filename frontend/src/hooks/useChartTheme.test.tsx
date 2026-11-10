@@ -16,10 +16,10 @@ describe("useChartTheme Hook", () => {
 
     expect(result.current.isDark).toBe(true);
     expect(result.current.accentColor).toBe("#10b981");
-    expect(result.current.positiveColor).toBe("#10b981");
-    expect(result.current.negativeColor).toBe("#f43f5e");
+    expect(result.current.positiveColor).toBe("#4cc38a");
+    expect(result.current.negativeColor).toBe("#e5484d");
     expect(result.current.palette.length).toBeGreaterThan(0);
-    expect(result.current.tooltipBg).toBe("#0f172a");
+    expect(result.current.tooltipBg).toBe("#232325");
   });
 
   it("returns appropriate chart colors for light mode", () => {
@@ -32,7 +32,7 @@ describe("useChartTheme Hook", () => {
     const { result } = renderHook(() => useChartTheme(), { wrapper });
 
     expect(result.current.isDark).toBe(false);
-    expect(result.current.accentColor).toBe("#059669");
+    expect(result.current.accentColor).toBe("#047857");
     expect(result.current.tooltipBg).toBe("#ffffff");
   });
 

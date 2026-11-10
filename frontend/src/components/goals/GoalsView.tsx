@@ -1,20 +1,15 @@
 import React, { useState, useEffect } from "react";
 import {
-  Target,
-
-
   Plus,
   Trash2,
   Edit2,
   Calculator,
   AlertTriangle,
   Calendar,
-
-  Users,
   Check,
   CheckCircle2,
   ArrowRight,
-
+  X,
 } from "lucide-react";
 import type {
   Goal,
@@ -26,6 +21,8 @@ import type {
   EmergencyFundCalcResponse,
 } from "../../types";
 import { api } from "../../services/api";
+import { Money } from "../common/Money";
+import { formatMoney } from "../../utils/format";
 
 interface GoalsViewProps {
   accounts: Account[];
@@ -36,22 +33,22 @@ interface GoalsViewProps {
 
 const GOAL_TYPE_META: Record<GoalType, { label: string; color: string; description: string }> = {
   SAVINGS: {
-    label: "General Savings",
+    label: "General savings",
     color: "#3B82F6",
     description: "General goal (e.g. down payment, car, vacation, large purchase)",
   },
   EMERGENCY_FUND: {
-    label: "Emergency Fund",
+    label: "Emergency fund",
     color: "#10B981",
     description: "Liquid safety buffer (typically 3–6 months of essential living expenses)",
   },
   TFSA_ANNUAL: {
-    label: "TFSA Contribution",
+    label: "TFSA contribution",
     color: "#8B5CF6",
     description: "Tax-Free Savings Account annual contribution room ($7,000 for 2024–2026)",
   },
   FHSA_ANNUAL: {
-    label: "FHSA Contribution",
+    label: "FHSA contribution",
     color: "#EC4899",
     description: "First Home Savings Account annual room ($8,000/yr, $40k lifetime max)",
   },
@@ -61,10 +58,108 @@ const GOAL_TYPE_META: Record<GoalType, { label: string; color: string; descripti
     description: "Annual RRSP Home Buyers' Plan repayment schedule (1/15th per year)",
   },
   DEBT_PAYOFF: {
-    label: "Debt Payoff",
+    label: "Debt payoff",
     color: "#EF4444",
     description: "Targeted liability acceleration (loan, line of credit, or mortgage prepay)",
   },
+};
+
+const card = "rounded-xl bg-surface border border-subtle";
+const btnPrimary =
+  "inline-flex items-center justify-center gap-2 h-9 px-4 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] cursor-pointer";
+const btnSecondary =
+  "inline-flex items-center justify-center gap-2 h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer";
+const inputCls =
+  "w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]";
+const labelCls = "block text-xs text-sub mb-1";
+const segment = (active: boolean) =>
+  `h-8 px-3 rounded-lg text-sm whitespace-nowrap border transition-colors cursor-pointer ${
+    active
+      ? "bg-surface-subtle border-default text-main font-medium"
+      : "border-transparent text-sub hover:text-main bg-surface-hover"
+  }`;
+
+interface CraRoomCardProps {
+  title: string;
+  tag: string;
+  contributed: number;
+  limit: number;
+  remainingRaw: number | undefined;
+  defaultLimit: number;
+  warning: string;
+  footnote: string;
+  onTrack: () => void;
+}
+
+/** One CRA statutory room card (TFSA or FHSA). */
+const CraRoomCard: React.FC<CraRoomCardProps> = ({
+  title,
+  tag,
+  contributed,
+  limit,
+  remainingRaw,
+  defaultLimit,
+  warning,
+  footnote,
+  onTrack,
+}) => {
+  const isOver = (remainingRaw ?? defaultLimit) < 0;
+  const remainingAbs = Math.abs(remainingRaw ?? (limit ?? defaultLimit));
+  const exceeded = contributed > limit;
+
+  return (
+    <div className={`${card} p-5 flex flex-col justify-between`}>
+      <div>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="text-base font-medium text-main">{title}</h2>
+          <span className="text-xs text-muted">{tag}</span>
+        </div>
+
+        <div className="mt-4 flex items-baseline justify-between gap-3">
+          <div className="text-2xl font-medium leading-none text-main">
+            <Money value={contributed ?? 0} />
+            <span className="ml-2 text-xs text-muted">
+              of {formatMoney(limit ?? defaultLimit, { cents: false })} limit
+            </span>
+          </div>
+          <span className={`text-xs font-mono ${isOver ? "text-negative" : "text-sub"}`}>
+            {formatMoney(remainingAbs, { cents: false })} {isOver ? "over limit" : "remaining"}
+          </span>
+        </div>
+
+        <div className="mt-4 w-full h-1.5 rounded-full bg-surface-subtle overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-[width] duration-500 ${
+              exceeded ? "bg-negative" : ""
+            }`}
+            style={{
+              width: `${Math.min(100, (contributed / limit) * 100)}%`,
+              backgroundColor: exceeded ? undefined : "var(--text-muted)",
+            }}
+          />
+        </div>
+
+        {exceeded && (
+          <div className="mt-4 p-3 rounded-lg bg-negative-subtle border border-negative/30 text-xs text-negative flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" strokeWidth={1.5} />
+            <span>
+              <span className="font-medium">CRA excess warning:</span> {warning}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 pt-4 border-t border-subtle flex items-center justify-between gap-3 text-xs text-muted">
+        <span>{footnote}</span>
+        <button
+          onClick={onTrack}
+          className="inline-flex items-center gap-1 text-sm text-accent-subtle hover:underline underline-offset-4 cursor-pointer"
+        >
+          Track as a goal <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
+        </button>
+      </div>
+    </div>
+  );
 };
 
 export const GoalsView: React.FC<GoalsViewProps> = ({
@@ -293,271 +388,118 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Top Header & Actions */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="max-w-7xl mx-auto flex flex-col gap-6">
+      {/* Header and actions */}
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-main">Goals & Savings Envelopes</h1>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-accent-subtle text-accent-subtle uppercase">
-              Canadian Edition
-            </span>
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-2xl font-medium text-main">Goals & savings envelopes</h1>
+            <span className="text-xs text-muted">Canadian edition</span>
           </div>
-          <p className="text-xs text-muted mt-0.5">
-            Track dedicated targets, CRA TFSA/FHSA annual statutory rooms, and emergency buffers with discretionary category models.
+          <p className="mt-1 text-sm text-sub">
+            Targets, CRA TFSA and FHSA annual room, and emergency buffers
           </p>
         </div>
 
         <div className="flex items-center flex-wrap gap-2">
-          {/* Member Scope Filter */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface border border-default text-xs">
-            <Users className="w-3.5 h-3.5 text-muted" />
-            <span className="text-muted font-medium">Household:</span>
+          <label className="flex items-center gap-2 text-sm text-sub">
+            <span>Household</span>
             <select
               value={selectedMemberId}
               onChange={(e) => setSelectedMemberId(e.target.value)}
-              className="bg-transparent text-main font-semibold focus:outline-hidden cursor-pointer"
+              className={`${inputCls} w-auto cursor-pointer`}
             >
-              <option value="ALL">Entire Household</option>
+              <option value="ALL">Entire household</option>
               {householdMembers.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name} ({m.role || "Member"})
                 </option>
               ))}
             </select>
-          </div>
+          </label>
 
-          <button
-            onClick={handleOpenCalculator}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-surface hover:bg-surface-hover border border-default text-main text-xs font-semibold shadow-2xs transition-all cursor-pointer"
-          >
-            <Calculator className="w-3.5 h-3.5 text-accent-main" />
-            <span>Emergency Fund Calc</span>
+          <button onClick={handleOpenCalculator} className={btnSecondary}>
+            <Calculator className="w-4 h-4 text-sub" strokeWidth={1.5} />
+            <span>Emergency fund calculator</span>
           </button>
 
-          <button
-            onClick={() => handleOpenCreateGoal("SAVINGS")}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>New Goal</span>
+          <button onClick={() => handleOpenCreateGoal("SAVINGS")} className={btnPrimary}>
+            <Plus className="w-4 h-4" strokeWidth={1.5} />
+            <span>New goal</span>
           </button>
         </div>
-      </div>
+      </header>
 
       {error && (
-        <div className="p-3 rounded-xl bg-negative-subtle border border-rose-500/30 text-xs text-negative">
+        <div className="p-3 rounded-lg bg-negative-subtle border border-negative/30 text-sm text-negative">
           {error}
         </div>
       )}
 
-      {/* Canadian Statutory CRA Tracking Cards */}
+      {/* CRA statutory room */}
       {craSummary && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* TFSA Card */}
-          <div className="p-5 rounded-2xl bg-surface border border-default shadow-xs flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
-                  <span className="text-xs font-bold uppercase tracking-wider text-muted">
-                    TFSA Contribution Room ({craSummary.tax_year})
-                  </span>
-                </div>
-                <span className="text-[11px] font-semibold text-purple-600 bg-purple-500/10 px-2 py-0.5 rounded-md">
-                  Statutory Individual Room
-                </span>
-              </div>
-
-              <div className="mt-3 flex items-baseline justify-between">
-                <div className="text-2xl font-bold font-mono text-main">
-                  ${(craSummary.tfsa_contributed ?? 0).toLocaleString("en-CA", { minimumFractionDigits: 2 })}
-                  <span className="text-xs font-sans text-muted ml-1">
-                    / ${(craSummary.tfsa_annual_limit ?? 7000).toLocaleString("en-CA")} limit
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span
-                    className={`text-xs font-mono font-bold ${
-                      (craSummary.tfsa_remaining_room ?? 7000) >= 0 ? "text-positive" : "text-negative"
-                    }`}
-                  >
-                    ${Math.abs(craSummary.tfsa_remaining_room ?? (craSummary.tfsa_annual_limit ?? 7000)).toLocaleString("en-CA")}{" "}
-                    {(craSummary.tfsa_remaining_room ?? 7000) >= 0 ? "remaining" : "OVER LIMIT"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Progress bar */}
-              <div className="w-full bg-surface-subtle h-2 rounded-full overflow-hidden mt-3 border border-subtle">
-                <div
-                  className={`h-full transition-all duration-500 rounded-full ${
-                    craSummary.tfsa_contributed > craSummary.tfsa_annual_limit
-                      ? "bg-negative"
-                      : "bg-purple-500"
-                  }`}
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      (craSummary.tfsa_contributed / craSummary.tfsa_annual_limit) * 100
-                    )}%`,
-                  }}
-                />
-              </div>
-
-              {craSummary.tfsa_contributed > craSummary.tfsa_annual_limit && (
-                <div className="mt-3 p-2.5 rounded-xl bg-negative-subtle border border-rose-500/40 text-[11px] text-negative flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>
-                    <b>CRA Excess Warning:</b> You have exceeded the annual TFSA dollar limit. The CRA levies a 1% per month penalty tax on the excess amount until withdrawn.
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-4 pt-3 border-t border-subtle flex items-center justify-between text-[11px] text-muted">
-              <span>Federal annual limit indexed to inflation</span>
-              <button
-                onClick={() => handleOpenCreateGoal("TFSA_ANNUAL")}
-                className="text-purple-600 hover:underline font-semibold flex items-center gap-1 cursor-pointer"
-              >
-                Track as Dedicated Goal <ArrowRight className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-
-          {/* FHSA Card */}
-          <div className="p-5 rounded-2xl bg-surface border border-default shadow-xs flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-pink-500"></span>
-                  <span className="text-xs font-bold uppercase tracking-wider text-muted">
-                    FHSA Contribution Room ({craSummary.tax_year})
-                  </span>
-                </div>
-                <span className="text-[11px] font-semibold text-pink-600 bg-pink-500/10 px-2 py-0.5 rounded-md">
-                  Tax-Deductible + Tax-Free
-                </span>
-              </div>
-
-              <div className="mt-3 flex items-baseline justify-between">
-                <div className="text-2xl font-bold font-mono text-main">
-                  ${(craSummary.fhsa_contributed ?? 0).toLocaleString("en-CA", { minimumFractionDigits: 2 })}
-                  <span className="text-xs font-sans text-muted ml-1">
-                    / ${(craSummary.fhsa_annual_limit ?? 8000).toLocaleString("en-CA")} limit
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span
-                    className={`text-xs font-mono font-bold ${
-                      (craSummary.fhsa_remaining_room ?? 8000) >= 0 ? "text-positive" : "text-negative"
-                    }`}
-                  >
-                    ${Math.abs(craSummary.fhsa_remaining_room ?? (craSummary.fhsa_annual_limit ?? 8000)).toLocaleString("en-CA")}{" "}
-                    {(craSummary.fhsa_remaining_room ?? 8000) >= 0 ? "remaining" : "OVER LIMIT"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Progress bar */}
-              <div className="w-full bg-surface-subtle h-2 rounded-full overflow-hidden mt-3 border border-subtle">
-                <div
-                  className={`h-full transition-all duration-500 rounded-full ${
-                    craSummary.fhsa_contributed > craSummary.fhsa_annual_limit
-                      ? "bg-negative"
-                      : "bg-pink-500"
-                  }`}
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      (craSummary.fhsa_contributed / craSummary.fhsa_annual_limit) * 100
-                    )}%`,
-                  }}
-                />
-              </div>
-
-              {craSummary.fhsa_contributed > craSummary.fhsa_annual_limit && (
-                <div className="mt-3 p-2.5 rounded-xl bg-negative-subtle border border-rose-500/40 text-[11px] text-negative flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>
-                    <b>CRA Excess Warning:</b> FHSA contributions exceed the $8,000 annual statutory allowance. 1%/mo tax penalty applies on excess.
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-4 pt-3 border-t border-subtle flex items-center justify-between text-[11px] text-muted">
-              <span>$40,000 lifetime statutory ceiling</span>
-              <button
-                onClick={() => handleOpenCreateGoal("FHSA_ANNUAL")}
-                className="text-pink-600 hover:underline font-semibold flex items-center gap-1 cursor-pointer"
-              >
-                Track as Dedicated Goal <ArrowRight className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
+          <CraRoomCard
+            title={`TFSA contribution room (${craSummary.tax_year})`}
+            tag="Statutory individual room"
+            contributed={craSummary.tfsa_contributed}
+            limit={craSummary.tfsa_annual_limit}
+            remainingRaw={craSummary.tfsa_remaining_room}
+            defaultLimit={7000}
+            warning="You have exceeded the annual TFSA dollar limit. The CRA levies a 1% per month penalty tax on the excess amount until withdrawn."
+            footnote="Federal annual limit indexed to inflation"
+            onTrack={() => handleOpenCreateGoal("TFSA_ANNUAL")}
+          />
+          <CraRoomCard
+            title={`FHSA contribution room (${craSummary.tax_year})`}
+            tag="Tax-deductible and tax-free"
+            contributed={craSummary.fhsa_contributed}
+            limit={craSummary.fhsa_annual_limit}
+            remainingRaw={craSummary.fhsa_remaining_room}
+            defaultLimit={8000}
+            warning="FHSA contributions exceed the $8,000 annual statutory allowance. A 1% per month tax penalty applies on the excess."
+            footnote="$40,000 lifetime statutory ceiling"
+            onTrack={() => handleOpenCreateGoal("FHSA_ANNUAL")}
+          />
         </div>
       )}
 
-      {/* Goals Filter Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-        <button
-          onClick={() => setTypeFilter("ALL")}
-          className={`px-3 py-1.5 rounded-xl font-semibold transition-all cursor-pointer ${
-            typeFilter === "ALL"
-              ? "bg-accent-main text-accent-contrast shadow-xs"
-              : "bg-surface text-sub border border-default hover:bg-surface-hover"
-          }`}
-        >
-          All Goals ({goals.length})
+      {/* Goal type filter */}
+      <div className="flex items-center gap-1 overflow-x-auto">
+        <button onClick={() => setTypeFilter("ALL")} className={segment(typeFilter === "ALL")}>
+          All goals <span className="font-mono text-muted">{goals.length}</span>
         </button>
         {(["EMERGENCY_FUND", "SAVINGS", "TFSA_ANNUAL", "FHSA_ANNUAL", "HBP_REPAYMENT", "DEBT_PAYOFF"] as GoalType[]).map(
           (t) => {
             const count = goals.filter((g) => g.type === t).length;
             if (count === 0 && typeFilter !== t) return null;
             return (
-              <button
-                key={t}
-                onClick={() => setTypeFilter(t)}
-                className={`px-3 py-1.5 rounded-xl font-semibold transition-all cursor-pointer ${
-                  typeFilter === t
-                    ? "bg-accent-main text-accent-contrast shadow-xs"
-                    : "bg-surface text-sub border border-default hover:bg-surface-hover"
-                }`}
-              >
-                {GOAL_TYPE_META[t].label} ({count})
+              <button key={t} onClick={() => setTypeFilter(t)} className={segment(typeFilter === t)}>
+                {GOAL_TYPE_META[t].label} <span className="font-mono text-muted">{count}</span>
               </button>
             );
           }
         )}
       </div>
 
-      {/* Goals Grid */}
+      {/* Goals grid */}
       {isLoading ? (
-        <div className="py-20 text-center text-muted">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-main mx-auto mb-3"></div>
-          Loading financial goals...
+        <div className="flex items-center justify-center h-48 text-sm text-muted">
+          <div className="animate-spin rounded-full h-5 w-5 border-2 border-subtle border-t-[var(--accent-primary)] mr-3"></div>
+          Loading goals…
         </div>
       ) : goals.length === 0 ? (
-        <div className="py-16 text-center text-muted px-4 rounded-2xl bg-surface border border-default shadow-xs">
-          <Target className="w-12 h-12 text-muted mx-auto mb-3 opacity-40" />
-          <div className="text-sm font-semibold text-main">No active goals yet</div>
-          <p className="text-xs text-muted mt-1 max-w-sm mx-auto">
-            Create an Emergency Fund buffer using our 3/6/9/12 month calculator, or set up a dedicated TFSA or FHSA milestone.
+        <div className={`${card} p-6 py-12 text-center`}>
+          <div className="text-base font-medium text-main">No goals yet</div>
+          <p className="mt-1 text-sm text-sub max-w-md mx-auto">
+            Size an emergency fund with the 3, 6, 9 or 12-month calculator, or set up a TFSA or FHSA goal
           </p>
-          <div className="flex items-center justify-center gap-3 mt-4">
-            <button
-              onClick={handleOpenCalculator}
-              className="px-4 py-2 rounded-xl bg-surface hover:bg-surface-hover border border-default text-main text-xs font-semibold shadow-2xs transition-all cursor-pointer"
-            >
-              Calculate Emergency Fund
+          <div className="flex items-center justify-center gap-2 mt-6">
+            <button onClick={handleOpenCalculator} className={btnSecondary}>
+              Calculate emergency fund
             </button>
-            <button
-              onClick={() => handleOpenCreateGoal("SAVINGS")}
-              className="px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs cursor-pointer"
-            >
-              Create New Goal
+            <button onClick={() => handleOpenCreateGoal("SAVINGS")} className={btnPrimary}>
+              Create goal
             </button>
           </div>
         </div>
@@ -568,34 +510,31 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
             const progress = Math.min(100, g.progress_percentage || 0);
             const isCompleted = progress >= 100;
             const owner = householdMembers.find((m) => m.id === g.owner_member_id);
+            const current = g.effective_current_amount ?? g.current_amount ?? 0;
 
             return (
-              <div
-                key={g.id}
-                className="p-5 rounded-2xl bg-surface border border-default shadow-xs flex flex-col justify-between hover:border-subtle transition-all"
-              >
+              <div key={g.id} className={`${card} p-5 flex flex-col justify-between`}>
                 <div>
-                  {/* Goal Header */}
+                  {/* Goal header */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span
-                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          className="w-2 h-2 rounded-full shrink-0"
                           style={{ backgroundColor: meta.color }}
                         />
-                        <h3 className="font-bold text-sm text-main truncate" title={g.name}>
+                        <h3 className="text-base font-medium text-main truncate" title={g.name}>
                           {g.name}
                         </h3>
                       </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] font-semibold text-muted uppercase">
-                          {meta.label}
-                        </span>
+                      <div className="flex items-center gap-2 mt-1 text-xs text-muted">
+                        <span>{meta.label}</span>
                         {owner && (
-                          <span
-                            className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white"
-                            style={{ backgroundColor: owner.color || "#3B82F6" }}
-                          >
+                          <span className="inline-flex items-center gap-1.5 text-sub">
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: owner.color || "var(--text-muted)" }}
+                            />
                             {owner.name}
                           </span>
                         )}
@@ -605,93 +544,77 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => handleOpenEditGoal(g)}
-                        className="p-1 rounded-md text-muted hover:text-main hover:bg-surface-hover transition-colors"
+                        className="p-1.5 rounded-lg text-muted hover:text-main bg-surface-hover transition-colors"
                         title="Edit goal"
                       >
-                        <Edit2 className="w-3.5 h-3.5" />
+                        <Edit2 className="w-4 h-4" strokeWidth={1.5} />
                       </button>
                       <button
                         onClick={() => handleDeleteGoal(g.id, g.name)}
-                        className="p-1 rounded-md text-muted hover:text-negative hover:bg-surface-hover transition-colors"
+                        className="p-1.5 rounded-lg text-muted hover:text-negative bg-surface-hover transition-colors"
                         title="Delete goal"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                       </button>
                     </div>
                   </div>
 
                   {/* Amounts */}
-                  <div className="mt-4 flex items-baseline justify-between">
+                  <div className="mt-4 flex items-end justify-between gap-3">
                     <div>
-                      <div className="text-xl font-bold font-mono text-main">
-                        ${(g.effective_current_amount ?? g.current_amount ?? 0).toLocaleString("en-CA", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </div>
-                      <div className="text-[11px] text-muted">
-                        of ${(g.target_amount ?? 0).toLocaleString("en-CA", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}{" "}
-                        target
+                      <Money value={current} className="text-xl font-medium text-main" />
+                      <div className="mt-1 text-xs text-muted">
+                        of {formatMoney(g.target_amount ?? 0)} target
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-base font-bold font-mono text-accent-main">
+                      <div className="text-base font-medium font-mono text-main">
                         {progress.toFixed(0)}%
                       </div>
-                      <div className="text-[11px] text-muted">
+                      <div className="mt-1 text-xs text-muted">
                         {isCompleted ? (
-                          <span className="text-positive font-semibold flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3" /> Reached!
+                          <span className="text-positive inline-flex items-center gap-1">
+                            <CheckCircle2 className="w-4 h-4" strokeWidth={1.5} /> Reached
                           </span>
                         ) : (
-                          `$${Math.max(0, (g.target_amount ?? 0) - (g.effective_current_amount ?? g.current_amount ?? 0)).toLocaleString(
-                            "en-CA",
-                            { maximumFractionDigits: 0 }
-                          )} left`
+                          <span className="font-mono">
+                            {formatMoney(Math.max(0, (g.target_amount ?? 0) - current), { cents: false })} left
+                          </span>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Progress Bar */}
-                  <div className="w-full bg-surface-subtle h-2.5 rounded-full overflow-hidden mt-3 border border-subtle">
+                  {/* Progress bar */}
+                  <div className="w-full h-1.5 rounded-full bg-surface-subtle overflow-hidden mt-4">
                     <div
-                      className={`h-full transition-all duration-500 rounded-full ${
+                      className={`h-full rounded-full transition-[width] duration-500 ${
                         isCompleted ? "bg-positive" : "bg-accent-main"
                       }`}
                       style={{ width: `${progress}%` }}
                     />
                   </div>
 
-                  {/* Linked Account or Notes */}
-                  <div className="mt-3 space-y-1">
+                  {/* Linked account and notes */}
+                  <div className="mt-4 flex flex-col gap-1 text-xs text-muted">
                     {g.linked_account ? (
-                      <div className="text-[11px] text-muted flex items-center gap-1.5">
-                        <span className="font-semibold text-main">Linked Account:</span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-sub">Linked account</span>
                         <span className="truncate">{g.linked_account.name}</span>
-                        <span className="text-positive font-mono font-medium">
-                          (${(g.linked_account.current_balance ?? 0).toLocaleString("en-CA")})
-                        </span>
+                        <Money value={g.linked_account.current_balance ?? 0} className="text-sub" />
                       </div>
                     ) : (
-                      <div className="text-[11px] text-muted">Manual tracking (unlinked)</div>
+                      <div>Manual tracking, no linked account</div>
                     )}
 
                     {g.target_date && (
-                      <div className="text-[11px] text-muted flex items-center gap-1.5">
-                        <Calendar className="w-3 h-3 text-muted" />
-                        <span>Target: {new Date(g.target_date).toLocaleDateString()}</span>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-muted" strokeWidth={1.5} />
+                        <span>Target {new Date(g.target_date).toLocaleDateString()}</span>
                       </div>
                     )}
 
-                    {g.notes && (
-                      <div className="text-[11px] text-muted italic line-clamp-2">
-                        "{g.notes}"
-                      </div>
-                    )}
+                    {g.notes && <div className="line-clamp-2">{g.notes}</div>}
                   </div>
                 </div>
               </div>
@@ -700,130 +623,113 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
         </div>
       )}
 
-      {/* Emergency Fund Interactive Calculator Modal */}
+      {/* Emergency fund calculator modal */}
       {showCalcModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
           <div className="relative w-full max-w-3xl bg-surface border border-default rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[92vh]">
-            <div className="flex items-center justify-between p-5 border-b border-subtle">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-accent-subtle text-accent-subtle flex items-center justify-center">
-                  <Calculator className="w-5 h-5 text-accent-main" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-main">Emergency Fund Auto-Calculator</h2>
-                  <p className="text-xs text-muted">
-                    Model 3/6/9/12 month safety cushions and exclude non-essential spending.
-                  </p>
-                </div>
+            <div className="flex items-start justify-between gap-4 p-5 border-b border-subtle">
+              <div>
+                <h2 className="text-base font-medium text-main">Emergency fund calculator</h2>
+                <p className="mt-1 text-sm text-sub">
+                  Model a 3, 6, 9 or 12-month cushion and leave out non-essential spending
+                </p>
               </div>
               <button
                 onClick={() => setShowCalcModal(false)}
-                className="p-1.5 rounded-lg text-muted hover:text-main hover:bg-surface-hover"
+                aria-label="Close"
+                className="p-1.5 rounded-lg text-muted hover:text-main bg-surface-hover transition-colors"
               >
-                ✕
+                <X className="w-4 h-4" strokeWidth={1.5} />
               </button>
             </div>
 
-            <div className="p-5 overflow-y-auto space-y-5 flex-1">
-              {/* Parameter Selectors */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-surface-subtle border border-default">
+            <div className="p-5 overflow-y-auto flex flex-col gap-6 flex-1">
+              {/* Parameters */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-muted mb-1.5">
-                    Target Cushion Months
-                  </label>
-                  <div className="grid grid-cols-4 gap-1.5">
+                  <div className={labelCls}>Target cushion</div>
+                  <div className="grid grid-cols-4 gap-1">
                     {[3, 6, 9, 12].map((m) => (
                       <button
                         key={m}
                         type="button"
                         onClick={() => handleMonthsChange(m)}
-                        className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                          calcMonths === m
-                            ? "bg-accent-main text-accent-contrast shadow-xs"
-                            : "bg-surface border border-default text-sub hover:bg-surface-hover"
-                        }`}
+                        className={segment(calcMonths === m)}
                       >
-                        {m} Mo
+                        {m} mo
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-muted mb-1.5">
-                    Historical Spend Lookback
-                  </label>
-                  <div className="grid grid-cols-3 gap-1.5">
+                  <div className={labelCls}>Spending lookback</div>
+                  <div className="grid grid-cols-3 gap-1">
                     {[3, 6, 12].map((lb) => (
                       <button
                         key={lb}
                         type="button"
                         onClick={() => handleLookbackChange(lb)}
-                        className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                          calcLookback === lb
-                            ? "bg-accent-main text-accent-contrast shadow-xs"
-                            : "bg-surface border border-default text-sub hover:bg-surface-hover"
-                        }`}
+                        className={segment(calcLookback === lb)}
                       >
-                        Past {lb} Mo
+                        Past {lb} mo
                       </button>
                     ))}
                   </div>
                 </div>
               </div>
 
-              {/* Calculated Result Banner */}
+              {/* Result */}
               {calcData && (
-                <div className="p-4 rounded-xl bg-accent-subtle/40 border border-accent-main/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="p-4 rounded-xl bg-surface-subtle border border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
-                    <div className="text-xs text-accent-subtle font-semibold">
-                      Calculated {calcMonths}-Month Emergency Target
-                    </div>
-                    <div className="text-2xl font-bold font-mono text-main mt-0.5">
-                      ${(calcData.suggested_target_amount ?? calcData.suggested_target ?? 0).toLocaleString("en-CA", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </div>
-                    <div className="text-[11px] text-muted mt-1">
+                    <div className="text-sm text-sub">{calcMonths}-month emergency target</div>
+                    <Money
+                      value={calcData.suggested_target_amount ?? calcData.suggested_target ?? 0}
+                      className="block mt-2 text-2xl font-medium leading-none text-main"
+                    />
+                    <div className="mt-2 text-xs text-muted">
                       Based on{" "}
-                      <b>
-                        ${(calcData.monthly_average_included_expense ?? calcData.monthly_fixed_expense ?? 0).toFixed(2)} / month
-                      </b>{" "}
-                      bare-bones living expenses (total unadjusted spend was $
-                      {(calcData.monthly_average_total_expense ?? (calcData.total_spent_in_period ? calcData.total_spent_in_period / Math.max(1, calcLookback) : 0)).toFixed(2)}/mo).
+                      <span className="font-mono text-sub">
+                        {formatMoney(calcData.monthly_average_included_expense ?? calcData.monthly_fixed_expense ?? 0)}
+                      </span>{" "}
+                      a month of bare-bones living expenses; unadjusted spending was{" "}
+                      <span className="font-mono">
+                        {formatMoney(
+                          calcData.monthly_average_total_expense ??
+                            (calcData.total_spent_in_period
+                              ? calcData.total_spent_in_period / Math.max(1, calcLookback)
+                              : 0)
+                        )}
+                      </span>{" "}
+                      a month
                     </div>
                   </div>
 
-                  <button
-                    onClick={handleSaveCalcAsGoal}
-                    className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs cursor-pointer transition-all shrink-0"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>Save as Emergency Goal</span>
+                  <button onClick={handleSaveCalcAsGoal} className={`${btnPrimary} shrink-0`}>
+                    <Check className="w-4 h-4" strokeWidth={1.5} />
+                    <span>Save as emergency goal</span>
                   </button>
                 </div>
               )}
 
-              {/* Hypothetical Category Reduction / Exclusion Table */}
+              {/* Category inclusion table */}
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-muted">
-                    Hypothetical Category Spending Inclusions / Exclusions
-                  </h3>
-                  <span className="text-[11px] text-muted">
-                    Uncheck discretionary categories to model survival budget
+                <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 mb-2">
+                  <h3 className="text-base font-medium text-main">Categories in the target</h3>
+                  <span className="text-xs text-muted">
+                    Uncheck discretionary categories to model a survival budget
                   </span>
                 </div>
 
-                <div className="border border-default rounded-xl overflow-hidden bg-surface">
-                  <table className="w-full text-left text-xs border-collapse">
+                <div className="border border-subtle rounded-xl overflow-hidden bg-surface">
+                  <table className="w-full text-left text-sm border-collapse">
                     <thead>
-                      <tr className="bg-surface-subtle border-b border-subtle text-muted font-semibold">
-                        <th className="py-2.5 px-3 w-10 text-center">Include</th>
-                        <th className="py-2.5 px-3">Expense Category</th>
-                        <th className="py-2.5 px-4 text-right">Avg Monthly Spend</th>
-                        <th className="py-2.5 px-3">Status</th>
+                      <tr className="border-b border-subtle text-xs text-muted font-normal">
+                        <th className="h-9 px-3 w-16 text-center font-normal">Include</th>
+                        <th className="h-9 px-3 font-normal">Expense category</th>
+                        <th className="h-9 px-4 text-right font-normal">Avg monthly spend</th>
+                        <th className="h-9 px-3 font-normal">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-subtle">
@@ -832,12 +738,12 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                         return (
                           <tr
                             key={row.category_id}
-                            className={`hover:bg-surface-hover transition-colors cursor-pointer ${
-                              !isIncluded ? "opacity-60 bg-surface-subtle/30" : ""
+                            className={`h-10 bg-surface-hover transition-colors cursor-pointer ${
+                              !isIncluded ? "opacity-60" : ""
                             }`}
                             onClick={() => handleToggleCategoryExclusion(row.category_id)}
                           >
-                            <td className="py-2.5 px-3 text-center">
+                            <td className="px-3 text-center">
                               <input
                                 type="checkbox"
                                 checked={isIncluded}
@@ -845,20 +751,18 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                                 className="rounded-md border-default text-accent-main focus:ring-accent-main cursor-pointer"
                               />
                             </td>
-                            <td className="py-2.5 px-3 font-semibold text-main">
-                              {row.category_name}
+                            <td className="px-3 text-main">{row.category_name}</td>
+                            <td className="px-4 text-right">
+                              <Money value={row.monthly_average} className="text-main" />
                             </td>
-                            <td className="py-2.5 px-4 text-right font-mono font-medium text-main">
-                              ${row.monthly_average.toFixed(2)}
-                            </td>
-                            <td className="py-2.5 px-3">
+                            <td className="px-3">
                               {isIncluded ? (
-                                <span className="text-[10px] font-semibold text-positive bg-emerald-500/10 px-2 py-0.5 rounded-md">
+                                <span className="rounded-md px-1.5 py-0.5 text-xs bg-positive-subtle text-positive">
                                   Included
                                 </span>
                               ) : (
-                                <span className="text-[10px] font-semibold text-muted bg-surface-subtle px-2 py-0.5 rounded-md">
-                                  Excluded (Discretionary)
+                                <span className="rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-muted">
+                                  Excluded (discretionary)
                                 </span>
                               )}
                             </td>
@@ -871,11 +775,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
               </div>
             </div>
 
-            <div className="p-4 border-t border-subtle bg-surface-subtle flex justify-end">
-              <button
-                onClick={() => setShowCalcModal(false)}
-                className="px-4 py-2 rounded-xl bg-surface border border-default hover:bg-surface-hover text-main text-xs font-semibold"
-              >
+            <div className="p-4 border-t border-subtle flex justify-end">
+              <button onClick={() => setShowCalcModal(false)} className={btnSecondary}>
                 Close
               </button>
             </div>
@@ -883,48 +784,45 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
         </div>
       )}
 
-      {/* Goal Create / Edit Modal */}
+      {/* Goal create / edit modal */}
       {isGoalModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
-          <div className="relative w-full max-w-lg bg-surface border border-default rounded-2xl shadow-xl overflow-hidden flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+          <div className="relative w-full max-w-lg bg-surface border border-default rounded-xl shadow-xl overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-5 border-b border-subtle">
-              <h2 className="text-base font-bold text-main">
-                {editingGoal ? "Edit Goal" : "Create New Goal"}
+              <h2 className="text-base font-medium text-main">
+                {editingGoal ? "Edit goal" : "New goal"}
               </h2>
               <button
                 onClick={() => setIsGoalModalOpen(false)}
-                className="p-1.5 rounded-lg text-muted hover:text-main"
+                aria-label="Close"
+                className="p-1.5 rounded-lg text-muted hover:text-main bg-surface-hover transition-colors"
               >
-                ✕
+                <X className="w-4 h-4" strokeWidth={1.5} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveGoal} className="p-5 space-y-4">
+            <form onSubmit={handleSaveGoal} className="p-5 flex flex-col gap-4">
               <div>
-                <label className="block text-[11px] font-semibold text-muted mb-1">
-                  Goal Name *
-                </label>
+                <label className={labelCls}>Goal name *</label>
                 <input
                   type="text"
                   value={goalForm.name}
                   onChange={(e) => setGoalForm({ ...goalForm, name: e.target.value })}
-                  placeholder="e.g. 2026 TFSA Max, Down Payment, Home Reno"
-                  className="w-full px-3 py-2 bg-input border border-default rounded-xl text-xs text-main focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+                  placeholder="Down payment"
+                  className={inputCls}
                   required
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[11px] font-semibold text-muted mb-1">
-                    Goal Type
-                  </label>
+                  <label className={labelCls}>Goal type</label>
                   <select
                     value={goalForm.type}
                     onChange={(e) =>
                       setGoalForm({ ...goalForm, type: e.target.value as GoalType })
                     }
-                    className="w-full px-3 py-2 bg-input border border-default rounded-xl text-xs text-main focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+                    className={inputCls}
                   >
                     {Object.entries(GOAL_TYPE_META).map(([key, m]) => (
                       <option key={key} value={key}>
@@ -935,9 +833,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-muted mb-1">
-                    Target Amount ($CAD) *
-                  </label>
+                  <label className={labelCls}>Target amount (CAD) *</label>
                   <input
                     type="number"
                     step="0.01"
@@ -946,17 +842,15 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                     onChange={(e) =>
                       setGoalForm({ ...goalForm, target_amount: parseFloat(e.target.value) || 0 })
                     }
-                    className="w-full px-3 py-2 bg-input border border-default rounded-xl text-xs text-main font-mono focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+                    className={`${inputCls} font-mono`}
                     required
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[11px] font-semibold text-muted mb-1">
-                    Current Amount ($CAD)
-                  </label>
+                  <label className={labelCls}>Current amount (CAD)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -965,47 +859,43 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                     onChange={(e) =>
                       setGoalForm({ ...goalForm, current_amount: parseFloat(e.target.value) || 0 })
                     }
-                    className="w-full px-3 py-2 bg-input border border-default rounded-xl text-xs text-main font-mono focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+                    className={`${inputCls} font-mono`}
                   />
-                  <span className="text-[10px] text-muted">
-                    Overridden by linked account if specified.
+                  <span className="mt-1 block text-[11px] text-muted">
+                    A linked account overrides this
                   </span>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-muted mb-1">
-                    Linked Account (Optional)
-                  </label>
+                  <label className={labelCls}>Linked account (optional)</label>
                   <select
                     value={goalForm.linked_account_id}
                     onChange={(e) =>
                       setGoalForm({ ...goalForm, linked_account_id: e.target.value })
                     }
-                    className="w-full px-3 py-2 bg-input border border-default rounded-xl text-xs text-main focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+                    className={inputCls}
                   >
-                    <option value="">None (Manual Balance)</option>
+                    <option value="">None (manual balance)</option>
                     {accounts.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.name} (${a.current_balance.toFixed(2)})
+                        {a.name} ({formatMoney(a.current_balance)})
                       </option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[11px] font-semibold text-muted mb-1">
-                    Owner Household Member
-                  </label>
+                  <label className={labelCls}>Owner</label>
                   <select
                     value={goalForm.owner_member_id}
                     onChange={(e) =>
                       setGoalForm({ ...goalForm, owner_member_id: e.target.value })
                     }
-                    className="w-full px-3 py-2 bg-input border border-default rounded-xl text-xs text-main focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+                    className={inputCls}
                   >
-                    <option value="">Joint / Entire Household</option>
+                    <option value="">Joint / entire household</option>
                     {householdMembers.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.name}
@@ -1015,44 +905,33 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-muted mb-1">
-                    Target Date (Optional)
-                  </label>
+                  <label className={labelCls}>Target date (optional)</label>
                   <input
                     type="date"
                     value={goalForm.target_date}
                     onChange={(e) => setGoalForm({ ...goalForm, target_date: e.target.value })}
-                    className="w-full px-3 py-2 bg-input border border-default rounded-xl text-xs text-main focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+                    className={inputCls}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-muted mb-1">
-                  Notes (Optional)
-                </label>
+                <label className={labelCls}>Notes (optional)</label>
                 <textarea
                   value={goalForm.notes}
                   onChange={(e) => setGoalForm({ ...goalForm, notes: e.target.value })}
                   rows={2}
-                  placeholder="e.g. Save for 20% down payment on condo in Vancouver or Toronto"
-                  className="w-full px-3 py-2 bg-input border border-default rounded-xl text-xs text-main placeholder-muted focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+                  placeholder="Notes"
+                  className="w-full px-3 py-2 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-subtle">
-                <button
-                  type="button"
-                  onClick={() => setIsGoalModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-surface border border-default hover:bg-surface-hover text-main text-xs font-semibold"
-                >
+              <div className="flex justify-end gap-2 pt-4 border-t border-subtle">
+                <button type="button" onClick={() => setIsGoalModalOpen(false)} className={btnSecondary}>
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs cursor-pointer"
-                >
-                  {editingGoal ? "Save Changes" : "Create Goal"}
+                <button type="submit" className={btnPrimary}>
+                  {editingGoal ? "Save changes" : "Create goal"}
                 </button>
               </div>
             </form>

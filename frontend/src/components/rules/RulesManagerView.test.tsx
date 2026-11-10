@@ -95,9 +95,9 @@ describe("RulesManagerView & Auto-Classification Engine", () => {
   it("renders Active Rules tab by default and displays configured rules", async () => {
     render(<RulesManagerView categories={mockCategories} accounts={mockAccounts} />);
 
-    expect(screen.getByText("Categorization & Rules")).toBeDefined();
-    expect(screen.getByText("Active Rules")).toBeDefined();
-    expect(screen.getByText("Classification Engine & Sandbox")).toBeDefined();
+    expect(screen.getByText("Rules")).toBeDefined();
+    expect(screen.getByText("Active rules")).toBeDefined();
+    expect(screen.getByText("Classification engine")).toBeDefined();
 
     await waitFor(() => {
       expect(screen.getAllByText("TIM HORTONS").length).toBeGreaterThan(0);
@@ -108,15 +108,15 @@ describe("RulesManagerView & Auto-Classification Engine", () => {
   it("switches to Classification Engine & Sandbox tab and renders 4-tier status banner", async () => {
     render(<RulesManagerView categories={mockCategories} accounts={mockAccounts} />);
 
-    const sandboxTabButton = screen.getByRole("button", { name: /Classification Engine & Sandbox/i });
+    const sandboxTabButton = screen.getByRole("button", { name: /Classification engine/i });
     fireEvent.click(sandboxTabButton);
 
     await waitFor(() => {
-      expect(screen.getByText("Cascading Multi-Tier Classification Architecture")).toBeDefined();
-      expect(screen.getByText("Local Rules")).toBeDefined();
-      expect(screen.getByText("User History")).toBeDefined();
+      expect(screen.getByText("Classification tiers")).toBeDefined();
+      expect(screen.getByText("Local rules")).toBeDefined();
+      expect(screen.getByText("User history")).toBeDefined();
       expect(screen.getByText("Heuristics")).toBeDefined();
-      expect(screen.getByText("Bedrock AI Recourse")).toBeDefined();
+      expect(screen.getByText("Bedrock AI")).toBeDefined();
       expect(screen.getByText("Enabled")).toBeDefined();
     });
   });
@@ -125,13 +125,13 @@ describe("RulesManagerView & Auto-Classification Engine", () => {
     render(<RulesManagerView categories={mockCategories} accounts={mockAccounts} />);
 
     // Switch to Sandbox
-    fireEvent.click(screen.getByRole("button", { name: /Classification Engine & Sandbox/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Classification engine/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("Live Interactive Classifier Sandbox")).toBeDefined();
+      expect(screen.getByText("Classifier sandbox")).toBeDefined();
     });
 
-    const payeeInput = screen.getByPlaceholderText(/e.g. TIM HORTONS/i);
+    const payeeInput = screen.getByPlaceholderText(/TIM HORTONS/i);
     fireEvent.change(payeeInput, { target: { value: "TIM HORTONS #4921 TORONTO ON" } });
 
     const classifyBtn = screen.getByRole("button", { name: /Classify/i });
@@ -148,12 +148,12 @@ describe("RulesManagerView & Auto-Classification Engine", () => {
 
     // Check results card
     await waitFor(() => {
-      expect(screen.getByText("Classification Result")).toBeDefined();
+      expect(screen.getByText("Result")).toBeDefined();
       expect(screen.getByText("Dining & Coffee")).toBeDefined();
       expect(screen.getAllByText("Heuristics").length).toBeGreaterThan(1);
       expect(screen.getByText("95%")).toBeDefined();
-      expect(screen.getByText("High Confidence")).toBeDefined();
-      expect(screen.getByText("Detailed Diagnostic Reason")).toBeDefined();
+      expect(screen.getByText("High confidence")).toBeDefined();
+      expect(screen.getByText("Reason")).toBeDefined();
       expect(
         screen.getByText(/Matched Canadian bilingual dining taxonomy/i)
       ).toBeDefined();
@@ -171,19 +171,19 @@ describe("RulesManagerView & Auto-Classification Engine", () => {
     );
 
     // Switch to Sandbox tab
-    fireEvent.click(screen.getByRole("button", { name: /Classification Engine & Sandbox/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Classification engine/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("Batch Auto-Classify Uncategorized Transactions")).toBeDefined();
+      expect(screen.getByText("Classify uncategorized transactions")).toBeDefined();
     });
 
     // Slider check
-    const slider = screen.getByLabelText(/Minimum Confidence Threshold/i);
+    const slider = screen.getByLabelText(/Minimum confidence/i);
     expect(slider).toBeDefined();
     fireEvent.change(slider, { target: { value: "0.80" } });
 
     // Run batch auto-classify button
-    const runBtn = screen.getByRole("button", { name: /Run Auto-Classification/i });
+    const runBtn = screen.getByRole("button", { name: /Run auto-classification/i });
     fireEvent.click(runBtn);
 
     await waitFor(() => {
@@ -195,7 +195,7 @@ describe("RulesManagerView & Auto-Classification Engine", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Batch Auto-Classification Complete")).toBeDefined();
+      expect(screen.getByText("Auto-classification complete")).toBeDefined();
       expect(
         screen.getByText("12 transactions classified, 2 remaining uncategorized")
       ).toBeDefined();

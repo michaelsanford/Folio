@@ -73,12 +73,12 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
   }, [isOpen]);
 
   const categories: Array<{ id: AccountCategoryGroup | "ALL"; label: string }> = [
-    { id: "ALL", label: "All Types" },
+    { id: "ALL", label: "All types" },
     { id: "REGISTERED", label: "Registered (CRA)" },
-    { id: "CASH", label: "Cash & Banking" },
+    { id: "CASH", label: "Cash and banking" },
     { id: "INVESTMENT", label: "Investments" },
-    { id: "DEBT", label: "Loans & Debt" },
-    { id: "ASSET", label: "Physical Assets" },
+    { id: "DEBT", label: "Loans and debt" },
+    { id: "ASSET", label: "Physical assets" },
   ];
 
   const allTypes = Object.values(CANADIAN_ACCOUNT_TYPES);
@@ -102,34 +102,29 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
         ref={triggerRef}
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between p-3.5 bg-input border border-default hover:border-strong rounded-xl text-left transition-all shadow-xs group cursor-pointer"
+        aria-expanded={isOpen}
+        className="w-full flex items-center justify-between gap-3 px-3 py-3 bg-input border border-default rounded-lg text-left transition-colors group cursor-pointer"
       >
-        <div className="flex items-center gap-3.5 min-w-0">
+        <div className="flex items-center gap-3 min-w-0">
           <AccountIcon type={currentMeta.type} size="md" />
           <div className="truncate flex-1">
-            <div className="text-sm font-bold text-main flex items-center gap-2.5 truncate">
+            <div className="text-sm font-medium text-main flex items-center gap-2 truncate">
               <span>{currentMeta.name}</span>
-              <span
-                className="px-2 py-0.5 rounded-md text-xs font-semibold border shrink-0 font-mono"
-                style={{
-                  backgroundColor: `${currentMeta.defaultColor}15`,
-                  color: currentMeta.defaultColor,
-                  borderColor: `${currentMeta.defaultColor}30`,
-                }}
-              >
+              <span className="rounded-md px-1.5 py-0.5 text-xs font-mono font-normal bg-surface-subtle text-sub shrink-0">
                 {currentMeta.badge}
               </span>
             </div>
             <div className="text-xs text-muted mt-0.5 truncate">
-              {ACCOUNT_CATEGORY_LABELS[currentMeta.category]} • {currentMeta.description}
+              {ACCOUNT_CATEGORY_LABELS[currentMeta.category]} · {currentMeta.description}
             </div>
           </div>
         </div>
 
         <ChevronDown
-          className={`w-4 h-4 text-muted group-hover:text-main transition-transform ml-2 shrink-0 ${
+          className={`w-4 h-4 text-muted group-hover:text-main transition-transform shrink-0 ${
             isOpen ? "rotate-180" : ""
           }`}
+          strokeWidth={1.5}
         />
       </button>
 
@@ -153,33 +148,36 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
                 width: `${popoverStyle.width}px`,
                 maxHeight: `${popoverStyle.maxHeight}px`,
               }}
-              className="z-[101] rounded-2xl bg-surface border border-default shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95"
+              className="z-[101] rounded-xl bg-surface border border-default shadow-xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95"
             >
               {/* Search and Category Filter Tabs */}
-              <div className="p-3.5 border-b border-subtle bg-surface-subtle space-y-3 shrink-0">
+              <div className="p-3 border-b border-subtle space-y-3 shrink-0">
                 <div className="relative">
-                  <Search className="w-4 h-4 text-muted absolute left-3.5 top-3" />
+                  <Search
+                    className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                    strokeWidth={1.5}
+                  />
                   <input
                     type="text"
-                    placeholder="Search accounts (TFSA, RRSP, FHSA, Chequing, Mortgage...)"
+                    placeholder="Search account types"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-input border border-default rounded-xl text-xs text-main placeholder:text-muted focus:outline-hidden focus:ring-1 focus:ring-accent-main transition-all"
+                    className="w-full h-9 pl-9 pr-3 bg-input border border-default rounded-lg text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
                     autoFocus
                   />
                 </div>
 
-                {/* Category Pills */}
-                <div className="flex gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+                {/* Category Tabs */}
+                <div className="flex gap-1 overflow-x-auto pb-0.5 no-scrollbar">
                   {categories.map((c) => (
                     <button
                       key={c.id}
                       type="button"
                       onClick={() => setSelectedCategory(c.id)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                      className={`h-7 px-2 rounded-md text-xs whitespace-nowrap border transition-colors cursor-pointer ${
                         selectedCategory === c.id
-                          ? "bg-accent-main text-accent-contrast shadow-xs"
-                          : "bg-surface hover:bg-surface-hover text-sub border border-default"
+                          ? "bg-surface-subtle border-default text-main font-medium"
+                          : "border-transparent text-sub hover:text-main bg-surface-hover"
                       }`}
                     >
                       {c.label}
@@ -189,17 +187,15 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
               </div>
 
               {/* List of Account Types */}
-              <div className="overflow-y-auto p-2 space-y-1 divide-y divide-subtle flex-1">
+              <div className="overflow-y-auto p-1 flex flex-col gap-0.5 flex-1">
                 {filteredTypes.length > 0 ? (
                   filteredTypes.map((item) => {
                     const isSelected = item.type === value;
                     return (
                       <div
                         key={item.type}
-                        className={`group flex items-center justify-between p-3 rounded-xl transition-all ${
-                          isSelected
-                            ? "bg-accent-subtle border border-accent-main/40 shadow-xs"
-                            : "hover:bg-surface-hover"
+                        className={`group flex items-center justify-between gap-2 px-3 py-2 rounded-lg transition-colors ${
+                          isSelected ? "bg-accent-subtle" : "bg-surface-hover"
                         }`}
                       >
                         <button
@@ -215,17 +211,10 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
                           </div>
                           <div className="truncate flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs font-bold text-main">
+                              <span className="text-sm font-medium text-main">
                                 {item.name}
                               </span>
-                              <span
-                                className="px-2 py-0.5 rounded-md text-[10px] font-semibold border shrink-0 font-mono"
-                                style={{
-                                  backgroundColor: `${item.defaultColor}15`,
-                                  color: item.defaultColor,
-                                  borderColor: `${item.defaultColor}30`,
-                                }}
-                              >
+                              <span className="rounded-md px-1.5 py-0.5 text-[11px] font-mono bg-surface-subtle text-sub shrink-0">
                                 {item.badge}
                               </span>
                             </div>
@@ -235,31 +224,30 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
                           </div>
                         </button>
 
-                        <div className="flex items-center gap-2 ml-2 shrink-0">
+                        <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
-                            title="View Canadian Rules & Regulations"
+                            title="Canadian rules"
+                            aria-label={`Canadian rules for ${item.name}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               setInfoType(item.type);
                             }}
-                            className="p-1.5 rounded-lg text-muted hover:text-accent-main hover:bg-surface transition-colors cursor-pointer"
+                            className="h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main transition-colors cursor-pointer"
                           >
-                            <Info className="w-4 h-4" />
+                            <Info className="w-4 h-4" strokeWidth={1.5} />
                           </button>
 
                           {isSelected ? (
-                            <div className="w-5 h-5 rounded-full bg-accent-main flex items-center justify-center text-accent-contrast shadow-xs">
-                              <Check className="w-3 h-3" />
-                            </div>
+                            <Check className="w-4 h-4 text-accent-subtle" strokeWidth={1.5} />
                           ) : null}
                         </div>
                       </div>
                     );
                   })
                 ) : (
-                  <div className="p-8 text-center text-xs text-muted">
-                    No Canadian account types match your search.
+                  <div className="p-8 text-center text-sm text-muted">
+                    No account types match your search
                   </div>
                 )}
               </div>

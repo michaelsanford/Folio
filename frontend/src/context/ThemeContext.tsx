@@ -28,10 +28,10 @@ export const THEMES: ThemeDefinition[] = [
     id: "folio-emerald",
     name: "Folio Emerald",
     category: "Financial",
-    description: "British racing green & mint with graphite slate. Classic private wealth.",
+    description: "Graphite surfaces with a banker's-lamp green",
     accentHex: "#10b981",
-    darkCanvasHex: "#090d16",
-    lightCanvasHex: "#f8fafc",
+    darkCanvasHex: "#141415",
+    lightCanvasHex: "#fafafa",
   },
   {
     id: "bloomberg",

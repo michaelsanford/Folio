@@ -1,16 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
-  Search,
-  Receipt,
-  Plus,
-  Split,
-  Trash2,
-  Layers,
-  Sparkles,
-
-  Edit2,
-  CheckCircle2,
-} from "lucide-react";
+import { Search, Plus, Split, Trash2, Layers, Sparkles, Edit2, CheckCircle2, X } from "lucide-react";
 import type {
   Account,
   Category,
@@ -20,6 +9,23 @@ import type {
   TransactionStatus,
 } from "../../types";
 import { api } from "../../services/api";
+import { Money } from "../common/Money";
+import { formatMoney } from "../../utils/format";
+
+const inputClass =
+  "h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]";
+const compactSelectClass =
+  "h-8 px-2 rounded-lg border border-default bg-input text-xs text-main focus:outline-none focus:border-[var(--accent-primary)]";
+const primaryButton =
+  "h-9 px-4 inline-flex items-center justify-center gap-2 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] disabled:opacity-50 cursor-pointer";
+const secondaryButton =
+  "h-9 px-4 inline-flex items-center justify-center gap-2 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer";
+const iconButton =
+  "w-8 h-8 inline-flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer";
+const checkboxClass = "rounded border-default bg-input text-accent-main focus:ring-accent-main";
+const modalOverlay = "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in";
+const modalPanel = "w-full rounded-xl bg-surface border border-default shadow-xl p-6";
+const fieldLabel = "block text-xs text-sub mb-1";
 
 interface LedgerWorkspaceProps {
   accounts: Account[];
@@ -94,7 +100,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       });
       const classified = res.classified_count ?? res.updated_count ?? 0;
       const remaining = res.remaining_count ?? 0;
-      setAutoClassifySummary(`${classified} transactions classified, ${remaining} remaining uncategorized.`);
+      setAutoClassifySummary(`${classified} transactions classified, ${remaining} remaining uncategorized`);
       loadTransactions();
       onDataModified();
     } catch (err: any) {
@@ -119,24 +125,19 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
     let dotColor: string;
     let label: string;
-    let badgeBg: string;
 
     if (tier === "BEDROCK_AI") {
-      dotColor = "bg-purple-500";
-      label = "AI (Bedrock)";
-      badgeBg = "bg-purple-500/10 text-purple-500 border-purple-500/20";
+      dotColor = "bg-accent-main";
+      label = "Bedrock AI";
     } else if (isHigh) {
-      dotColor = "bg-emerald-500";
-      label = "High Confidence";
-      badgeBg = "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+      dotColor = "bg-positive";
+      label = "High confidence";
     } else if (isMed) {
-      dotColor = "bg-amber-500";
-      label = "Medium Confidence";
-      badgeBg = "bg-amber-500/10 text-amber-500 border-amber-500/20";
+      dotColor = "bg-warning";
+      label = "Medium confidence";
     } else {
-      dotColor = "bg-slate-400";
-      label = "Low Confidence";
-      badgeBg = "bg-surface-subtle text-muted border-subtle";
+      dotColor = "bg-[var(--text-muted)]";
+      label = "Low confidence";
     }
 
     const tooltip = reason
@@ -145,7 +146,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
     return (
       <span
-        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-mono font-semibold border ${badgeBg} cursor-help shrink-0`}
+        className="inline-flex items-center gap-1 text-[11px] font-mono text-muted cursor-help shrink-0"
         title={tooltip}
       >
         <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
@@ -301,7 +302,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
     if (Math.abs(totalSplit - expected) > 0.009) {
       alert(
-        `Splits sum ($${totalSplit.toFixed(2)}) must equal total transaction amount ($${expected.toFixed(2)})`
+        `Splits total ${formatMoney(totalSplit)} but the transaction is ${formatMoney(expected)}. They must match.`
       );
       return;
     }
@@ -363,10 +364,38 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
+  const hasNoFilters = !searchQuery && !selectedAccountId && !selectedCategoryId && !selectedMemberId;
+  const isLedgerEmpty = totalCount === 0 && hasNoFilters;
+
+  const renderMemberTag = (txn: Transaction) => {
+    const member =
+      householdMembers?.find((m) => m.id === txn.assigned_member_id) || txn.assigned_member;
+    if (!member) return null;
+    const memberColor = member.color || "var(--text-muted)";
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-xs text-sub shrink-0"
+        title={`Assigned to ${member.name}`}
+      >
+        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: memberColor }} />
+        <span>{member.name}</span>
+      </span>
+    );
+  };
+
+  const spinner = (
+    <div className="animate-spin rounded-full h-5 w-5 border-2 border-subtle border-t-[var(--accent-primary)] mx-auto mb-3"></div>
+  );
+
+  const closeAutoClassify = () => {
+    setAutoClassifyModalOpen(false);
+    setAutoClassifySummary(null);
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {loadError && (
-        <div className="p-3 rounded-xl bg-negative-subtle border border-rose-500/30 text-xs text-negative flex items-center justify-between gap-3">
+        <div className="px-4 py-3 rounded-xl bg-negative-subtle border border-negative/30 text-sm text-negative flex items-center justify-between gap-3">
           <span>{loadError}</span>
           <button
             type="button"
@@ -374,28 +403,32 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               setLoadError(null);
               loadTransactions();
             }}
-            className="px-3 py-1 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast font-semibold"
+            className={secondaryButton}
           >
             Retry
           </button>
         </div>
       )}
 
-      {/* Top Filter Bar */}
-      <div className="p-4 rounded-2xl bg-surface border border-default shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        {/* Search & Selectors */}
-        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 flex-1 w-full">
+      {/* Top filter bar */}
+      <div className="p-4 rounded-xl bg-surface border border-subtle flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {/* Search & selectors */}
+        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 flex-1 w-full">
           <div className="relative w-full sm:flex-1 sm:min-w-[180px]">
-            <Search className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search
+              className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2"
+              strokeWidth={1.5}
+            />
             <input
               type="text"
-              placeholder="Search payees, notes, amounts..."
+              placeholder="Search"
+              aria-label="Search payees, notes and amounts"
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
                 setPage(1);
               }}
-              className="w-full pl-9 pr-4 py-2 bg-input border border-default rounded-xl text-xs text-main placeholder:text-muted focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+              className={`w-full pl-9 ${inputClass}`}
             />
           </div>
 
@@ -406,9 +439,10 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 setSelectedAccountId(e.target.value);
                 setPage(1);
               }}
-              className="flex-1 sm:flex-none px-3 py-2 bg-input border border-default rounded-xl text-xs font-medium text-main focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+              aria-label="Account"
+              className={`flex-1 sm:flex-none ${inputClass}`}
             >
-              <option value="">All Accounts</option>
+              <option value="">All accounts</option>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
@@ -422,9 +456,10 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 setSelectedCategoryId(e.target.value);
                 setPage(1);
               }}
-              className="flex-1 sm:flex-none px-3 py-2 bg-input border border-default rounded-xl text-xs font-medium text-main focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+              aria-label="Category"
+              className={`flex-1 sm:flex-none ${inputClass}`}
             >
-              <option value="">All Categories</option>
+              <option value="">All categories</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -439,58 +474,54 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                   setSelectedMemberId(e.target.value);
                   setPage(1);
                 }}
-                className="flex-1 sm:flex-none px-3 py-2 bg-input border border-default rounded-xl text-xs font-medium text-main focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+                aria-label="Household member"
+                className={`flex-1 sm:flex-none ${inputClass}`}
               >
-                <option value="">All Household</option>
+                <option value="">All members</option>
                 {householdMembers.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.name}
                   </option>
                 ))}
-                <option value="unassigned">Joint / Unassigned</option>
+                <option value="unassigned">Joint / unassigned</option>
               </select>
             )}
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center justify-end gap-2.5 shrink-0 w-full sm:w-auto">
+        {/* Action buttons */}
+        <div className="flex items-center justify-end gap-2 shrink-0 w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setAutoClassifyModalOpen(true)}
-            className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-surface border border-default hover:bg-surface-hover text-main text-xs font-semibold shadow-2xs transition-all cursor-pointer"
+            className={`w-full sm:w-auto ${secondaryButton}`}
             title="Auto-classify all uncategorized transactions using the multi-tier engine"
           >
-            <Sparkles className="w-3.5 h-3.5 text-accent-main" />
-            <span>Auto-Classify Uncategorized</span>
+            <Sparkles className="w-4 h-4 text-muted" strokeWidth={1.5} />
+            <span>Auto-classify uncategorized</span>
           </button>
 
-          <button
-            onClick={handleOpenCreateTxn}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4" /> Add Transaction
+          <button onClick={handleOpenCreateTxn} className={`w-full sm:w-auto ${primaryButton}`}>
+            <Plus className="w-4 h-4" strokeWidth={1.5} /> Add transaction
           </button>
         </div>
       </div>
 
-      {/* Batch Action Toolbar */}
+      {/* Batch action toolbar */}
       {selectedTxnIds.size > 0 && (
-        <div className="p-4 rounded-xl bg-surface border border-accent-main shadow-md flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 animate-in fade-in">
-          <div className="flex items-center gap-2 text-xs text-sub">
-            <span className="font-bold font-mono px-2 py-0.5 rounded bg-accent-main text-accent-contrast">
-              {selectedTxnIds.size}
-            </span>
-            <span className="font-semibold">transactions selected</span>
+        <div className="p-4 rounded-xl bg-surface border border-accent-main/30 flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-4 animate-in fade-in">
+          <div className="text-sm text-sub">
+            <span className="font-mono text-main">{selectedTxnIds.size}</span> selected
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <select
               value={batchCategory}
               onChange={(e) => setBatchCategory(e.target.value)}
-              className="px-3 py-1.5 bg-input border border-default text-main rounded-lg text-xs"
+              aria-label="Category for selected transactions"
+              className={inputClass}
             >
-              <option value="">Choose Category...</option>
+              <option value="">Category</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -500,33 +531,33 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
             <input
               type="text"
-              placeholder="Override Payee"
+              placeholder="Payee override"
               value={batchPayee}
               onChange={(e) => setBatchPayee(e.target.value)}
-              className="px-3 py-1.5 bg-input border border-default text-main rounded-lg text-xs placeholder:text-muted flex-1 sm:flex-none min-w-[120px]"
+              className={`flex-1 sm:flex-none min-w-[120px] ${inputClass}`}
             />
 
-            <label className="flex items-center gap-1.5 text-xs text-sub cursor-pointer">
+            <label className="flex items-center gap-2 text-sm text-sub cursor-pointer">
               <input
                 type="checkbox"
                 checked={createRuleWithBatch}
                 onChange={(e) => setCreateRuleWithBatch(e.target.checked)}
-                className="rounded border-default bg-input text-accent-main focus:ring-accent-main"
+                className={checkboxClass}
               />
-              <Sparkles className="w-3.5 h-3.5 text-accent-main" /> Save as Rule
+              Save as rule
             </label>
 
             <div className="flex items-center gap-2">
               <button
                 onClick={handleExecuteBatchCategorize}
                 disabled={!batchCategory}
-                className="px-3.5 py-1.5 rounded-lg bg-accent-main hover:bg-accent-main disabled:opacity-50 text-accent-contrast text-xs font-semibold cursor-pointer"
+                className={primaryButton}
               >
-                Apply Batch
+                Apply
               </button>
               <button
                 onClick={() => setSelectedTxnIds(new Set())}
-                className="px-2.5 py-1.5 text-xs text-muted hover:text-main cursor-pointer"
+                className="h-9 px-3 rounded-lg text-sm text-sub hover:text-main bg-surface-hover transition-colors cursor-pointer"
               >
                 Clear
               </button>
@@ -535,37 +566,33 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
         </div>
       )}
 
-      {/* Transactions Container */}
-      <div className="rounded-2xl border border-default bg-surface overflow-hidden shadow-xs">
-        {/* Mobile Feed View (< md screen) */}
-        <div className="block md:hidden divide-y divide-subtle font-medium">
+      {/* Transactions */}
+      <div className="rounded-xl border border-subtle bg-surface overflow-hidden">
+        {/* Mobile feed (< md) */}
+        <div className="block md:hidden divide-y divide-subtle">
           {isLoading ? (
-            <div className="p-8 text-center text-muted">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent-main mx-auto mb-2"></div>
-              Loading ledger...
+            <div className="p-8 text-center text-sm text-muted">
+              {spinner}
+              Loading…
             </div>
           ) : transactions.length === 0 ? (
-            totalCount === 0 && !searchQuery && !selectedAccountId && !selectedCategoryId && !selectedMemberId ? (
+            isLedgerEmpty ? (
               <div className="p-8 text-center max-w-sm mx-auto">
-                <div className="w-10 h-10 rounded-xl bg-accent-subtle/50 text-accent-main flex items-center justify-center mx-auto mb-2.5">
-                  <Receipt className="w-5 h-5" />
+                <div className="text-sm font-medium text-main">No transactions yet</div>
+                <div className="mt-1 text-xs text-muted">
+                  Load Canadian sample entries to try categorization, analytics and budgeting
                 </div>
-                <div className="text-xs font-bold text-main mb-1">No transactions in ledger</div>
-                <div className="text-[11px] text-muted mb-3">Load Canadian sample ledger entries to test categorization, analytics, and budgeting.</div>
                 <button
                   type="button"
                   onClick={handleSeedLedger}
                   disabled={isSeedingDemo}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+                  className={`mt-4 ${primaryButton}`}
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>{isSeedingDemo ? "Seeding..." : "Load Sample Ledger"}</span>
+                  {isSeedingDemo ? "Loading sample…" : "Load sample ledger"}
                 </button>
               </div>
             ) : (
-              <div className="p-8 text-center text-muted text-xs">
-                No transactions found matching criteria.
-              </div>
+              <div className="p-8 text-center text-muted text-sm">No transactions match these filters</div>
             )
           ) : (
             transactions.map((txn) => {
@@ -576,82 +603,59 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               return (
                 <div
                   key={txn.id}
-                  className={`p-3.5 flex items-start gap-3 transition-colors ${
-                    isChecked ? "bg-accent-subtle/30" : "hover:bg-surface-hover"
+                  className={`p-4 flex items-start gap-3 transition-colors ${
+                    isChecked ? "bg-accent-subtle" : "bg-surface-hover"
                   }`}
                 >
                   <input
                     type="checkbox"
                     checked={isChecked}
                     onChange={() => handleToggleSelectRow(txn.id)}
-                    className="mt-1 rounded border-default bg-input text-accent-main focus:ring-accent-main shrink-0"
+                    aria-label="Select transaction"
+                    className={`mt-1 shrink-0 ${checkboxClass}`}
                   />
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-xs font-bold text-main truncate">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm text-main truncate">
                             {txn.normalized_payee || txn.raw_payee}
                           </span>
-                          {(() => {
-                            const member =
-                              householdMembers?.find((m) => m.id === txn.assigned_member_id) ||
-                              txn.assigned_member;
-                            if (!member) return null;
-                            const memberColor = member.color || "#3B82F6";
-                            return (
-                              <span
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold text-white shadow-2xs shrink-0"
-                                style={{ backgroundColor: memberColor }}
-                                title={`Assigned to ${member.name}`}
-                              >
-                                <span className="w-3 h-3 rounded-full bg-white/20 flex items-center justify-center text-[8px] font-bold">
-                                  {member.name.charAt(0)}
-                                </span>
-                                <span>{member.name}</span>
-                              </span>
-                            );
-                          })()}
+                          {renderMemberTag(txn)}
                         </div>
                         {txn.normalized_payee && txn.normalized_payee !== txn.raw_payee && (
-                          <div className="text-[10px] text-muted font-mono truncate">
-                            {txn.raw_payee}
-                          </div>
+                          <div className="text-[11px] text-muted font-mono truncate">{txn.raw_payee}</div>
                         )}
                       </div>
-                      <div
-                        className={`font-mono font-bold text-xs shrink-0 ${
-                          txn.amount >= 0 ? "text-positive" : "text-main"
-                        }`}
-                      >
-                        {txn.amount >= 0 ? "+" : ""}${Math.abs(txn.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
+                      <Money
+                        value={txn.amount}
+                        signed
+                        className={`text-sm shrink-0 ${txn.amount >= 0 ? "text-positive" : "text-main"}`}
+                      />
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-1.5 mt-2 text-[10px]">
-                      <span className="text-muted font-mono">
-                        {txn.transaction_date?.split("T")[0]}
-                      </span>
-                      <span className="text-muted">•</span>
-                      <span className="font-semibold text-sub truncate max-w-[100px]">
+                    <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
+                      <span className="text-muted font-mono">{txn.transaction_date?.split("T")[0]}</span>
+                      <span className="text-muted">·</span>
+                      <span className="text-sub truncate max-w-[100px]">
                         {matchedAccount?.name || "Account"}
                       </span>
-                      <span className="text-muted">•</span>
 
                       {isSplit ? (
                         <button
                           onClick={() => handleOpenSplitModal(txn)}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-accent-subtle text-accent-subtle border border-accent-main/30"
+                          className="inline-flex items-center gap-1 h-7 px-2 rounded-lg border border-default text-xs text-sub bg-surface-hover transition-colors"
                         >
-                          <Layers className="w-2.5 h-2.5" /> Split ({txn.splits.length})
+                          <Layers className="w-4 h-4 text-muted" strokeWidth={1.5} /> {txn.splits.length} splits
                         </button>
                       ) : (
-                        <div className="inline-flex items-center gap-1">
+                        <div className="inline-flex items-center gap-2">
                           <select
                             value={txn.splits?.[0]?.category_id || ""}
                             onChange={(e) => handleInlineCategoryChange(txn, e.target.value)}
-                            className="bg-input border border-default text-main text-[10px] rounded px-1.5 py-0.5 focus:ring-1 focus:ring-accent-main focus:outline-hidden max-w-[120px] truncate"
+                            aria-label="Category"
+                            className={`max-w-[120px] truncate ${compactSelectClass}`}
                           >
                             <option value="">Uncategorized</option>
                             {categories.map((c) => (
@@ -669,17 +673,19 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                           type="button"
                           onClick={() => handleOpenEditTxn(txn)}
                           title="Edit transaction"
-                          className="p-1 text-muted hover:text-accent-main cursor-pointer"
+                          aria-label="Edit transaction"
+                          className={iconButton}
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
+                          <Edit2 className="w-4 h-4" strokeWidth={1.5} />
                         </button>
                         <button
                           type="button"
                           onClick={() => handleOpenSplitModal(txn)}
                           title="Split transaction"
-                          className="p-1 text-muted hover:text-accent-main cursor-pointer"
+                          aria-label="Split transaction"
+                          className={iconButton}
                         >
-                          <Split className="w-3.5 h-3.5" />
+                          <Split className="w-4 h-4" strokeWidth={1.5} />
                         </button>
                       </div>
                     </div>
@@ -690,64 +696,58 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
           )}
         </div>
 
-        {/* Desktop High-density Transactions Table (>= md screen) */}
+        {/* Desktop table (>= md) */}
         <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-surface-subtle text-muted uppercase text-[10px] tracking-wider border-b border-subtle">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs text-muted border-b border-subtle">
               <tr>
-                <th className="p-3.5 w-10 text-center">
+                <th className="px-4 py-3 w-10 text-center font-normal">
                   <input
                     type="checkbox"
                     checked={selectedTxnIds.size === transactions.length && transactions.length > 0}
                     onChange={handleToggleSelectAll}
-                    className="rounded border-default bg-input text-accent-main focus:ring-accent-main"
+                    aria-label="Select all transactions"
+                    className={checkboxClass}
                   />
                 </th>
-                <th className="p-3.5 font-semibold">Date</th>
-                <th className="p-3.5 font-semibold">Account</th>
-                <th className="p-3.5 font-semibold">Payee / Merchant</th>
-                <th className="p-3.5 font-semibold">Category</th>
-                <th className="p-3.5 font-semibold">Notes / Memo</th>
-                <th className="p-3.5 text-right font-semibold">Amount</th>
-                <th className="p-3.5 text-center font-semibold">Splits</th>
+                <th className="px-4 py-3 font-normal">Date</th>
+                <th className="px-4 py-3 font-normal">Account</th>
+                <th className="px-4 py-3 font-normal">Payee</th>
+                <th className="px-4 py-3 font-normal">Category</th>
+                <th className="px-4 py-3 font-normal">Notes</th>
+                <th className="px-4 py-3 text-right font-normal">Amount</th>
+                <th className="px-4 py-3 text-center font-normal">Splits</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-subtle font-medium">
+            <tbody className="divide-y divide-subtle">
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-muted">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent-main mx-auto mb-2"></div>
-                    Loading ledger...
+                  <td colSpan={8} className="text-center py-12 text-sm text-muted">
+                    {spinner}
+                    Loading…
                   </td>
                 </tr>
               ) : transactions.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-muted">
-                    {totalCount === 0 && !searchQuery && !selectedAccountId && !selectedCategoryId && !selectedMemberId ? (
+                  <td colSpan={8} className="text-center py-12 text-sm text-muted">
+                    {isLedgerEmpty ? (
                       <div className="max-w-md mx-auto">
-                        <div className="w-12 h-12 rounded-2xl bg-accent-subtle/40 text-accent-main flex items-center justify-center mx-auto mb-3">
-                          <Receipt className="w-6 h-6" />
+                        <div className="text-base font-medium text-main">No transactions yet</div>
+                        <div className="mt-1 text-sm text-muted">
+                          Load Canadian household sample entries to try auto-classification, budget
+                          tracking and cash flow forecasting
                         </div>
-                        <div className="text-sm font-bold text-main mb-1">
-                          No transactions in your ledger yet
-                        </div>
-                        <div className="text-xs text-muted mb-4">
-                          Load realistic Canadian household ledger entries to test auto-classification, budget tracking, and cash flow forecasting.
-                        </div>
-                        <div className="flex items-center justify-center">
-                          <button
-                            type="button"
-                            onClick={handleSeedLedger}
-                            disabled={isSeedingDemo}
-                            className="px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
-                          >
-                            <Sparkles className="w-3.5 h-3.5" />
-                            <span>{isSeedingDemo ? "Seeding Ledger..." : "Load Canadian Demo Ledger"}</span>
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={handleSeedLedger}
+                          disabled={isSeedingDemo}
+                          className={`mt-4 ${primaryButton}`}
+                        >
+                          {isSeedingDemo ? "Loading sample…" : "Load Canadian sample ledger"}
+                        </button>
                       </div>
                     ) : (
-                      "No transactions found matching criteria."
+                      "No transactions match these filters"
                     )}
                   </td>
                 </tr>
@@ -760,67 +760,48 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                   return (
                     <tr
                       key={txn.id}
-                      className={`hover:bg-surface-hover transition-colors ${
-                        isChecked ? "bg-accent-subtle/25" : ""
-                      }`}
+                      className={`transition-colors ${isChecked ? "bg-accent-subtle" : "bg-surface-hover"}`}
                     >
-                      <td className="p-3.5 text-center">
+                      <td className="px-4 py-2 text-center">
                         <input
                           type="checkbox"
                           checked={isChecked}
                           onChange={() => handleToggleSelectRow(txn.id)}
-                          className="rounded border-default bg-input text-accent-main focus:ring-accent-main"
+                          aria-label="Select transaction"
+                          className={checkboxClass}
                         />
                       </td>
-                      <td className="p-3.5 font-mono text-[11px] text-muted">
+                      <td className="px-4 py-2 font-mono text-xs text-muted whitespace-nowrap">
                         {txn.transaction_date?.split("T")[0]}
                       </td>
-                      <td className="p-3.5 text-sub text-xs font-semibold">
-                        {matchedAccount?.name || "Account"}
-                      </td>
-                      <td className="p-3.5">
+                      <td className="px-4 py-2 text-sub">{matchedAccount?.name || "Account"}</td>
+                      <td className="px-4 py-2">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-main font-semibold">
-                            {txn.normalized_payee || txn.raw_payee}
-                          </span>
-                          {(() => {
-                            const member =
-                              householdMembers?.find((m) => m.id === txn.assigned_member_id) ||
-                              txn.assigned_member;
-                            if (!member) return null;
-                            const memberColor = member.color || "#3B82F6";
-                            return (
-                              <span
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-white shadow-2xs shrink-0"
-                                style={{ backgroundColor: memberColor }}
-                                title={`Assigned to ${member.name}`}
-                              >
-                                <span className="w-3.5 h-3.5 rounded-full bg-white/20 flex items-center justify-center text-[9px] font-bold">
-                                  {member.name.charAt(0)}
-                                </span>
-                                <span>{member.name}</span>
-                              </span>
-                            );
-                          })()}
+                          <span className="text-main">{txn.normalized_payee || txn.raw_payee}</span>
+                          {renderMemberTag(txn)}
                         </div>
                         {txn.normalized_payee && txn.normalized_payee !== txn.raw_payee && (
-                          <div className="text-[10px] text-muted font-mono truncate max-w-xs">{txn.raw_payee}</div>
+                          <div className="text-[11px] text-muted font-mono truncate max-w-xs">
+                            {txn.raw_payee}
+                          </div>
                         )}
                       </td>
-                      <td className="p-3.5">
+                      <td className="px-4 py-2">
                         {isSplit ? (
                           <button
                             onClick={() => handleOpenSplitModal(txn)}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-accent-subtle text-accent-subtle border border-accent-main/30 hover:opacity-80"
+                            className="inline-flex items-center gap-1 h-8 px-2 rounded-lg border border-default text-xs text-sub bg-surface-hover transition-colors cursor-pointer"
                           >
-                            <Layers className="w-3 h-3" /> Split ({txn.splits.length})
+                            <Layers className="w-4 h-4 text-muted" strokeWidth={1.5} /> {txn.splits.length}{" "}
+                            splits
                           </button>
                         ) : (
-                          <div className="flex items-center gap-1.5 flex-wrap">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <select
                               value={txn.splits?.[0]?.category_id || ""}
                               onChange={(e) => handleInlineCategoryChange(txn, e.target.value)}
-                              className="bg-input border border-default text-main text-xs rounded-md px-2 py-1 focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+                              aria-label="Category"
+                              className={compactSelectClass}
                             >
                               <option value="">Uncategorized</option>
                               {categories.map((c) => (
@@ -833,33 +814,35 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                           </div>
                         )}
                       </td>
-                      <td className="p-3.5 text-muted text-xs truncate max-w-[150px]">
-                        {txn.notes || "-"}
+                      <td className="px-4 py-2 text-muted text-xs truncate max-w-[150px]">
+                        {txn.notes || "—"}
                       </td>
-                      <td
-                        className={`p-3.5 text-right font-mono font-bold text-sm ${
-                          txn.amount >= 0 ? "text-positive" : "text-main"
-                        }`}
-                      >
-                        {txn.amount >= 0 ? "+" : ""}${Math.abs(txn.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <td className="px-4 py-2 text-right">
+                        <Money
+                          value={txn.amount}
+                          signed
+                          className={txn.amount >= 0 ? "text-positive" : "text-main"}
+                        />
                       </td>
-                      <td className="p-3.5 text-center">
+                      <td className="px-4 py-2 text-center">
                         <div className="flex items-center justify-center gap-1">
                           <button
                             type="button"
                             onClick={() => handleOpenEditTxn(txn)}
                             title="Edit transaction"
-                            className="p-1 text-muted hover:text-accent-main hover:bg-surface-hover rounded transition-colors cursor-pointer"
+                            aria-label="Edit transaction"
+                            className={iconButton}
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            <Edit2 className="w-4 h-4" strokeWidth={1.5} />
                           </button>
                           <button
                             type="button"
                             onClick={() => handleOpenSplitModal(txn)}
                             title="Edit splits or loan breakdown"
-                            className="p-1 text-muted hover:text-accent-main hover:bg-surface-hover rounded transition-colors cursor-pointer"
+                            aria-label="Edit splits"
+                            className={iconButton}
                           >
-                            <Split className="w-3.5 h-3.5" />
+                            <Split className="w-4 h-4" strokeWidth={1.5} />
                           </button>
                         </div>
                       </td>
@@ -872,18 +855,18 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
         </div>
 
         {/* Pagination */}
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-subtle bg-surface-subtle/50">
-          <div className="text-xs text-muted">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-subtle">
+          <div className="text-xs text-muted font-mono">
             {totalCount === 0
               ? "No transactions"
-              : `${(page - 1) * PAGE_SIZE + 1}-${Math.min(page * PAGE_SIZE, totalCount)} of ${totalCount.toLocaleString()}`}
+              : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, totalCount)} of ${totalCount.toLocaleString("en-CA")}`}
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1 || isLoading}
-              className="px-3 py-1.5 rounded-lg border border-default bg-surface text-sub text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-hover"
+              className="h-8 px-3 rounded-lg border border-default bg-surface bg-surface-hover text-sub text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Previous
             </button>
@@ -894,7 +877,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               type="button"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages || isLoading}
-              className="px-3 py-1.5 rounded-lg border border-default bg-surface text-sub text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-hover"
+              className="h-8 px-3 rounded-lg border border-default bg-surface bg-surface-hover text-sub text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Next
             </button>
@@ -902,29 +885,31 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* Split Transaction Modal */}
+      {/* Split transaction modal */}
       {splitModalTxn && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-lg rounded-2xl bg-surface border border-default shadow-2xl p-6 space-y-5">
-            <div className="flex items-center justify-between border-b border-subtle pb-3">
+        <div className={modalOverlay}>
+          <div className={`max-w-lg space-y-5 ${modalPanel}`}>
+            <div className="flex items-start justify-between gap-4 border-b border-subtle pb-4">
               <div>
-                <h3 className="text-base font-bold text-main">Split Transaction</h3>
-                <p className="text-xs text-muted">
-                  {splitModalTxn.normalized_payee || splitModalTxn.raw_payee} • Total:{" "}
-                  <b className="font-mono text-main">${Math.abs(splitModalTxn.amount).toFixed(2)}</b>
+                <h3 className="text-base font-medium text-main">Split transaction</h3>
+                <p className="mt-1 text-xs text-muted">
+                  {splitModalTxn.normalized_payee || splitModalTxn.raw_payee} · Total{" "}
+                  <Money value={Math.abs(splitModalTxn.amount)} className="text-main" />
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setSplitModalTxn(null)}
-                className="text-muted hover:text-main"
+                aria-label="Close"
+                className={iconButton}
               >
-                ✕
+                <X className="w-4 h-4" strokeWidth={1.5} />
               </button>
             </div>
 
-            <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
               {modalSplits.map((split, idx) => (
-                <div key={idx} className="flex items-center gap-2 p-3 rounded-xl bg-surface-subtle border border-subtle">
+                <div key={idx} className="flex items-center gap-2 p-2 rounded-lg bg-surface-subtle">
                   <select
                     value={split.category_id}
                     onChange={(e) => {
@@ -933,9 +918,10 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                         prev.map((s, i) => (i === idx ? { ...s, category_id: val } : s))
                       );
                     }}
-                    className="flex-1 px-2.5 py-1.5 bg-input border border-default text-main text-xs rounded-lg"
+                    aria-label="Category"
+                    className={`flex-1 ${inputClass}`}
                   >
-                    <option value="">Select Category</option>
+                    <option value="">Category</option>
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -954,17 +940,19 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                         prev.map((s, i) => (i === idx ? { ...s, amount: val } : s))
                       );
                     }}
-                    className="w-24 px-2.5 py-1.5 bg-input border border-default text-main text-xs rounded-lg font-mono text-right"
+                    className={`w-28 font-mono text-right ${inputClass}`}
                   />
 
                   {modalSplits.length > 1 && (
                     <button
+                      type="button"
                       onClick={() => {
                         setModalSplits(modalSplits.filter((_, i) => i !== idx));
                       }}
-                      className="p-1 text-negative hover:opacity-80"
+                      aria-label="Remove split"
+                      className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-muted hover:text-negative bg-surface-hover transition-colors cursor-pointer"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                     </button>
                   )}
                 </div>
@@ -975,31 +963,26 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 onClick={() => {
                   setModalSplits([...modalSplits, { category_id: "", amount: 0, memo: "" }]);
                 }}
-                className="w-full py-2 border border-dashed border-default rounded-xl text-xs font-semibold text-muted hover:text-accent-main hover:border-accent-main transition-all cursor-pointer"
+                className="w-full h-9 inline-flex items-center justify-center gap-2 border border-dashed border-default rounded-lg text-sm text-sub hover:text-main bg-surface-hover transition-colors cursor-pointer"
               >
-                + Add Another Split
+                <Plus className="w-4 h-4 text-muted" strokeWidth={1.5} /> Add split
               </button>
             </div>
 
-            <div className="flex items-center justify-between pt-3 border-t border-subtle">
+            <div className="flex items-center justify-between pt-4 border-t border-subtle">
               <div className="text-xs text-muted">
-                Total Split:{" "}
-                <span className="font-bold font-mono text-main">
-                  ${modalSplits.reduce((sum, s) => sum + (Number(s.amount) || 0), 0).toFixed(2)}
-                </span>
+                Split total{" "}
+                <Money
+                  value={modalSplits.reduce((sum, s) => sum + (Number(s.amount) || 0), 0)}
+                  className="text-main"
+                />
               </div>
               <div className="flex gap-2">
-                <button
-                  onClick={() => setSplitModalTxn(null)}
-                  className="px-4 py-2 rounded-xl border border-default text-sub text-xs hover:bg-surface-hover"
-                >
+                <button type="button" onClick={() => setSplitModalTxn(null)} className={secondaryButton}>
                   Cancel
                 </button>
-                <button
-                  onClick={handleSaveSplits}
-                  className="px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs"
-                >
-                  Save Splits
+                <button type="button" onClick={handleSaveSplits} className={primaryButton}>
+                  Save splits
                 </button>
               </div>
             </div>
@@ -1007,35 +990,31 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
         </div>
       )}
 
-      {/* Transaction Create / Edit Modal */}
+      {/* Transaction create / edit modal */}
       {isTxnModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-          <form
-            onSubmit={handleSaveTransaction}
-            className="w-full max-w-md rounded-2xl bg-surface border border-default shadow-2xl p-6 space-y-4"
-          >
-            <div className="flex items-center justify-between border-b border-subtle pb-3">
-              <h3 className="text-base font-bold text-main">
-                {editingTxn ? "Edit Transaction" : "Add Manual Transaction"}
+        <div className={modalOverlay}>
+          <form onSubmit={handleSaveTransaction} className={`max-w-md space-y-4 ${modalPanel}`}>
+            <div className="flex items-center justify-between border-b border-subtle pb-4">
+              <h3 className="text-base font-medium text-main">
+                {editingTxn ? "Edit transaction" : "Add transaction"}
               </h3>
               <button
                 type="button"
                 onClick={() => setIsTxnModalOpen(false)}
-                className="text-muted hover:text-main"
+                aria-label="Close"
+                className={iconButton}
               >
-                ✕
+                <X className="w-4 h-4" strokeWidth={1.5} />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-4">
               <div>
-                <label className="block text-muted mb-1 font-medium">Account</label>
+                <label className={fieldLabel}>Account</label>
                 <select
                   value={txnFormData.account_id}
-                  onChange={(e) =>
-                    setTxnFormData({ ...txnFormData, account_id: e.target.value })
-                  }
-                  className="w-full px-3 py-2 bg-input border border-default rounded-xl text-main"
+                  onChange={(e) => setTxnFormData({ ...txnFormData, account_id: e.target.value })}
+                  className={`w-full ${inputClass}`}
                   required
                 >
                   {accounts.map((a) => (
@@ -1048,21 +1027,19 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-muted mb-1 font-medium">Date</label>
+                  <label className={fieldLabel}>Date</label>
                   <input
                     type="date"
                     value={txnFormData.transaction_date}
                     onChange={(e) =>
                       setTxnFormData({ ...txnFormData, transaction_date: e.target.value })
                     }
-                    className="w-full px-3 py-2 bg-input border border-default rounded-xl text-main"
+                    className={`w-full ${inputClass}`}
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-muted mb-1 font-medium">
-                    Amount (Negative for expense)
-                  </label>
+                  <label className={fieldLabel}>Amount, negative for expenses</label>
                   <input
                     type="number"
                     step="0.01"
@@ -1074,34 +1051,30 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                         amount: parseFloat(e.target.value) || 0,
                       })
                     }
-                    className="w-full px-3 py-2 bg-input border border-default rounded-xl text-main font-mono"
+                    className={`w-full font-mono ${inputClass}`}
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-muted mb-1 font-medium">Payee / Merchant</label>
+                <label className={fieldLabel}>Payee</label>
                 <input
                   type="text"
-                  placeholder="e.g. Trader Joe's or Tim Hortons"
+                  placeholder="Tim Hortons"
                   value={txnFormData.raw_payee}
-                  onChange={(e) =>
-                    setTxnFormData({ ...txnFormData, raw_payee: e.target.value })
-                  }
-                  className="w-full px-3 py-2 bg-input border border-default rounded-xl text-main placeholder:text-muted"
+                  onChange={(e) => setTxnFormData({ ...txnFormData, raw_payee: e.target.value })}
+                  className={`w-full ${inputClass}`}
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-muted mb-1 font-medium">Category</label>
+                <label className={fieldLabel}>Category</label>
                 <select
                   value={txnFormData.category_id}
-                  onChange={(e) =>
-                    setTxnFormData({ ...txnFormData, category_id: e.target.value })
-                  }
-                  className="w-full px-3 py-2 bg-input border border-default rounded-xl text-main"
+                  onChange={(e) => setTxnFormData({ ...txnFormData, category_id: e.target.value })}
+                  className={`w-full ${inputClass}`}
                 >
                   <option value="">Uncategorized</option>
                   {categories.map((c) => (
@@ -1112,19 +1085,17 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 </select>
               </div>
 
-              {/* Household Member Assignment */}
+              {/* Household member assignment */}
               <div>
-                <label className="block text-muted mb-1 font-medium">
-                  Household Member Attribution
-                </label>
+                <label className={fieldLabel}>Household member</label>
                 <select
                   value={txnFormData.assigned_member_id}
                   onChange={(e) =>
                     setTxnFormData({ ...txnFormData, assigned_member_id: e.target.value })
                   }
-                  className="w-full px-3 py-2 bg-input border border-default rounded-xl text-main"
+                  className={`w-full ${inputClass}`}
                 >
-                  <option value="">Joint / Unassigned</option>
+                  <option value="">Joint / unassigned</option>
                   {householdMembers?.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.name} ({m.role || "Member"})
@@ -1134,94 +1105,68 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               </div>
 
               <div>
-                <label className="block text-muted mb-1 font-medium">Notes (Optional)</label>
+                <label className={fieldLabel}>Notes (optional)</label>
                 <input
                   type="text"
-                  placeholder="Memo, check number..."
+                  placeholder="Memo"
                   value={txnFormData.notes}
-                  onChange={(e) =>
-                    setTxnFormData({ ...txnFormData, notes: e.target.value })
-                  }
-                  className="w-full px-3 py-2 bg-input border border-default rounded-xl text-main placeholder:text-muted"
+                  onChange={(e) => setTxnFormData({ ...txnFormData, notes: e.target.value })}
+                  className={`w-full ${inputClass}`}
                 />
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
-              <button
-                type="button"
-                onClick={() => setIsTxnModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-default text-sub text-xs hover:bg-surface-hover"
-              >
+            <div className="flex justify-end gap-2 pt-4 border-t border-subtle">
+              <button type="button" onClick={() => setIsTxnModalOpen(false)} className={secondaryButton}>
                 Cancel
               </button>
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs cursor-pointer"
-              >
-                {editingTxn ? "Update Transaction" : "Save Transaction"}
+              <button type="submit" className={primaryButton}>
+                {editingTxn ? "Save changes" : "Save transaction"}
               </button>
             </div>
           </form>
         </div>
       )}
-      {/* Auto-Classify Uncategorized Confirmation Modal */}
+
+      {/* Auto-classify uncategorized confirmation modal */}
       {autoClassifyModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-md rounded-2xl bg-surface border border-default shadow-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-subtle pb-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-accent-main" />
-                <h3 className="text-base font-bold text-main">Auto-Classify Uncategorized</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setAutoClassifyModalOpen(false);
-                  setAutoClassifySummary(null);
-                }}
-                className="text-muted hover:text-main"
-              >
-                ✕
+        <div className={modalOverlay}>
+          <div className={`max-w-md space-y-4 ${modalPanel}`}>
+            <div className="flex items-center justify-between border-b border-subtle pb-4">
+              <h3 className="text-base font-medium text-main">Auto-classify uncategorized</h3>
+              <button type="button" onClick={closeAutoClassify} aria-label="Close" className={iconButton}>
+                <X className="w-4 h-4" strokeWidth={1.5} />
               </button>
             </div>
 
             {autoClassifySummary ? (
               <div className="space-y-4">
-                <div className="p-4 rounded-xl bg-positive-subtle border border-emerald-500/30 text-xs text-positive flex items-center gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-positive shrink-0" />
+                <div className="p-4 rounded-lg bg-positive-subtle flex items-start gap-3">
+                  <CheckCircle2 className="w-4 h-4 mt-0.5 text-positive shrink-0" strokeWidth={1.5} />
                   <div>
-                    <div className="font-bold">Auto-Classification Complete</div>
-                    <div className="text-[11px] mt-0.5 text-main font-semibold">
-                      {autoClassifySummary}
-                    </div>
+                    <div className="text-sm font-medium text-positive">Auto-classification complete</div>
+                    <div className="mt-1 text-xs text-main">{autoClassifySummary}</div>
                   </div>
                 </div>
-                <div className="flex justify-end pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAutoClassifyModalOpen(false);
-                      setAutoClassifySummary(null);
-                    }}
-                    className="px-4 py-2 rounded-xl bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs cursor-pointer"
-                  >
+                <div className="flex justify-end">
+                  <button type="button" onClick={closeAutoClassify} className={primaryButton}>
                     Done
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="space-y-4 text-xs">
-                <p className="text-muted leading-relaxed">
-                  Folio will evaluate all uncategorized transactions in the ledger against the 4-tier engine (Tier 1 Rules → Tier 2 History → Tier 3 Heuristics → Tier 4 Bedrock AI) and automatically assign high-confidence categories.
+              <div className="space-y-4">
+                <p className="text-sm text-sub leading-relaxed">
+                  Folio checks every uncategorized transaction against the four-tier engine (rules,
+                  history, heuristics, then Bedrock AI) and assigns categories that meet the threshold
                 </p>
 
-                <div className="p-3.5 rounded-xl bg-surface-subtle border border-subtle space-y-3">
+                <div className="p-4 rounded-lg bg-surface-subtle space-y-3">
                   <div className="flex items-center justify-between">
-                    <label htmlFor="confirmMinConfidence" className="font-medium text-main">
-                      Confidence Threshold
+                    <label htmlFor="confirmMinConfidence" className="text-sm text-main">
+                      Confidence threshold
                     </label>
-                    <span className="font-mono font-bold text-accent-main">
+                    <span className="text-sm font-mono text-main">
                       {Math.round(autoClassifyMinConfidence * 100)}%
                     </span>
                   </div>
@@ -1235,26 +1180,26 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                     onChange={(e) => setAutoClassifyMinConfidence(parseFloat(e.target.value))}
                     className="w-full accent-accent-main cursor-pointer"
                   />
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       id="confirmEnableBedrock"
                       checked={autoClassifyEnableBedrock}
                       onChange={(e) => setAutoClassifyEnableBedrock(e.target.checked)}
-                      className="rounded border-default bg-input text-accent-main focus:ring-accent-main"
+                      className={checkboxClass}
                     />
-                    <label htmlFor="confirmEnableBedrock" className="text-sub cursor-pointer select-none">
-                      Enable Bedrock AI recourse for ambiguous items
+                    <label htmlFor="confirmEnableBedrock" className="text-sm text-sub cursor-pointer select-none">
+                      Use Bedrock AI for ambiguous items
                     </label>
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
+                <div className="flex justify-end gap-2 pt-4 border-t border-subtle">
                   <button
                     type="button"
                     onClick={() => setAutoClassifyModalOpen(false)}
                     disabled={isAutoClassifying}
-                    className="px-4 py-2 rounded-xl border border-default text-sub hover:bg-surface-hover"
+                    className={secondaryButton}
                   >
                     Cancel
                   </button>
@@ -1262,18 +1207,15 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                     type="button"
                     onClick={handleConfirmAutoClassify}
                     disabled={isAutoClassifying}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast font-semibold shadow-xs disabled:opacity-50 cursor-pointer"
+                    className={primaryButton}
                   >
                     {isAutoClassifying ? (
                       <>
-                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        <span>Classifying...</span>
+                        <div className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                        <span>Classifying…</span>
                       </>
                     ) : (
-                      <>
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>Classify Uncategorized</span>
-                      </>
+                      <span>Classify uncategorized</span>
                     )}
                   </button>
                 </div>

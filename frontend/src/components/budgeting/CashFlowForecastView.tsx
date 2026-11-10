@@ -1,28 +1,23 @@
 import React, { useState, useEffect, useMemo } from "react";
-import {
-  TrendingUp,
-
-  AlertTriangle,
-  Calendar,
-
-  Clock,
-
-
-
-  RefreshCw,
-} from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
+import { Money } from "../common/Money";
 import { useChartTheme } from "../../hooks/useChartTheme";
+import { formatMoney, formatMoneyCompact } from "../../utils/format";
 import type { CashFlowForecastResponse } from "../../types";
 import { api } from "../../services/api";
 
-const money = (val: number) =>
-  new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(val);
+const card = "rounded-xl bg-surface border border-subtle";
+const mono = "IBM Plex Mono, ui-monospace, monospace";
+const inputClass =
+  "w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] disabled:opacity-50";
+
+const EVENT_LABELS: Record<string, string> = {
+  INCOME: "Income",
+  MORTGAGE: "Mortgage",
+  LOAN: "Loan",
+  EXPENSE: "Expense",
+};
 
 export const CashFlowForecastView: React.FC = () => {
   const chartTheme = useChartTheme();
@@ -57,7 +52,7 @@ export const CashFlowForecastView: React.FC = () => {
       setForecast(data);
       setError(null);
     } catch (err: any) {
-      setError(err?.message || "Could not generate cash-flow forecast.");
+      setError(err?.message || "Could not generate the cash flow forecast.");
     } finally {
       setIsLoading(false);
     }
@@ -67,7 +62,7 @@ export const CashFlowForecastView: React.FC = () => {
     loadForecast();
   }, [days, paySchedule, expectedPaycheck, nextPayDate]);
 
-  // ECharts Line Chart Configuration
+  // ECharts line chart configuration
   const chartOptions = useMemo(() => {
     if (!forecast || !forecast.daily_curve || forecast.daily_curve.length === 0) {
       return {};
@@ -82,50 +77,50 @@ export const CashFlowForecastView: React.FC = () => {
         trigger: "axis",
         backgroundColor: chartTheme.tooltipBg,
         borderColor: chartTheme.tooltipBorder,
-        textStyle: { color: chartTheme.tooltipText, fontSize: 12 },
+        borderWidth: 1,
+        padding: [8, 12],
+        extraCssText: "border-radius: 8px; box-shadow: none;",
+        textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: "IBM Plex Sans, sans-serif" },
+        axisPointer: { type: "line", lineStyle: { color: chartTheme.axisLineColor } },
         formatter: (params: any[]) => {
           if (!params || params.length === 0) return "";
           const idx = params[0].dataIndex;
           const pt = forecast.daily_curve[idx];
-          let html = `<div class="font-sans"><b>${pt.date}</b><br/>`;
-          html += `Cash Balance: <b style="color: ${
-            pt.cash_balance >= 0 ? chartTheme.positiveColor : chartTheme.negativeColor
-          }">${money(pt.cash_balance)}</b><br/>`;
+          let html = `<div style="color:${chartTheme.subtleTextColor}">${pt.date}</div>`;
+          html += `<div style="margin-top:4px">Balance <span style="font-family:${mono};color:${
+            pt.cash_balance >= 0 ? chartTheme.tooltipText : chartTheme.negativeColor
+          }">${formatMoney(pt.cash_balance)}</span></div>`;
           if (pt.projected_income > 0) {
-            html += `<span style="color: ${chartTheme.positiveColor}">+ Income: ${money(
-              pt.projected_income
-            )}</span><br/>`;
+            html += `<div>Income <span style="font-family:${mono};color:${chartTheme.positiveColor}">${formatMoney(
+              pt.projected_income,
+              { signed: true }
+            )}</span></div>`;
           }
           if (pt.projected_expense > 0) {
-            html += `<span style="color: ${chartTheme.negativeColor}">- Outflow: ${money(
-              pt.projected_expense
-            )}</span><br/>`;
+            html += `<div>Outflow <span style="font-family:${mono}">${formatMoney(
+              -pt.projected_expense
+            )}</span></div>`;
           }
           if (pt.events && pt.events.length > 0) {
-            html += `<div class="mt-1 pt-1 border-t border-subtle text-[11px]"><b>Scheduled:</b><br/>`;
+            html += `<div style="margin-top:6px;padding-top:6px;border-top:1px solid ${chartTheme.gridLineColor};font-size:11px;color:${chartTheme.subtleTextColor}">Scheduled</div>`;
             pt.events.forEach((ev) => {
-              html += `• ${ev}<br/>`;
+              html += `<div style="font-size:11px">${ev}</div>`;
             });
-            html += `</div>`;
           }
-          html += `</div>`;
           return html;
         },
       },
-      grid: {
-        left: "3%",
-        right: "3%",
-        bottom: "10%",
-        top: "12%",
-        containLabel: true,
-      },
+      grid: { left: 8, right: 16, bottom: 8, top: 24, containLabel: true },
       xAxis: {
         type: "category",
         data: dates,
         axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
+        axisTick: { show: false },
         axisLabel: {
           color: chartTheme.subtleTextColor,
           fontSize: 11,
+          fontFamily: mono,
+          margin: 12,
           formatter: (val: string) => {
             const parts = val.split("-");
             return `${parts[1]}/${parts[2]}`;
@@ -139,42 +134,34 @@ export const CashFlowForecastView: React.FC = () => {
         axisLabel: {
           color: chartTheme.subtleTextColor,
           fontSize: 11,
-          formatter: (v: number) => `$${Math.round(v / 1000)}k`,
+          fontFamily: mono,
+          formatter: (v: number) => formatMoneyCompact(v),
         },
       },
       series: [
         {
-          name: "Projected Cash",
+          name: "Projected cash",
           type: "line",
-          smooth: true,
+          smooth: 0.3,
           showSymbol: false,
           symbolSize: 6,
           data: balances,
-          lineStyle: {
-            color: chartTheme.accentColor,
-            width: 2.5,
-          },
-          areaStyle: {
-            color: {
-              type: "linear",
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: `${chartTheme.accentColor}33` },
-                { offset: 1, color: `${chartTheme.accentColor}05` },
-              ],
-            },
-          },
+          itemStyle: { color: chartTheme.accentColor },
+          lineStyle: { color: chartTheme.accentColor, width: 2 },
+          areaStyle: { color: chartTheme.accentColor, opacity: 0.06 },
           markLine: {
             silent: true,
             symbol: "none",
             data: [
               {
                 yAxis: 0,
-                lineStyle: { color: chartTheme.negativeColor, type: "dashed", width: 1.5 },
-                label: { formatter: "Zero Liquidity Floor", color: chartTheme.negativeColor },
+                lineStyle: { color: chartTheme.negativeColor, type: "dashed", width: 1 },
+                label: {
+                  formatter: "Zero balance",
+                  color: chartTheme.negativeColor,
+                  fontSize: 11,
+                  fontFamily: "IBM Plex Sans, sans-serif",
+                },
               },
             ],
           },
@@ -185,45 +172,38 @@ export const CashFlowForecastView: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Parameter Controls Panel */}
-      <div className="p-5 rounded-2xl bg-surface border border-default shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-subtle pb-4">
+      {/* Parameter controls panel */}
+      <div className={`${card} p-5 space-y-4`}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-subtle pb-4">
           <div>
-            <h2 className="text-base font-bold text-main flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-accent-main" />
-              Canadian Cash-Flow Forecasting
-            </h2>
-            <p className="text-xs text-muted mt-0.5">
-              Simulate cash trajectory based on Canadian 26-pay period bi-weekly schedules and loan amortization payment dates.
+            <h2 className="text-base font-medium text-main">Cash flow forecast</h2>
+            <p className="text-sm text-sub mt-1">
+              Projected cash from your pay schedule and scheduled loan payments
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-muted">Forecast Window:</span>
-            <div className="flex rounded-xl bg-surface-subtle p-0.5 border border-default text-xs">
+            <span className="text-xs text-muted">Forecast window</span>
+            <div className="flex rounded-lg bg-surface-subtle p-0.5 border border-default text-xs">
               {[30, 60, 90].map((d) => (
                 <button
                   key={d}
                   onClick={() => setDays(d)}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                    days === d
-                      ? "bg-accent-main text-accent-contrast shadow-xs"
-                      : "text-muted hover:text-main"
+                  className={`h-7 px-3 rounded-md transition-colors cursor-pointer ${
+                    days === d ? "bg-surface text-main" : "text-muted hover:text-main"
                   }`}
                 >
-                  {d} Days
+                  {d} days
                 </button>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Inputs Grid */}
+        {/* Inputs grid */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <label className="block text-[11px] font-semibold text-muted mb-1.5">
-              Payroll Schedule
-            </label>
+            <label className="block text-xs text-sub mb-2">Pay schedule</label>
             <select
               value={paySchedule}
               onChange={(e) =>
@@ -231,19 +211,17 @@ export const CashFlowForecastView: React.FC = () => {
                   e.target.value as "BI_WEEKLY" | "SEMI_MONTHLY" | "MONTHLY" | "NONE"
                 )
               }
-              className="w-full px-3 py-2 bg-input border border-default rounded-xl text-xs text-main font-medium focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+              className={inputClass}
             >
-              <option value="BI_WEEKLY">Bi-Weekly (26 pay periods / year)</option>
-              <option value="SEMI_MONTHLY">Semi-Monthly (15th & Month-End)</option>
-              <option value="MONTHLY">Monthly (1st of month)</option>
-              <option value="NONE">No automated payroll injection</option>
+              <option value="BI_WEEKLY">Bi-weekly (26 pay periods a year)</option>
+              <option value="SEMI_MONTHLY">Semi-monthly (15th and month-end)</option>
+              <option value="MONTHLY">Monthly (1st of the month)</option>
+              <option value="NONE">No paycheck</option>
             </select>
           </div>
 
           <div>
-            <label className="block text-[11px] font-semibold text-muted mb-1.5">
-              Expected Net Paycheck ($CAD)
-            </label>
+            <label className="block text-xs text-sub mb-2">Expected net paycheck</label>
             <input
               type="number"
               step="50"
@@ -251,178 +229,155 @@ export const CashFlowForecastView: React.FC = () => {
               value={expectedPaycheck}
               disabled={paySchedule === "NONE"}
               onChange={(e) => setExpectedPaycheck(parseFloat(e.target.value) || 0)}
-              className="w-full px-3 py-2 bg-input border border-default rounded-xl text-xs text-main font-mono focus:ring-1 focus:ring-accent-main focus:outline-hidden disabled:opacity-50"
+              className={`${inputClass} font-mono`}
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-semibold text-muted mb-1.5">
-              Next Paycheck Date
-            </label>
+            <label className="block text-xs text-sub mb-2">Next paycheck date</label>
             <input
               type="date"
               value={nextPayDate}
               disabled={paySchedule === "NONE"}
               onChange={(e) => setNextPayDate(e.target.value)}
-              className="w-full px-3 py-2 bg-input border border-default rounded-xl text-xs text-main focus:ring-1 focus:ring-accent-main focus:outline-hidden disabled:opacity-50"
+              className={`${inputClass} font-mono`}
             />
           </div>
         </div>
       </div>
 
       {error && (
-        <div className="p-3 rounded-xl bg-negative-subtle border border-rose-500/30 text-xs text-negative">
-          {error}
-        </div>
+        <div className="p-4 rounded-xl bg-negative-subtle text-sm text-negative">{error}</div>
       )}
 
-      {/* KPI Cards */}
+      {/* KPI cards */}
       {forecast && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="p-5 rounded-2xl bg-surface border border-default shadow-xs">
-            <div className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Starting Liquid Cash
+          <div className={`${card} p-5`}>
+            <div className="text-sm text-sub">Starting cash</div>
+            <div className="mt-2 text-2xl font-medium leading-none">
+              <Money value={forecast.starting_cash} className="text-main" />
             </div>
-            <div className="mt-2 text-2xl font-bold font-mono text-main">
-              {money(forecast.starting_cash)}
+            <div className="mt-2 text-xs text-muted">Chequing and savings today</div>
+          </div>
+
+          <div className={`${card} p-5`}>
+            <div className="text-sm text-sub">Ending cash after {days} days</div>
+            <div className="mt-2 text-2xl font-medium leading-none">
+              <Money value={forecast.ending_cash} className="text-main" />
             </div>
-            <div className="mt-1 text-[11px] text-muted">
-              Current balance in Chequing & Savings
+            <div className="mt-2 text-xs text-muted">
+              <Money
+                value={forecast.ending_cash - forecast.starting_cash}
+                signed
+                className={
+                  forecast.ending_cash >= forecast.starting_cash ? "text-positive" : "text-negative"
+                }
+              />{" "}
+              net change
             </div>
           </div>
 
-          <div className="p-5 rounded-2xl bg-surface border border-default shadow-xs">
-            <div className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Projected Ending Cash ({days} Days)
+          <div className={`${card} p-5`}>
+            <div className="text-sm text-sub">Lowest projected balance</div>
+            <div className="mt-2 text-2xl font-medium leading-none">
+              <Money
+                value={forecast.lowest_cash_point}
+                className={forecast.lowest_cash_point >= 0 ? "text-main" : "text-negative"}
+              />
             </div>
-            <div
-              className={`mt-2 text-2xl font-bold font-mono ${
-                forecast.ending_cash >= forecast.starting_cash ? "text-positive" : "text-negative"
-              }`}
-            >
-              {money(forecast.ending_cash)}
-            </div>
-            <div className="mt-1 text-[11px] text-muted flex items-center gap-1 font-mono">
-              Net Change:{" "}
-              {forecast.ending_cash >= forecast.starting_cash ? "+" : ""}
-              {money(forecast.ending_cash - forecast.starting_cash)}
-            </div>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-surface border border-default shadow-xs">
-            <div className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Lowest Projected Point
-            </div>
-            <div
-              className={`mt-2 text-2xl font-bold font-mono ${
-                forecast.lowest_cash_point >= 0 ? "text-positive" : "text-negative"
-              }`}
-            >
-              {money(forecast.lowest_cash_point)}
-            </div>
-            <div className="mt-1 text-[11px] text-muted">
-              Projected for <b>{forecast.lowest_cash_date}</b>
+            <div className="mt-2 text-xs text-muted">
+              On <span className="font-mono text-sub">{forecast.lowest_cash_date}</span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Danger Warning if Cash Dips Below Zero */}
+      {/* Warning if cash dips below zero */}
       {forecast && forecast.lowest_cash_point < 0 && (
-        <div className="p-4 rounded-2xl bg-negative-subtle border border-rose-500/40 text-xs text-negative flex items-start gap-3 shadow-xs">
-          <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-negative" />
+        <div className="p-4 rounded-xl bg-negative-subtle text-sm text-negative flex items-start gap-3">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" strokeWidth={1.5} />
           <div>
-            <div className="font-bold text-sm">Cash Deficit Alert</div>
-            <p className="mt-0.5">
-              Your projected liquid cash balance drops to{" "}
-              <b>{money(forecast.lowest_cash_point)}</b> on <b>{forecast.lowest_cash_date}</b>.
-              To avoid overdraft fees or missed loan/mortgage payments, consider transferring funds
-              from an emergency HISA or reducing discretionary expenses prior to that date.
+            <div className="font-medium">Cash shortfall ahead</div>
+            <p className="mt-1">
+              Your projected cash drops to{" "}
+              <Money value={forecast.lowest_cash_point} /> on{" "}
+              <span className="font-mono">{forecast.lowest_cash_date}</span>. To avoid overdraft
+              fees or missed loan and mortgage payments, move funds from an emergency HISA or cut
+              discretionary spending before that date.
             </p>
           </div>
         </div>
       )}
 
-      {/* Interactive Daily Cash Curve Chart */}
-      <div className="p-6 rounded-2xl bg-surface border border-default shadow-xs">
-        <div className="flex items-center justify-between pb-2">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-accent-main" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted">
-              Projected Liquid Cash Curve ({days} Days)
-            </h3>
-          </div>
+      {/* Daily cash curve chart */}
+      <div className={`${card} p-5 sm:p-6`}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-medium text-main">Projected cash, {days} days</h3>
           {isLoading && (
-            <div className="flex items-center gap-1.5 text-xs text-muted">
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              <span>Calculating...</span>
+            <div className="flex items-center gap-2 text-xs text-muted">
+              <RefreshCw className="w-4 h-4 animate-spin" strokeWidth={1.5} />
+              <span>Calculating…</span>
             </div>
           )}
         </div>
 
-        <div className="h-72 w-full mt-2">
+        <div className="h-72 w-full mt-4">
           {forecast && forecast.daily_curve.length > 0 ? (
             <LazyChart option={chartOptions} className="h-full" />
           ) : (
-            <div className="flex items-center justify-center h-full text-muted text-xs">
-              No cash data available to generate forecast curve.
+            <div className="flex items-center justify-center h-full text-muted text-sm">
+              No cash data to forecast yet
             </div>
           )}
         </div>
       </div>
 
-      {/* Scheduled Amortization & Payroll Events Table */}
+      {/* Scheduled amortization and payroll events */}
       {forecast && forecast.scheduled_events.length > 0 && (
-        <div className="p-5 rounded-2xl bg-surface border border-default shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted flex items-center gap-2">
-              <Clock className="w-4 h-4 text-accent-main" />
-              Upcoming Scheduled Cash Events ({forecast.scheduled_events.length})
+        <div className={`${card} overflow-hidden`}>
+          <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 px-5 pt-5 pb-4">
+            <h3 className="text-base font-medium text-main">
+              Upcoming scheduled events{" "}
+              <span className="font-mono text-sm text-muted">{forecast.scheduled_events.length}</span>
             </h3>
-            <span className="text-[11px] text-muted">
-              Amortization loan schedules + Payroll calendar
-            </span>
+            <span className="text-xs text-muted">Loan payments and paydays</span>
           </div>
 
-          <div className="border border-default rounded-xl overflow-hidden">
-            <table className="w-full text-left text-xs border-collapse">
+          <div className="overflow-x-auto border-t border-subtle">
+            <table className="w-full text-left text-sm border-collapse">
               <thead>
-                <tr className="bg-surface-subtle border-b border-subtle text-muted font-semibold">
-                  <th className="py-2.5 px-3">Date</th>
-                  <th className="py-2.5 px-3">Type</th>
-                  <th className="py-2.5 px-3">Description</th>
-                  <th className="py-2.5 px-3">Account</th>
-                  <th className="py-2.5 px-4 text-right">Cash Impact</th>
+                <tr className="border-b border-subtle text-xs text-muted">
+                  <th className="h-10 px-5 font-normal">Date</th>
+                  <th className="h-10 px-4 font-normal">Type</th>
+                  <th className="h-10 px-4 font-normal">Description</th>
+                  <th className="h-10 px-4 font-normal">Account</th>
+                  <th className="h-10 px-5 font-normal text-right">Cash impact</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-subtle">
                 {forecast.scheduled_events.map((ev, idx) => {
                   const isIncome = ev.event_type === "INCOME";
                   return (
-                    <tr key={idx} className="hover:bg-surface-hover transition-colors">
-                      <td className="py-2.5 px-3 font-mono font-medium text-main">{ev.date}</td>
-                      <td className="py-2.5 px-3">
+                    <tr key={idx} className="h-12 bg-surface-hover transition-colors">
+                      <td className="px-5 font-mono text-sub whitespace-nowrap">{ev.date}</td>
+                      <td className="px-4">
                         <span
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                            isIncome
-                              ? "bg-positive-subtle text-positive"
-                              : ev.event_type === "MORTGAGE"
-                              ? "bg-purple-500/10 text-purple-600"
-                              : "bg-surface-subtle text-muted"
+                          className={`rounded-md px-1.5 py-0.5 text-xs ${
+                            isIncome ? "bg-positive-subtle text-positive" : "bg-surface-subtle text-sub"
                           }`}
                         >
-                          {ev.event_type}
+                          {EVENT_LABELS[ev.event_type] ?? ev.event_type}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 font-medium text-main">{ev.description}</td>
-                      <td className="py-2.5 px-3 text-muted">{ev.account_name || "—"}</td>
-                      <td
-                        className={`py-2.5 px-4 text-right font-mono font-bold ${
-                          isIncome ? "text-positive" : "text-negative"
-                        }`}
-                      >
-                        {isIncome ? "+" : "-"}
-                        {money(ev.amount)}
+                      <td className="px-4 text-main">{ev.description}</td>
+                      <td className="px-4 text-muted">{ev.account_name || "—"}</td>
+                      <td className="px-5 text-right">
+                        <Money
+                          value={isIncome ? ev.amount : -ev.amount}
+                          signed
+                          className={isIncome ? "text-positive" : "text-main"}
+                        />
                       </td>
                     </tr>
                   );

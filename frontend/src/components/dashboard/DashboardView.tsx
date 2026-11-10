@@ -1,14 +1,10 @@
 import React from "react";
-import {
-  PiggyBank,
-  DollarSign,
-  ArrowUpRight,
-  ArrowDownRight,
-} from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
 import { AccountIcon } from "../common/AccountIcon";
+import { Money } from "../common/Money";
 import { isAssetAccount } from "../../constants/canadianAccountTypes";
 import { useChartTheme } from "../../hooks/useChartTheme";
+import { formatMoney, formatMoneyCompact } from "../../utils/format";
 import type { Account, DashboardAnalyticsResponse } from "../../types";
 
 interface DashboardViewProps {
@@ -16,6 +12,20 @@ interface DashboardViewProps {
   accounts: Account[];
   onNavigate: (tab: string) => void;
 }
+
+const card = "rounded-xl bg-surface border border-subtle";
+
+const StatCard: React.FC<{ label: string; children: React.ReactNode; meta: React.ReactNode }> = ({
+  label,
+  children,
+  meta,
+}) => (
+  <div className={`${card} p-5`}>
+    <div className="text-sm text-sub">{label}</div>
+    <div className="mt-2 text-2xl font-medium leading-none">{children}</div>
+    <div className="mt-2 text-xs text-muted">{meta}</div>
+  </div>
+);
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   analytics,
@@ -26,341 +36,304 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   if (!analytics) {
     return (
-      <div className="flex items-center justify-center h-64 text-muted">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-main mr-3"></div>
-        Loading dashboard metrics...
+      <div className="flex items-center justify-center h-64 text-sm text-muted">
+        <div className="animate-spin rounded-full h-5 w-5 border-2 border-subtle border-t-[var(--accent-primary)] mr-3"></div>
+        Loading dashboard
       </div>
     );
   }
 
   const { monthly_cash_flow, net_worth_history, category_spending, sankey } = analytics;
 
-  // ECharts Sankey Options
+  const monthTitle = new Date().toLocaleDateString("en-CA", { month: "long", year: "numeric" });
+
+  const lastPoint = net_worth_history[net_worth_history.length - 1];
+  const prevPoint = net_worth_history[net_worth_history.length - 2];
+  const monthChange = lastPoint && prevPoint ? lastPoint.net_worth - prevPoint.net_worth : null;
+
+  const mono = "IBM Plex Mono, ui-monospace, monospace";
+  const tooltipBase = {
+    backgroundColor: chartTheme.tooltipBg,
+    borderColor: chartTheme.tooltipBorder,
+    borderWidth: 1,
+    padding: [8, 12],
+    extraCssText: "border-radius: 8px; box-shadow: none;",
+    textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: "IBM Plex Sans, sans-serif" },
+  };
+
+  // Net worth: the main chart. One accent line on a ruled monthly grid.
+  const netWorthOptions = {
+    backgroundColor: "transparent",
+    tooltip: {
+      ...tooltipBase,
+      trigger: "axis",
+      axisPointer: { type: "line", lineStyle: { color: chartTheme.axisLineColor } },
+      formatter: (params: any[]) => {
+        const item = params[0];
+        if (!item) return "";
+        return `<div style="color:${chartTheme.subtleTextColor}">${item.name}</div><div style="margin-top:4px;font-family:${mono}">${formatMoney(Number(item.value))}</div>`;
+      },
+    },
+    grid: { left: 8, right: 16, bottom: 8, top: 16, containLabel: true },
+    xAxis: {
+      type: "category",
+      data: net_worth_history.map((h) => h.date),
+      axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
+      axisTick: { show: false },
+      axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11, fontFamily: mono, margin: 12 },
+      splitLine: { show: true, lineStyle: { color: chartTheme.gridLineColor } },
+      boundaryGap: false,
+    },
+    yAxis: {
+      type: "value",
+      scale: true,
+      axisLine: { show: false },
+      splitLine: { lineStyle: { color: chartTheme.gridLineColor } },
+      axisLabel: {
+        color: chartTheme.subtleTextColor,
+        fontSize: 11,
+        fontFamily: mono,
+        formatter: (val: number) => formatMoneyCompact(val),
+      },
+    },
+    series: [
+      {
+        name: "Net worth",
+        type: "line",
+        smooth: 0.3,
+        symbol: "circle",
+        symbolSize: 6,
+        showSymbol: false,
+        data: net_worth_history.map((h) => h.net_worth),
+        endLabel: {
+          show: true,
+          color: chartTheme.textColor,
+          fontFamily: mono,
+          fontSize: 11,
+          offset: [-8, -16],
+          align: "right",
+          formatter: (p: any) => formatMoney(Number(p.value), { cents: false }),
+        },
+        itemStyle: { color: chartTheme.accentColor },
+        lineStyle: { width: 2, color: chartTheme.accentColor },
+        emphasis: { disabled: true },
+      },
+    ],
+  };
+
+  // Cash flow: the one place category colours appear. Income leads in the accent,
+  // pass-through nodes stay neutral, categories keep the colours their owners chose.
+  const categoryColors = new Map(category_spending.map((c) => [c.category_name, c.category_color]));
+  const nodeColor = (name: string): string => {
+    if (/income/i.test(name)) return chartTheme.accentColor;
+    if (/savings/i.test(name)) return chartTheme.positiveColor;
+    return categoryColors.get(name) || chartTheme.neutralColor;
+  };
+
   const sankeyOptions = {
     backgroundColor: "transparent",
     tooltip: {
+      ...tooltipBase,
       trigger: "item",
       triggerOn: "mousemove",
-      backgroundColor: chartTheme.tooltipBg,
-      borderColor: chartTheme.tooltipBorder,
-      textStyle: { color: chartTheme.tooltipText, fontSize: 12 },
       formatter: (params: any) => {
         if (params.dataType === "edge") {
-          return `${params.data.source} → ${params.data.target}: <b>$${Number(params.data.value).toLocaleString()}</b>`;
+          return `${params.data.source} → ${params.data.target}<div style="margin-top:4px;font-family:${mono}">${formatMoney(Number(params.data.value))}</div>`;
         }
-        return `${params.name}: <b>$${Number(params.value || 0).toLocaleString()}</b>`;
+        return `${params.name}<div style="margin-top:4px;font-family:${mono}">${formatMoney(Number(params.value || 0))}</div>`;
       },
     },
     series: [
       {
         type: "sankey",
         layout: "none",
+        left: 0,
+        right: 120,
+        top: 8,
+        bottom: 8,
+        nodeWidth: 8,
+        nodeGap: 10,
         emphasis: { focus: "adjacency" },
-        data: sankey.nodes.map((n) => ({ name: n.name })),
+        data: sankey.nodes.map((n) => ({
+          name: n.name,
+          itemStyle: { color: nodeColor(n.name) },
+        })),
         links: sankey.links.map((l) => ({
           source: sankey.nodes[l.source]?.name || "Unknown",
           target: sankey.nodes[l.target]?.name || "Unknown",
           value: l.value,
         })),
-        lineStyle: { color: "gradient", curveness: 0.5, opacity: 0.45 },
-        label: {
-          color: chartTheme.textColor,
-          fontSize: 12,
-          fontWeight: 500,
-        },
-        itemStyle: {
-          borderWidth: 0,
-          borderRadius: 3,
-        },
-      },
-    ],
-  };
-
-  // ECharts Net Worth Area Options
-  const netWorthOptions = {
-    backgroundColor: "transparent",
-    tooltip: {
-      trigger: "axis",
-      backgroundColor: chartTheme.tooltipBg,
-      borderColor: chartTheme.tooltipBorder,
-      textStyle: { color: chartTheme.tooltipText, fontSize: 12 },
-      formatter: (params: any[]) => {
-        const item = params[0];
-        if (!item) return "";
-        return `<div><div style="font-weight: 500; color: ${chartTheme.subtleTextColor};">${item.name}</div><div style="color: ${chartTheme.accentColor}; margin-top: 4px; font-weight: bold; font-family: monospace;">Net Worth: $${Number(item.value).toLocaleString()}</div></div>`;
-      },
-    },
-    grid: {
-      left: "2%",
-      right: "3%",
-      bottom: "3%",
-      top: "10%",
-      containLabel: true,
-    },
-    xAxis: {
-      type: "category",
-      data: net_worth_history.map((h) => h.date),
-      axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
-      axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11 },
-      boundaryGap: false,
-    },
-    yAxis: {
-      type: "value",
-      axisLine: { show: false },
-      splitLine: { lineStyle: { color: chartTheme.gridLineColor } },
-      axisLabel: {
-        color: chartTheme.subtleTextColor,
-        fontSize: 11,
-        formatter: (val: number) => `$${Math.round(val / 1000)}k`,
-      },
-    },
-    series: [
-      {
-        name: "Net Worth",
-        type: "line",
-        smooth: true,
-        showSymbol: false,
-        data: net_worth_history.map((h) => h.net_worth),
-        itemStyle: { color: chartTheme.accentColor },
-        lineStyle: { width: 2.5, color: chartTheme.accentColor },
-        areaStyle: {
-          color: {
-            type: "linear",
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: chartTheme.accentGradient.start },
-              { offset: 1, color: chartTheme.accentGradient.end },
-            ],
-          },
-        },
+        lineStyle: { color: "target", curveness: 0.5, opacity: 0.18 },
+        label: { color: chartTheme.textColor, fontSize: 12, fontFamily: "IBM Plex Sans, sans-serif" },
+        itemStyle: { borderWidth: 0, borderRadius: 2 },
       },
     ],
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Top Banner KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {/* Net Worth */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Net Worth
-            </span>
-            <div className="p-2 rounded-xl bg-accent-subtle text-accent-subtle">
-              <DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />
-            </div>
-          </div>
-          <div className="mt-2 sm:mt-3 text-xl sm:text-2xl font-bold font-mono tracking-tight text-main">
-            ${analytics.current_net_worth.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-          <div className="mt-1.5 flex flex-wrap items-center text-xs font-mono text-muted gap-1.5 sm:gap-2">
-            <span className="text-positive font-medium">Assets: ${analytics.total_assets.toLocaleString()}</span>
-            <span>•</span>
-            <span className="text-negative font-medium">Debt: ${analytics.total_liabilities.toLocaleString()}</span>
-          </div>
+    <div className="max-w-[1440px] mx-auto flex flex-col gap-6">
+      {/* Header: the month and where net worth stands */}
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-[28px] leading-tight font-medium text-main">{monthTitle}</h1>
+          <p className="mt-1 text-sm text-sub">Household overview</p>
         </div>
-
-        {/* Monthly Income */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Monthly Income
-            </span>
-            <div className="p-2 rounded-xl bg-positive-subtle text-positive">
-              <ArrowUpRight className="w-4 h-4 sm:w-5 sm:h-5" />
-            </div>
-          </div>
-          <div className="mt-2 sm:mt-3 text-xl sm:text-2xl font-bold font-mono text-positive">
-            +${monthly_cash_flow.total_income.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-          <div className="mt-1.5 text-xs text-muted">Current calendar month</div>
-        </div>
-
-        {/* Monthly Expenses */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Monthly Expenses
-            </span>
-            <div className="p-2 rounded-xl bg-negative-subtle text-negative">
-              <ArrowDownRight className="w-4 h-4 sm:w-5 sm:h-5" />
-            </div>
-          </div>
-          <div className="mt-2 sm:mt-3 text-xl sm:text-2xl font-bold font-mono text-negative">
-            -${monthly_cash_flow.total_expenses.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-          <div className="mt-1.5 text-xs text-muted">Fixed + Variable Outflows</div>
-        </div>
-
-        {/* Net Savings & Rate */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Net Savings
-            </span>
-            <div className="p-2 rounded-xl bg-accent-subtle text-accent-subtle">
-              <PiggyBank className="w-4 h-4 sm:w-5 sm:h-5" />
-            </div>
-          </div>
-          <div
-            className={`mt-2 sm:mt-3 text-xl sm:text-2xl font-bold font-mono ${
-              monthly_cash_flow.net_savings >= 0 ? "text-positive" : "text-negative"
+        <div className="sm:text-right">
+          <div className="text-sm text-sub">Net worth</div>
+          <Money
+            value={analytics.current_net_worth}
+            className={`block mt-1 text-[32px] leading-none font-medium ${
+              analytics.current_net_worth < 0 ? "text-negative" : "text-main"
             }`}
-          >
-            ${monthly_cash_flow.net_savings.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-          <div className="mt-1.5 flex items-center gap-1.5 text-xs">
-            <span className="px-2 py-0.5 rounded bg-accent-subtle text-accent-subtle font-mono font-semibold">
-              {monthly_cash_flow.savings_rate}%
+          />
+          <div className="mt-2 text-xs font-mono text-muted">
+            {monthChange !== null && (
+              <span className={monthChange >= 0 ? "text-positive" : "text-negative"}>
+                {formatMoney(monthChange, { signed: true, cents: false })}
+              </span>
+            )}
+            {monthChange !== null && <span> vs last month · </span>}
+            <span>
+              Assets {formatMoney(analytics.total_assets, { cents: false })} · Debt{" "}
+              {formatMoney(analytics.total_liabilities, { cents: false })}
             </span>
-            <span className="text-muted">Savings Rate</span>
           </div>
         </div>
+      </header>
+
+      {/* Main chart */}
+      <section className={`${card} p-5 sm:p-6`}>
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-base font-medium text-main">Net worth</h2>
+          <span className="text-xs text-muted">Month-end balances</span>
+        </div>
+        {net_worth_history.length > 1 ? (
+          <LazyChart option={netWorthOptions} className="h-64 sm:h-80 mt-4" />
+        ) : (
+          <div className="h-64 sm:h-80 mt-4 flex items-center justify-center text-sm text-muted">
+            Net worth history appears after the first month of balances
+          </div>
+        )}
+      </section>
+
+      {/* This month */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard label="Income" meta="This month">
+          <Money value={monthly_cash_flow.total_income} className="text-main" />
+        </StatCard>
+        <StatCard label="Expenses" meta="This month, fixed and variable">
+          <Money value={monthly_cash_flow.total_expenses} className="text-main" />
+        </StatCard>
+        <StatCard
+          label="Net savings"
+          meta={<span className="font-mono">{monthly_cash_flow.savings_rate}% of income</span>}
+        >
+          <Money
+            value={monthly_cash_flow.net_savings}
+            signed
+            className={monthly_cash_flow.net_savings >= 0 ? "text-positive" : "text-negative"}
+          />
+        </StatCard>
       </div>
 
-      {/* Sankey Flow & Net Worth Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Cash Flow Sankey Diagram (2 cols) */}
-        <div className="lg:col-span-2 p-4 sm:p-6 rounded-2xl bg-surface border border-default shadow-xs">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-sm sm:text-base font-bold text-main">Cash Flow Stream (Sankey)</h2>
-              <p className="text-xs text-muted mt-0.5">
-                Visual flow of income into category expenditures and net savings
-              </p>
-            </div>
-          </div>
-
+      {/* Cash flow + categories */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <section className={`${card} lg:col-span-2 p-5 sm:p-6`}>
+          <h2 className="text-base font-medium text-main">Cash flow</h2>
+          <p className="mt-1 text-sm text-sub">Where this month's income went</p>
           {sankey.links.length > 0 ? (
-            <LazyChart option={sankeyOptions} className="h-72" />
+            <LazyChart option={sankeyOptions} className="h-72 mt-4" />
           ) : (
-            <div className="h-72 flex flex-col items-center justify-center text-muted text-sm">
-              <p>No income/expense flow recorded yet for this month.</p>
+            <div className="h-72 mt-4 flex flex-col items-center justify-center gap-3 text-sm text-muted">
+              <p>No income or spending recorded this month</p>
               <button
                 onClick={() => onNavigate("ingestion")}
-                className="mt-3 px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs"
+                className="h-9 px-4 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98]"
               >
-                Import Bank Statements
+                Import statements
               </button>
             </div>
           )}
-        </div>
+        </section>
 
-        {/* Category Spending Breakdown (1 col) */}
-        <div className="p-6 rounded-2xl bg-surface border border-default shadow-xs flex flex-col">
-          <h2 className="text-base font-bold text-main mb-1">Top Expenses by Category</h2>
-          <p className="text-xs text-muted mb-4">Current month spending distribution</p>
-
-          <div className="flex-1 space-y-3 overflow-y-auto max-h-72 pr-1">
+        <section className={`${card} p-5 sm:p-6 flex flex-col`}>
+          <h2 className="text-base font-medium text-main">Top categories</h2>
+          <p className="mt-1 text-sm text-sub">Spending this month</p>
+          <div className="flex-1 mt-4 flex flex-col gap-4 overflow-y-auto max-h-72 pr-1">
             {category_spending.length > 0 ? (
               category_spending.map((cat) => (
-                <div key={cat.category_id} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
+                <div key={cat.category_id}>
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
                       <span
-                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        className="w-2 h-2 rounded-full shrink-0"
                         style={{ backgroundColor: cat.category_color }}
-                      ></span>
-                      <span className="font-medium text-main truncate">{cat.category_name}</span>
+                      />
+                      <span className="text-main truncate">{cat.category_name}</span>
                     </div>
-                    <div className="font-semibold font-mono text-sub shrink-0">
-                      ${cat.amount.toLocaleString()}{" "}
-                      <span className="text-[10px] text-muted font-normal">
-                        ({cat.percentage}%)
+                    <div className="shrink-0 flex items-baseline gap-2">
+                      <Money value={cat.amount} cents={false} className="text-sub" />
+                      <span className="w-9 text-right text-xs font-mono text-muted">
+                        {cat.percentage}%
                       </span>
                     </div>
                   </div>
-                  <div className="w-full h-1.5 rounded-full bg-surface-subtle overflow-hidden">
+                  <div className="mt-2 h-1 rounded-full bg-surface-subtle overflow-hidden">
                     <div
-                      className="h-full rounded-full transition-all duration-500"
+                      className="h-full rounded-full"
                       style={{
                         width: `${Math.min(cat.percentage, 100)}%`,
-                        backgroundColor: cat.category_color,
+                        backgroundColor: "var(--text-muted)",
                       }}
-                    ></div>
+                    />
                   </div>
                 </div>
               ))
             ) : (
-              <div className="h-full flex items-center justify-center text-muted text-xs">
-                No expense transactions this month.
+              <div className="h-full flex items-center justify-center text-sm text-muted">
+                No spending this month
               </div>
             )}
           </div>
-        </div>
+        </section>
       </div>
 
-      {/* Net Worth Progression & Accounts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Net Worth Chart */}
-        <div className="lg:col-span-2 p-6 rounded-2xl bg-surface border border-default shadow-xs">
-          <h2 className="text-base font-bold text-main mb-1">Net Worth Progression</h2>
-          <p className="text-xs text-muted mb-4">Historical trajectory of assets vs liabilities</p>
-
-          <LazyChart option={netWorthOptions} className="h-64" />
+      {/* Accounts */}
+      <section className={`${card} overflow-hidden`}>
+        <div className="flex items-center justify-between px-5 sm:px-6 h-14 border-b border-subtle">
+          <h2 className="text-base font-medium text-main">Accounts</h2>
+          <button
+            onClick={() => onNavigate("accounts")}
+            className="text-sm text-accent-subtle hover:underline underline-offset-4"
+          >
+            View all
+          </button>
         </div>
-
-        {/* Managed Accounts Summary */}
-        <div className="p-6 rounded-2xl bg-surface border border-default shadow-xs flex flex-col">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-bold text-main">Your Accounts</h2>
-            <button
-              onClick={() => onNavigate("accounts")}
-              className="text-xs text-accent-main hover:underline font-semibold"
-            >
-              View All
-            </button>
-          </div>
-
-          <div className="space-y-2.5 overflow-y-auto max-h-64 pr-1">
-            {accounts.map((acc) => {
-              const isAsset = isAssetAccount(acc.type);
-              return (
-                <div
-                  key={acc.id}
-                  className="p-3 rounded-xl bg-surface-subtle border border-subtle flex items-center justify-between transition-colors hover:border-default"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <AccountIcon
-                      type={acc.type}
-                      icon={acc.icon}
-                      color={acc.color}
-                      size="md"
-                    />
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold text-main truncate">{acc.name}</div>
-                      <div className="text-[10px] text-muted truncate">
-                        {acc.institution} {acc.account_number_mask ? `(${acc.account_number_mask})` : ""}
-                      </div>
+        <ul className="divide-y divide-[var(--border-subtle)] max-h-96 overflow-y-auto">
+          {accounts.map((acc) => {
+            const isLiability = !isAssetAccount(acc.type);
+            return (
+              <li key={acc.id} className="flex items-center justify-between gap-4 px-5 sm:px-6 h-14">
+                <div className="flex items-center gap-3 min-w-0">
+                  <AccountIcon type={acc.type} icon={acc.icon} color={acc.color} size="md" />
+                  <div className="min-w-0">
+                    <div className="text-sm text-main truncate">{acc.name}</div>
+                    <div className="text-xs text-muted truncate">
+                      {acc.institution}
+                      {acc.account_number_mask ? ` ··${acc.account_number_mask}` : ""}
+                      {acc.interest_rate ? ` · ${acc.interest_rate}% APR` : ""}
                     </div>
-                  </div>
-
-                  <div className="text-right shrink-0">
-                    <div
-                      className={`text-xs font-bold font-mono ${
-                        isAsset
-                          ? "text-positive"
-                          : acc.current_balance < 0
-                          ? "text-negative"
-                          : "text-main"
-                      }`}
-                    >
-                      ${acc.current_balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                    {acc.interest_rate ? (
-                      <div className="text-[10px] text-muted font-mono">{acc.interest_rate}% APR</div>
-                    ) : null}
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
+                <Money
+                  value={isLiability ? -Math.abs(acc.current_balance) : acc.current_balance}
+                  className={`text-sm ${isLiability ? "text-sub" : "text-main"}`}
+                />
+              </li>
+            );
+          })}
+        </ul>
+      </section>
     </div>
   );
 };

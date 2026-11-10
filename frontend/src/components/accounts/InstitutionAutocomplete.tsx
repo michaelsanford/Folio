@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Landmark, Check, ChevronDown, X } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 import {
   searchCanadianInstitutions,
   type CanadianInstitution,
@@ -16,7 +16,7 @@ interface InstitutionAutocompleteProps {
 export const InstitutionAutocomplete: React.FC<InstitutionAutocompleteProps> = ({
   value,
   onChange,
-  placeholder = "e.g. RBC, TD, Wealthsimple, Questrade",
+  placeholder = "RBC, TD, Wealthsimple…",
   className = "",
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -115,28 +115,30 @@ export const InstitutionAutocomplete: React.FC<InstitutionAutocompleteProps> = (
             setHighlightedIndex(-1);
           }}
           onKeyDown={handleKeyDown}
-          className="w-full pl-3 pr-8 py-2 bg-input border border-default hover:border-strong focus:border-accent-main focus:ring-1 focus:ring-accent-main rounded-xl text-main text-sm transition-all placeholder:text-muted"
+          className="w-full h-9 pl-3 pr-9 bg-input border border-default focus:outline-none focus:border-[var(--accent-primary)] rounded-lg text-main text-sm transition-colors placeholder:text-muted"
         />
 
-        <div className="absolute right-2 flex items-center gap-1">
+        <div className="absolute right-1 flex items-center">
           {value ? (
             <button
               type="button"
+              aria-label="Clear institution"
               onClick={() => {
                 onChange("");
                 inputRef.current?.focus();
               }}
-              className="p-1 text-muted hover:text-main rounded-md"
+              className="h-7 w-7 flex items-center justify-center text-muted hover:text-main rounded-md transition-colors"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-4 h-4" strokeWidth={1.5} />
             </button>
           ) : (
             <button
               type="button"
+              aria-label="Show institutions"
               onClick={() => setIsOpen(!isOpen)}
-              className="p-1 text-muted hover:text-main rounded-md"
+              className="h-7 w-7 flex items-center justify-center text-muted hover:text-main rounded-md transition-colors"
             >
-              <ChevronDown className="w-4 h-4" />
+              <ChevronDown className="w-4 h-4" strokeWidth={1.5} />
             </button>
           )}
         </div>
@@ -160,7 +162,7 @@ export const InstitutionAutocomplete: React.FC<InstitutionAutocompleteProps> = (
                 width: `${popoverStyle.width}px`,
                 maxHeight: `${popoverStyle.maxHeight}px`,
               }}
-              className="z-[101] rounded-xl bg-surface border border-default shadow-2xl overflow-y-auto p-1.5 space-y-1 animate-in fade-in zoom-in-95 text-sm"
+              className="z-[101] rounded-xl bg-surface border border-default shadow-xl overflow-y-auto p-1 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 text-sm"
             >
               {filtered.length > 0 ? (
                 filtered.map((inst, index) => {
@@ -178,31 +180,32 @@ export const InstitutionAutocomplete: React.FC<InstitutionAutocompleteProps> = (
                         handleSelect(inst);
                       }}
                       onMouseEnter={() => setHighlightedIndex(index)}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-all cursor-pointer ${
-                        isHighlighted || isSelected
-                          ? "bg-accent-subtle text-accent-subtle border border-accent-main/30"
-                          : "text-sub hover:bg-surface-hover hover:text-main"
+                      className={`w-full h-9 shrink-0 flex items-center justify-between gap-2 px-3 rounded-lg text-left transition-colors cursor-pointer ${
+                        isSelected
+                          ? "bg-accent-subtle"
+                          : isHighlighted
+                          ? "bg-surface-subtle"
+                          : ""
                       }`}
                     >
-                      <div className="flex items-center gap-2.5 truncate">
-                        <Landmark className="w-4 h-4 text-accent-main shrink-0" />
-                        <div className="truncate">
-                          <span className="font-semibold text-xs text-main">
-                            {inst.shortName}
-                          </span>
-                          <span className="text-[11px] text-muted ml-2 truncate">
-                            {inst.name !== inst.shortName ? inst.name : ""}
-                          </span>
-                        </div>
+                      <div className="truncate">
+                        <span className="text-sm text-main">
+                          {inst.shortName}
+                        </span>
+                        <span className="text-xs text-muted ml-2 truncate">
+                          {inst.name !== inst.shortName ? inst.name : ""}
+                        </span>
                       </div>
 
-                      {isSelected && <Check className="w-3.5 h-3.5 text-accent-main shrink-0 ml-1" />}
+                      {isSelected && (
+                        <Check className="w-4 h-4 text-accent-subtle shrink-0" strokeWidth={1.5} />
+                      )}
                     </button>
                   );
                 })
               ) : (
                 <div className="p-3 text-center text-xs text-muted">
-                  Press enter to use &quot;<span className="text-main font-semibold">{value}</span>&quot;
+                  Press Enter to use “<span className="text-main">{value}</span>”
                 </div>
               )}
             </div>

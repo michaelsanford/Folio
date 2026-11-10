@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, Plus, Trash2, Users, Edit2, Check, Shield } from "lucide-react";
+import { X, Plus, Trash2, Edit2, Check, Shield } from "lucide-react";
 import type { HouseholdMember } from "../../types";
 import { api } from "../../services/api";
 
@@ -58,7 +58,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      setError("Member name is required.");
+      setError("Member name is required");
       return;
     }
 
@@ -84,7 +84,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
       handleResetForm();
       onMembersModified();
     } catch (err: any) {
-      setError(err?.message || "Failed to save member.");
+      setError(err?.message || "Couldn’t save member");
     } finally {
       setIsSubmitting(false);
     }
@@ -101,45 +101,41 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
       }
       onMembersModified();
     } catch (err: any) {
-      setError(err?.message || "Failed to delete member.");
+      setError(err?.message || "Couldn’t delete member");
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
-      <div className="relative w-full max-w-2xl bg-surface border border-default rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+      <div className="relative w-full max-w-2xl bg-surface border border-default rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-subtle">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-accent-subtle text-accent-subtle flex items-center justify-center">
-              <Users className="w-5 h-5 text-accent-main" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-main">Household & Collaboration</h2>
-              <p className="text-xs text-muted">
-                Manage members to track CRA limits, account ownership, and spending attribution.
-              </p>
-            </div>
+          <div>
+            <h2 className="text-base font-medium text-main">Household</h2>
+            <p className="text-xs text-muted mt-1">
+              Members for CRA limits, account ownership and spending attribution
+            </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-muted hover:text-main hover:bg-surface-hover transition-colors"
+            className="h-8 w-8 shrink-0 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer"
+            aria-label="Close household settings"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" strokeWidth={1.5} />
           </button>
         </div>
 
         {/* Canadian Legal Notice */}
-        <div className="mx-5 mt-4 p-3 rounded-xl bg-accent-subtle/50 border border-accent-main/20 text-xs text-muted flex items-start gap-2.5">
-          <Shield className="w-4 h-4 text-accent-main shrink-0 mt-0.5" />
+        <div className="mx-5 mt-4 p-4 rounded-lg bg-surface-subtle text-xs text-sub flex items-start gap-3">
+          <Shield className="w-4 h-4 text-muted shrink-0" strokeWidth={1.5} />
           <div>
-            <span className="font-semibold text-main">Canadian Registered Accounts Rule: </span>
+            <span className="font-medium text-main">Registered accounts: </span>
             The CRA mandates that registered accounts (TFSA, RRSP, FHSA, RESP) are legally held by an individual person. Joint ownership applies to Chequing, Savings, and Mortgages.
           </div>
         </div>
 
         {error && (
-          <div className="mx-5 mt-3 p-3 rounded-xl bg-negative-subtle border border-rose-500/30 text-xs text-negative">
+          <div className="mx-5 mt-3 p-3 rounded-lg bg-negative-subtle text-xs text-negative">
             {error}
           </div>
         )}
@@ -147,33 +143,33 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
         <div className="p-5 overflow-y-auto space-y-6 flex-1">
           {/* Member List */}
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted mb-3">
-              Household Members ({members.length})
+            <h3 className="text-base font-medium text-main mb-3">
+              Members <span className="text-sm font-normal text-muted">{members.length}</span>
             </h3>
             {members.length === 0 ? (
-              <div className="p-6 text-center rounded-xl border border-dashed border-default text-xs text-muted">
-                No household members defined yet. Add members below to start separating account ownership and tracking individual CRA room.
+              <div className="p-6 text-center rounded-xl border border-dashed border-default text-sm text-muted">
+                No household members yet. Add members below to separate account ownership and track individual CRA room.
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {members.map((m) => (
                   <div
                     key={m.id}
-                    className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 ${
+                    className={`p-3 rounded-lg border transition-colors flex items-center justify-between gap-3 ${
                       editingMember?.id === m.id
-                        ? "border-accent-main bg-accent-subtle/30"
-                        : "border-default bg-surface-subtle hover:border-subtle"
+                        ? "border-accent-main bg-surface-subtle"
+                        : "border-default bg-surface"
                     }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white shrink-0 shadow-2xs"
+                        className="w-8 h-8 rounded-full flex items-center justify-center font-medium text-xs text-white shrink-0"
                         style={{ backgroundColor: m.color || "#3B82F6" }}
                       >
                         {m.name.substring(0, 1).toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <div className="font-semibold text-xs text-main truncate">{m.name}</div>
+                        <div className="font-medium text-sm text-main truncate">{m.name}</div>
                         <div className="text-[11px] text-muted truncate">
                           {m.role || "Member"} {m.notes ? `• ${m.notes}` : ""}
                         </div>
@@ -182,17 +178,19 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => handleStartEdit(m)}
-                        className="p-1 rounded-md text-muted hover:text-main hover:bg-surface transition-colors"
+                        className="h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer"
                         title="Edit member"
+                        aria-label={`Edit ${m.name}`}
                       >
-                        <Edit2 className="w-3.5 h-3.5" />
+                        <Edit2 className="w-4 h-4" strokeWidth={1.5} />
                       </button>
                       <button
                         onClick={() => handleDelete(m.id, m.name)}
-                        className="p-1 rounded-md text-muted hover:text-negative hover:bg-surface transition-colors"
+                        className="h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-negative bg-surface-hover transition-colors cursor-pointer"
                         title="Delete member"
+                        aria-label={`Delete ${m.name}`}
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                       </button>
                     </div>
                   </div>
@@ -204,101 +202,104 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
           {/* Add / Edit Form */}
           <form onSubmit={handleSave} className="p-4 rounded-xl border border-default bg-surface-subtle space-y-4">
             <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-main">
-                {editingMember ? `Edit Member: ${editingMember.name}` : "Add Household Member"}
+              <h4 className="text-base font-medium text-main">
+                {editingMember ? `Edit ${editingMember.name}` : "Add member"}
               </h4>
               {editingMember && (
                 <button
                   type="button"
                   onClick={handleResetForm}
-                  className="text-xs text-muted hover:text-main underline"
+                  className="text-xs text-muted hover:text-main underline cursor-pointer"
                 >
-                  Cancel Edit
+                  Cancel edit
                 </button>
               )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-semibold text-muted mb-1">
-                  Full Name / Display Name *
+                <label htmlFor="household-member-name" className="block text-xs text-sub mb-1">
+                  Name
                 </label>
                 <input
+                  id="household-member-name"
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Michael, Sarah"
-                  className="w-full px-3 py-2 bg-input border border-default rounded-xl text-xs text-main placeholder-muted focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+                  placeholder="Display name"
+                  className="w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-muted mb-1">
-                  Role / Relationship
+                <label htmlFor="household-member-role" className="block text-xs text-sub mb-1">
+                  Relationship
                 </label>
                 <select
+                  id="household-member-role"
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
-                  className="w-full px-3 py-2 bg-input border border-default rounded-xl text-xs text-main focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+                  className="w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main focus:outline-none focus:border-[var(--accent-primary)]"
                 >
                   <option value="Self">Self</option>
-                  <option value="Partner">Partner / Spouse</option>
-                  <option value="Dependent">Dependent / Child</option>
-                  <option value="Other">Other Household</option>
+                  <option value="Partner">Partner or spouse</option>
+                  <option value="Dependent">Dependent or child</option>
+                  <option value="Other">Other household member</option>
                 </select>
               </div>
             </div>
 
             <div>
-              <label className="block text-[11px] font-semibold text-muted mb-1.5">
-                Badge Accent Color
-              </label>
+              <div className="text-xs text-sub mb-2">Colour</div>
               <div className="flex items-center gap-2 flex-wrap">
                 {PRESET_MEMBER_COLORS.map((c) => (
                   <button
                     key={c}
                     type="button"
                     onClick={() => setColor(c)}
-                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-transform ${
-                      color === c ? "ring-2 ring-offset-2 ring-accent-main scale-110" : "hover:scale-105"
+                    className={`w-6 h-6 rounded-full flex items-center justify-center cursor-pointer ${
+                      color === c ? "ring-2 ring-offset-2 ring-offset-[var(--bg-surface-subtle)] ring-accent-main" : ""
                     }`}
                     style={{ backgroundColor: c }}
+                    aria-label={`Colour ${c}`}
+                    aria-pressed={color === c}
                   >
-                    {color === c && <Check className="w-3.5 h-3.5 text-white stroke-3" />}
+                    {color === c && <Check className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />}
                   </button>
                 ))}
               </div>
             </div>
 
             <div>
-              <label className="block text-[11px] font-semibold text-muted mb-1">
-                Notes (Optional)
+              <label htmlFor="household-member-notes" className="block text-xs text-sub mb-1">
+                Notes <span className="text-muted">optional</span>
               </label>
               <input
+                id="household-member-notes"
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="e.g. Primary earner, Student, etc."
-                className="w-full px-3 py-2 bg-input border border-default rounded-xl text-xs text-main placeholder-muted focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+                placeholder="Notes"
+                className="w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]"
               />
             </div>
 
-            <div className="flex justify-end pt-1">
+            <div className="flex justify-end">
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold shadow-xs disabled:opacity-50 cursor-pointer transition-all"
+                className="h-9 px-4 flex items-center gap-2 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium disabled:opacity-50 cursor-pointer transition-colors active:scale-[0.98]"
               >
                 {editingMember ? (
                   <>
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Save Changes</span>
+                    <Check className="w-4 h-4" strokeWidth={1.5} />
+                    <span>Save changes</span>
                   </>
                 ) : (
                   <>
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Member</span>
+                    <Plus className="w-4 h-4" strokeWidth={1.5} />
+                    <span>Add member</span>
                   </>
                 )}
               </button>
@@ -306,10 +307,10 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
           </form>
         </div>
 
-        <div className="p-4 border-t border-subtle bg-surface-subtle flex justify-end">
+        <div className="px-5 py-4 border-t border-subtle flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-surface border border-default hover:bg-surface-hover text-main text-xs font-semibold transition-colors"
+            className="h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer"
           >
             Done
           </button>

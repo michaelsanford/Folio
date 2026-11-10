@@ -1,16 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  AlertTriangle,
-  Globe,
-  Plus,
-  RefreshCw,
-  TrendingUp,
-  TrendingDown,
-  Trash2,
-} from "lucide-react";
+import { AlertTriangle, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
+import { Money } from "../common/Money";
 import { isInvestmentAccount } from "../../constants/canadianAccountTypes";
 import { useChartTheme } from "../../hooks/useChartTheme";
+import { formatMoney, formatMoneyCompact } from "../../utils/format";
 import type { Account, HoldingValuation, PerformanceResponse } from "../../types";
 import { api } from "../../services/api";
 
@@ -20,14 +14,6 @@ interface InvestmentsViewProps {
 }
 
 const PERIOD_ORDER = ["1M", "3M", "YTD", "1Y", "ALL"] as const;
-
-const money = (value: number, currency = "CAD") =>
-  new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
 
 const percent = (value: number | null) =>
   value === null || value === undefined ? "—" : `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
@@ -223,19 +209,29 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
     }
   };
 
+  const mono = "IBM Plex Mono, ui-monospace, monospace";
+  const tooltipBase = {
+    backgroundColor: chartTheme.tooltipBg,
+    borderColor: chartTheme.tooltipBorder,
+    borderWidth: 1,
+    padding: [8, 12],
+    extraCssText: "border-radius: 8px; box-shadow: none;",
+    textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: "IBM Plex Sans, sans-serif" },
+  };
+
   const allocationOptions = useMemo(() => {
     const data = (performance?.holdings || [])
       .filter((h) => h.market_value > 0)
       .map((h) => ({ name: h.symbol, value: Number(h.market_value.toFixed(2)) }));
     return {
       backgroundColor: "transparent",
+      // Share chart: positions need distinct series colours.
       color: chartTheme.palette,
       tooltip: {
+        ...tooltipBase,
         trigger: "item",
-        backgroundColor: chartTheme.tooltipBg,
-        borderColor: chartTheme.tooltipBorder,
-        textStyle: { color: chartTheme.tooltipText, fontSize: 12 },
-        formatter: (p: any) => `${p.name}: <b>${money(p.value, currency)}</b> (${p.percent}%)`,
+        formatter: (p: any) =>
+          `${p.name}<div style="margin-top:4px;font-family:${mono}">${formatMoney(p.value, { currency })} · ${p.percent}%</div>`,
       },
       series: [
         {
@@ -243,7 +239,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           radius: ["55%", "80%"],
           avoidLabelOverlap: true,
           itemStyle: { borderColor: chartTheme.tooltipBg, borderWidth: 2 },
-          label: { color: chartTheme.textColor, fontSize: 11 },
+          label: { color: chartTheme.textColor, fontSize: 11, fontFamily: mono },
           data,
         },
       ],
@@ -255,23 +251,26 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
     return {
       backgroundColor: "transparent",
       tooltip: {
+        ...tooltipBase,
         trigger: "axis",
-        backgroundColor: chartTheme.tooltipBg,
-        borderColor: chartTheme.tooltipBorder,
-        textStyle: { color: chartTheme.tooltipText, fontSize: 12 },
-        valueFormatter: (v: number) => money(v, currency),
+        axisPointer: { type: "shadow" },
+        valueFormatter: (v: number) => formatMoney(v, { currency }),
       },
       legend: {
         data: ["Money you added", "Market growth"],
         textStyle: { color: chartTheme.textColor, fontSize: 11 },
+        icon: "circle",
+        itemWidth: 8,
+        itemHeight: 8,
         bottom: 0,
       },
-      grid: { left: "2%", right: "3%", bottom: "16%", top: "8%", containLabel: true },
+      grid: { left: 8, right: 16, bottom: 32, top: 16, containLabel: true },
       xAxis: {
         type: "category",
         data: ["Portfolio"],
         axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
-        axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11 },
+        axisTick: { show: false },
+        axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11, fontFamily: mono },
       },
       yAxis: {
         type: "value",
@@ -280,7 +279,8 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         axisLabel: {
           color: chartTheme.subtleTextColor,
           fontSize: 11,
-          formatter: (v: number) => `$${Math.round(v / 1000)}k`,
+          fontFamily: mono,
+          formatter: (v: number) => formatMoneyCompact(v),
         },
       },
       series: [
@@ -288,61 +288,71 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           name: "Money you added",
           type: "bar",
           stack: "total",
-          itemStyle: { color: chartTheme.accentColor },
+          barMaxWidth: 64,
+          itemStyle: { color: chartTheme.neutralColor },
           data: [Number(performance.net_invested.toFixed(2))],
         },
         {
           name: "Market growth",
           type: "bar",
           stack: "total",
-          itemStyle: { color: performance.market_growth >= 0 ? chartTheme.positiveColor : chartTheme.negativeColor },
+          barMaxWidth: 64,
+          itemStyle: { color: performance.market_growth >= 0 ? chartTheme.accentColor : chartTheme.negativeColor },
           data: [Number(performance.market_growth.toFixed(2))],
         },
       ],
     };
   }, [performance, currency, chartTheme]);
 
+  const card = "rounded-xl bg-surface border border-subtle";
+  const btnPrimary =
+    "inline-flex items-center justify-center gap-2 h-9 px-4 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] cursor-pointer";
+  const btnSecondary =
+    "inline-flex items-center justify-center gap-2 h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer";
+  const inputCls =
+    "w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]";
+  const labelCls = "block text-xs text-sub mb-1";
+
   if (investmentAccounts.length === 0) {
     return (
-      <div className="max-w-3xl mx-auto p-8 rounded-2xl bg-surface border border-default text-center shadow-xs">
-        <div className="inline-flex p-3 rounded-2xl bg-accent-subtle text-accent-subtle mb-3">
-          <TrendingUp className="w-6 h-6" />
-        </div>
-        <h2 className="text-base font-bold text-main">No investment accounts yet</h2>
-        <p className="text-xs text-muted mt-1.5 max-w-md mx-auto">
-          Create an account of type <span className="text-main font-semibold">Investment</span>{" "}
+      <div className={`${card} max-w-3xl mx-auto p-6 py-12 text-center`}>
+        <h2 className="text-base font-medium text-main">No investment accounts yet</h2>
+        <p className="mt-1 text-sm text-sub max-w-md mx-auto">
+          Create an account of type <span className="text-main font-medium">Investment</span>{" "}
           to track holdings, cost basis, and returns. Balances are derived from your positions.
         </p>
       </div>
     );
   }
 
+  const fxAvailable = fxRate?.rate !== null && fxRate?.rate !== undefined;
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="max-w-7xl mx-auto flex flex-col gap-6">
       {error && (
-        <div className="p-3 rounded-xl bg-negative-subtle border border-rose-500/30 text-xs text-negative flex items-center justify-between gap-3">
+        <div className="p-3 rounded-lg bg-negative-subtle border border-negative/30 text-sm text-negative flex items-center justify-between gap-3">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-negative hover:underline font-semibold">
+          <button onClick={() => setError(null)} className="text-negative hover:underline underline-offset-4 font-medium">
             Dismiss
           </button>
         </div>
       )}
       {notice && (
-        <div className="p-3 rounded-xl bg-positive-subtle border border-emerald-500/30 text-xs text-positive flex items-center justify-between gap-3">
+        <div className="p-3 rounded-lg bg-positive-subtle border border-positive/30 text-sm text-positive flex items-center justify-between gap-3">
           <span>{notice}</span>
-          <button onClick={() => setNotice(null)} className="text-positive hover:underline font-semibold">
+          <button onClick={() => setNotice(null)} className="text-positive hover:underline underline-offset-4 font-medium">
             Dismiss
           </button>
         </div>
       )}
 
       {/* Account selector and actions */}
-      <div className="p-4 rounded-2xl bg-surface border border-default shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2.5">
+      <div className={`${card} p-4 flex flex-col md:flex-row md:items-center justify-between gap-4`}>
+        <div className="flex flex-wrap items-center gap-3">
           <select
             value={accountId}
             onChange={(e) => setAccountId(e.target.value)}
-            className="px-3 py-2 bg-input border border-default rounded-xl text-xs font-medium text-main focus:ring-1 focus:ring-accent-main focus:outline-hidden"
+            className={`${inputCls} w-auto cursor-pointer`}
           >
             {investmentAccounts.map((a) => (
               <option key={a.id} value={a.id}>
@@ -351,16 +361,16 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
             ))}
           </select>
 
-          {/* Bank of Canada USD/CAD FX Rate badge */}
-          {fxRate?.rate !== null && fxRate?.rate !== undefined && (
+          {/* Bank of Canada USD/CAD rate */}
+          {fxAvailable && fxRate && (
             <div
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-subtle border border-default text-xs"
+              className="inline-flex items-center gap-2 text-sm text-sub"
               title={`Bank of Canada USD/CAD daily exchange rate${fxRate.as_of_date ? ` as of ${fxRate.as_of_date}` : ""}`}
             >
-              <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="font-semibold text-main">USD/CAD:</span>
-              <span className="font-mono font-bold text-main">{fxRate.rate.toFixed(4)}</span>
-              <span className="text-[10px] text-muted hidden sm:inline">(Bank of Canada)</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-positive" />
+              <span>USD/CAD</span>
+              <span className="font-mono text-main">{fxRate.rate!.toFixed(4)}</span>
+              <span className="text-xs text-muted hidden sm:inline">Bank of Canada</span>
             </div>
           )}
         </div>
@@ -369,60 +379,52 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           <button
             onClick={handleFetchAutomatedQuotes}
             disabled={isFetchingQuotes}
-            className="px-3 py-2 rounded-xl bg-surface-subtle hover:bg-surface-hover border border-default text-sub hover:text-main text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className={`${btnSecondary} disabled:opacity-50 disabled:cursor-not-allowed`}
             title="Automatically fetch latest quotes for TSX/TSX-V (.TO, .V), US equities, and Bank of Canada exchange rate"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isFetchingQuotes ? "animate-spin text-accent-main" : ""}`} />
-            {isFetchingQuotes ? "Updating quotes..." : "Update Quotes (TSX / BoC)"}
+            <RefreshCw
+              className={`w-4 h-4 text-sub ${isFetchingQuotes ? "animate-spin" : ""}`}
+              strokeWidth={1.5}
+            />
+            {isFetchingQuotes ? "Updating quotes…" : "Update quotes (TSX / BoC)"}
           </button>
-          <button
-            onClick={() => setIsPriceOpen(true)}
-            className="px-3 py-2 rounded-xl bg-surface-subtle hover:bg-surface-hover border border-default text-sub text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Update prices
+          <button onClick={() => setIsPriceOpen(true)} className={btnSecondary}>
+            Update prices
           </button>
-          <button
-            onClick={() => setIsAddOpen(true)}
-            className="px-3 py-2 rounded-xl bg-accent-main hover:bg-accent-main text-accent-contrast text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" /> Add holding
+          <button onClick={() => setIsAddOpen(true)} className={btnPrimary}>
+            <Plus className="w-4 h-4" strokeWidth={1.5} /> Add holding
           </button>
         </div>
       </div>
 
-      {/* Canadian Market Coverage & BoC FX Rate Context */}
-      <div className="px-4 py-2.5 rounded-2xl bg-surface border border-default shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-2.5 text-xs">
-        <div className="flex flex-wrap items-center gap-2 text-sub">
-          <span className="inline-flex items-center gap-1 font-semibold text-main">
-            <Globe className="w-3.5 h-3.5 text-accent-main" /> Market Coverage:
+      {/* Canadian market coverage and BoC FX context */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs text-muted">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="text-sub">Market coverage:</span>
+          <span>
+            TSX &amp; TSX-V (<code className="font-mono text-sub">.TO</code>,{" "}
+            <code className="font-mono text-sub">.V</code>)
           </span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-subtle border border-subtle text-[11px] font-medium text-main">
-            TSX &amp; TSX-V (<code className="text-accent-main font-mono">.TO</code>, <code className="text-accent-main font-mono">.V</code>)
-          </span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-subtle border border-subtle text-[11px] font-medium text-main">
-            US Equities &amp; ETFs (USD)
-          </span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-subtle border border-subtle text-[11px] font-medium text-main">
-            Bank of Canada Valet FX Daily
-          </span>
+          <span aria-hidden="true">·</span>
+          <span>US equities &amp; ETFs (USD)</span>
+          <span aria-hidden="true">·</span>
+          <span>Bank of Canada Valet FX daily</span>
         </div>
-        {fxRate?.rate !== null && fxRate?.rate !== undefined && (
-          <div className="flex items-center gap-2 text-muted text-[11px] shrink-0">
-            <span>BoC Valet Daily:</span>
-            <span className="font-mono font-bold text-main">{fxRate.rate.toFixed(4)}</span>
-            {fxRate.as_of_date && (
-              <span className="text-[10px] text-muted">({fxRate.as_of_date})</span>
-            )}
+        {fxAvailable && fxRate && (
+          <div className="flex items-center gap-2 shrink-0">
+            <span>BoC Valet daily</span>
+            <span className="font-mono text-main">{fxRate.rate!.toFixed(4)}</span>
+            {fxRate.as_of_date && <span className="font-mono">{fxRate.as_of_date}</span>}
           </div>
         )}
       </div>
 
       {performance && performance.unpriced_holdings.length > 0 && (
-        <div className="p-3 rounded-xl bg-accent-subtle border border-accent-main/30 text-xs text-accent-subtle flex items-start gap-2.5">
-          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+        <div className="p-3 rounded-lg bg-warning-subtle border border-warning/30 text-sm text-warning flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" strokeWidth={1.5} />
           <span>
             No price recorded for{" "}
-            <span className="font-semibold font-mono">{performance.unpriced_holdings.join(", ")}</span>. Those
+            <span className="font-medium font-mono">{performance.unpriced_holdings.join(", ")}</span>. Those
             positions are shown at cost, so market value and returns understate reality until you
             enter a price.
           </span>
@@ -431,84 +433,73 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
 
       {/* KPI row */}
       {performance && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs">
-            <div className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Market Value
-            </div>
-            <div className="mt-2 text-xl sm:text-2xl font-bold font-mono text-main">
-              {money(performance.market_value, currency)}
-            </div>
-            <div className="mt-1.5 text-xs text-muted font-mono">
-              Cost {money(performance.cost_basis, currency)}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className={`${card} p-5`}>
+            <div className="text-sm text-sub">Market value</div>
+            <Money
+              value={performance.market_value}
+              currency={currency}
+              className="block mt-2 text-2xl font-medium leading-none text-main"
+            />
+            <div className="mt-2 text-xs text-muted">
+              Cost <span className="font-mono">{formatMoney(performance.cost_basis, { currency })}</span>
             </div>
           </div>
 
-          <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs">
-            <div className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Unrealized Gain
-            </div>
-            <div
-              className={`mt-2 text-xl sm:text-2xl font-bold font-mono ${
+          <div className={`${card} p-5`}>
+            <div className="text-sm text-sub">Unrealized gain</div>
+            <Money
+              value={performance.unrealized_gain}
+              currency={currency}
+              signed
+              className={`block mt-2 text-2xl font-medium leading-none ${
                 performance.unrealized_gain >= 0 ? "text-positive" : "text-negative"
               }`}
-            >
-              {money(performance.unrealized_gain, currency)}
-            </div>
-            <div className="mt-1.5 text-xs text-muted flex items-center gap-1">
-              {performance.unrealized_gain >= 0 ? (
-                <TrendingUp className="w-3 h-3 text-positive" />
-              ) : (
-                <TrendingDown className="w-3 h-3 text-negative" />
-              )}
-              against cost basis
-            </div>
+            />
+            <div className="mt-2 text-xs text-muted">Against cost basis</div>
           </div>
 
-          <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs">
-            <div className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Money You Added
-            </div>
-            <div className="mt-2 text-xl sm:text-2xl font-bold font-mono text-accent-main">
-              {money(performance.net_invested, currency)}
-            </div>
-            <div className="mt-1.5 text-xs text-muted">
-              Contributions less withdrawals
-            </div>
+          <div className={`${card} p-5`}>
+            <div className="text-sm text-sub">Money you added</div>
+            <Money
+              value={performance.net_invested}
+              currency={currency}
+              className="block mt-2 text-2xl font-medium leading-none text-main"
+            />
+            <div className="mt-2 text-xs text-muted">Contributions less withdrawals</div>
           </div>
 
-          <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-default shadow-xs">
-            <div className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Market Growth
-            </div>
-            <div
-              className={`mt-2 text-xl sm:text-2xl font-bold font-mono ${
+          <div className={`${card} p-5`}>
+            <div className="text-sm text-sub">Market growth</div>
+            <Money
+              value={performance.market_growth}
+              currency={currency}
+              signed
+              className={`block mt-2 text-2xl font-medium leading-none ${
                 performance.market_growth >= 0 ? "text-positive" : "text-negative"
               }`}
-            >
-              {money(performance.market_growth, currency)}
-            </div>
-            <div className="mt-1.5 text-xs text-muted">Value beyond what you put in</div>
+            />
+            <div className="mt-2 text-xs text-muted">Value beyond what you put in</div>
           </div>
         </div>
       )}
 
       {/* Returns */}
       {performance && (
-        <div className="p-4 sm:p-6 rounded-2xl bg-surface border border-default shadow-xs">
-          <h2 className="text-sm sm:text-base font-bold text-main">Returns</h2>
-          <p className="text-xs text-muted mt-0.5 mb-4">
-            <span className="text-main font-medium">Time-weighted</span> measures investment performance, ignoring deposit timing.{" "}
-            <span className="text-main font-medium">Money-weighted</span> measures what you earned including timing.
+        <section className={`${card} p-5 sm:p-6`}>
+          <h2 className="text-base font-medium text-main">Returns</h2>
+          <p className="mt-1 text-sm text-sub">
+            <span className="text-main">Time-weighted</span> measures investment performance, ignoring deposit timing.{" "}
+            <span className="text-main">Money-weighted</span> measures what you earned including timing.
           </p>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs min-w-[440px]">
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-sm min-w-[440px]">
               <thead>
-                <tr className="text-muted border-b border-subtle">
-                  <th className="text-left font-semibold py-2 pr-4">Measure</th>
+                <tr className="text-xs text-muted border-b border-subtle">
+                  <th className="text-left font-normal h-9 pr-4">Measure</th>
                   {PERIOD_ORDER.map((p) => (
-                    <th key={p} className="text-right font-semibold py-2 px-3">
+                    <th key={p} className="text-right font-normal h-9 px-3">
                       {p}
                     </th>
                   ))}
@@ -521,14 +512,14 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                     ["Money-weighted", "money_weighted"],
                   ] as const
                 ).map(([label, key]) => (
-                  <tr key={key} className="border-b border-subtle last:border-0">
-                    <td className="py-2.5 pr-4 text-main font-medium">{label}</td>
+                  <tr key={key} className="h-10 border-b border-subtle last:border-0">
+                    <td className="pr-4 text-main">{label}</td>
                     {PERIOD_ORDER.map((p) => {
                       const value = performance.returns[p]?.[key] ?? null;
                       return (
                         <td
                           key={p}
-                          className={`py-2.5 px-3 text-right font-semibold font-mono tabular-nums ${
+                          className={`px-3 text-right font-mono tabular-nums ${
                             value === null
                               ? "text-muted"
                               : value >= 0
@@ -545,56 +536,54 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
               </tbody>
             </table>
           </div>
-          <p className="text-[11px] text-muted mt-3">
-            A dash means there is not enough data for that period.
+          <p className="mt-4 text-xs text-muted">
+            A dash means there is not enough data for that period
           </p>
-        </div>
+        </section>
       )}
 
       {/* Charts */}
       {performance && performance.holdings.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="p-4 sm:p-6 rounded-2xl bg-surface border border-default shadow-xs">
-            <h2 className="text-sm sm:text-base font-bold text-main mb-1">Allocation</h2>
-            <p className="text-xs text-muted mb-3">Share of market value by position</p>
-            <LazyChart option={allocationOptions} className="h-64" />
-          </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <section className={`${card} p-5 sm:p-6`}>
+            <h2 className="text-base font-medium text-main">Allocation</h2>
+            <p className="mt-1 text-sm text-sub">Share of market value by position</p>
+            <LazyChart option={allocationOptions} className="h-64 mt-4" />
+          </section>
 
-          <div className="p-4 sm:p-6 rounded-2xl bg-surface border border-default shadow-xs">
-            <h2 className="text-sm sm:text-base font-bold text-main mb-1">
-              Contributions vs Growth
-            </h2>
-            <p className="text-xs text-muted mb-3">
+          <section className={`${card} p-5 sm:p-6`}>
+            <h2 className="text-base font-medium text-main">Contributions vs growth</h2>
+            <p className="mt-1 text-sm text-sub">
               How much of the balance you saved, and how much the market added
             </p>
-            {growthOptions && <LazyChart option={growthOptions} className="h-64" />}
-          </div>
+            {growthOptions && <LazyChart option={growthOptions} className="h-64 mt-4" />}
+          </section>
         </div>
       )}
 
       {/* Holdings table */}
-      <div className="rounded-2xl bg-surface border border-default shadow-xs overflow-hidden">
-        <div className="px-4 sm:px-6 py-4 border-b border-subtle bg-surface-subtle">
-          <h2 className="text-sm sm:text-base font-bold text-main">Holdings</h2>
+      <section className={`${card} overflow-hidden`}>
+        <div className="flex items-center px-5 sm:px-6 h-14 border-b border-subtle">
+          <h2 className="text-base font-medium text-main">Holdings</h2>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-xs min-w-[720px]">
+          <table className="w-full text-sm min-w-[720px]">
             <thead>
-              <tr className="text-muted border-b border-subtle bg-surface-subtle/50">
-                <th className="text-left font-semibold py-2.5 px-4">Symbol</th>
-                <th className="text-right font-semibold py-2.5 px-3">Quantity</th>
-                <th className="text-right font-semibold py-2.5 px-3">Price</th>
-                <th className="text-right font-semibold py-2.5 px-3">Cost Basis</th>
-                <th className="text-right font-semibold py-2.5 px-3">Market Value</th>
-                <th className="text-right font-semibold py-2.5 px-3">Unrealized</th>
-                <th className="py-2.5 px-3"></th>
+              <tr className="text-xs text-muted border-b border-subtle">
+                <th className="text-left font-normal h-9 px-5 sm:px-6">Symbol</th>
+                <th className="text-right font-normal h-9 px-3">Quantity</th>
+                <th className="text-right font-normal h-9 px-3">Price</th>
+                <th className="text-right font-normal h-9 px-3">Cost basis</th>
+                <th className="text-right font-normal h-9 px-3">Market value</th>
+                <th className="text-right font-normal h-9 px-3">Unrealized</th>
+                <th className="h-9 px-3"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-subtle font-medium">
+            <tbody className="divide-y divide-subtle">
               {isLoading && (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-muted">
+                  <td colSpan={7} className="py-8 text-center text-sm text-muted">
                     Loading positions…
                   </td>
                 </tr>
@@ -602,7 +591,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
 
               {!isLoading && (performance?.holdings.length ?? 0) === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-muted">
+                  <td colSpan={7} className="py-8 text-center text-sm text-muted">
                     No holdings yet. Add one to start tracking performance.
                   </td>
                 </tr>
@@ -610,47 +599,48 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
 
               {!isLoading &&
                 performance?.holdings.map((h) => (
-                  <tr key={h.holding_id} className="hover:bg-surface-hover transition-colors">
-                    <td className="py-2.5 px-4">
-                      <div className="font-semibold text-main">{h.symbol}</div>
-                      {h.name && <div className="text-[10px] text-muted">{h.name}</div>}
+                  <tr key={h.holding_id} className="h-14 bg-surface-hover transition-colors">
+                    <td className="px-5 sm:px-6">
+                      <div className="text-main font-mono">{h.symbol}</div>
+                      {h.name && <div className="text-xs text-muted">{h.name}</div>}
                     </td>
-                    <td className="py-2.5 px-3 text-right text-sub font-mono tabular-nums">
+                    <td className="px-3 text-right text-sub font-mono tabular-nums">
                       {Number(h.quantity).toLocaleString("en-CA", { maximumFractionDigits: 8 })}
                     </td>
-                    <td className="py-2.5 px-3 text-right tabular-nums font-mono">
+                    <td className="px-3 text-right">
                       {h.is_priced ? (
                         <>
-                          <div className="text-main">{money(h.price ?? 0, currency)}</div>
-                          <div className="text-[10px] text-muted">as of {h.price_as_of}</div>
+                          <Money value={h.price ?? 0} currency={currency} className="text-main" />
+                          <div className="text-[11px] font-mono text-muted">as of {h.price_as_of}</div>
                         </>
                       ) : (
-                        <span className="text-accent-main font-semibold">no price</span>
+                        <span className="text-xs text-warning">No price</span>
                       )}
                     </td>
-                    <td className="py-2.5 px-3 text-right text-sub font-mono tabular-nums">
-                      {money(h.cost_basis, currency)}
+                    <td className="px-3 text-right">
+                      <Money value={h.cost_basis} currency={currency} className="text-sub" />
                     </td>
-                    <td className="py-2.5 px-3 text-right text-main font-semibold font-mono tabular-nums">
-                      {money(h.market_value, currency)}
+                    <td className="px-3 text-right">
+                      <Money value={h.market_value} currency={currency} className="text-main" />
                     </td>
-                    <td
-                      className={`py-2.5 px-3 text-right font-semibold font-mono tabular-nums ${
-                        h.unrealized_gain >= 0 ? "text-positive" : "text-negative"
-                      }`}
-                    >
-                      {money(h.unrealized_gain, currency)}
-                      <div className="text-[10px] font-normal opacity-80">
+                    <td className="px-3 text-right">
+                      <Money
+                        value={h.unrealized_gain}
+                        currency={currency}
+                        signed
+                        className={h.unrealized_gain >= 0 ? "text-positive" : "text-negative"}
+                      />
+                      <div className="text-[11px] font-mono text-muted">
                         {percent(h.unrealized_gain_pct)}
                       </div>
                     </td>
-                    <td className="py-2.5 px-3 text-right">
+                    <td className="px-3 text-right">
                       <button
                         onClick={() => handleDelete(h)}
                         title={`Remove ${h.symbol}`}
-                        className="p-1.5 rounded-lg text-muted hover:text-negative hover:bg-negative-subtle cursor-pointer"
+                        className="p-1.5 rounded-lg text-muted hover:text-negative bg-surface-hover transition-colors cursor-pointer"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                       </button>
                     </td>
                   </tr>
@@ -658,97 +648,93 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
       {/* Add holding modal */}
       {isAddOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
           <form
             onSubmit={handleAddHolding}
-            className="w-full max-w-md rounded-2xl bg-surface border border-default p-5 space-y-3 text-xs shadow-2xl"
+            className="w-full max-w-md rounded-xl bg-surface border border-default p-5 flex flex-col gap-4 shadow-xl"
           >
-            <h3 className="text-base font-bold text-main">Add Holding</h3>
+            <h3 className="text-base font-medium text-main">Add holding</h3>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-muted mb-1 font-medium">Symbol</label>
+                <label className={labelCls}>Symbol</label>
                 <input
                   required
                   value={newHolding.symbol}
                   onChange={(e) => setNewHolding({ ...newHolding, symbol: e.target.value })}
                   placeholder="VFV.TO"
-                  className="w-full px-3 py-2 bg-input border border-default rounded-lg text-main"
+                  className={`${inputCls} font-mono`}
                 />
               </div>
               <div>
-                <label className="block text-muted mb-1 font-medium">Name (optional)</label>
+                <label className={labelCls}>Name (optional)</label>
                 <input
                   value={newHolding.name}
                   onChange={(e) => setNewHolding({ ...newHolding, name: e.target.value })}
-                  placeholder="Vanguard S&amp;P 500"
-                  className="w-full px-3 py-2 bg-input border border-default rounded-lg text-main"
+                  placeholder="Vanguard S&P 500"
+                  className={inputCls}
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-muted mb-1 font-medium">Purchase date</label>
+              <label className={labelCls}>Purchase date</label>
               <input
                 type="date"
                 required
                 value={newHolding.trade_date}
                 onChange={(e) => setNewHolding({ ...newHolding, trade_date: e.target.value })}
-                className="w-full px-3 py-2 bg-input border border-default rounded-lg text-main"
+                className={inputCls}
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-muted mb-1 font-medium">Quantity</label>
+                <label className={labelCls}>Quantity</label>
                 <input
                   required
                   value={newHolding.quantity}
                   onChange={(e) => setNewHolding({ ...newHolding, quantity: e.target.value })}
                   placeholder="100"
-                  className="w-full px-3 py-2 bg-input border border-default rounded-lg text-main font-mono"
+                  className={`${inputCls} font-mono`}
                 />
               </div>
               <div>
-                <label className="block text-muted mb-1 font-medium">Total cost</label>
+                <label className={labelCls}>Total cost</label>
                 <input
                   required
                   value={newHolding.cost_basis}
                   onChange={(e) => setNewHolding({ ...newHolding, cost_basis: e.target.value })}
                   placeholder="10000.00"
-                  className="w-full px-3 py-2 bg-input border border-default rounded-lg text-main font-mono"
+                  className={`${inputCls} font-mono`}
                 />
               </div>
               <div>
-                <label className="block text-muted mb-1 font-medium">Commission</label>
+                <label className={labelCls}>Commission</label>
                 <input
                   value={newHolding.fee}
                   onChange={(e) => setNewHolding({ ...newHolding, fee: e.target.value })}
-                  className="w-full px-3 py-2 bg-input border border-default rounded-lg text-main font-mono"
+                  className={`${inputCls} font-mono`}
                 />
               </div>
             </div>
-            <p className="text-[11px] text-muted">
-              For Canadian securities, specify <span className="font-mono text-main font-semibold">.TO</span> for TSX (e.g. <span className="font-mono text-main">XEQT.TO</span>, <span className="font-mono text-main">VFV.TO</span>) or <span className="font-mono text-main">.V</span> for TSX Venture. US equities use standard tickers (e.g. <span className="font-mono text-main">AAPL</span>). Total cost is for the entire position, not per-share.
+            <p className="text-xs text-muted">
+              For Canadian securities, add <span className="font-mono text-sub">.TO</span> for TSX (e.g.{" "}
+              <span className="font-mono text-sub">XEQT.TO</span>, <span className="font-mono text-sub">VFV.TO</span>) or{" "}
+              <span className="font-mono text-sub">.V</span> for TSX Venture. US equities use standard tickers (e.g.{" "}
+              <span className="font-mono text-sub">AAPL</span>). Total cost is for the entire position, not per share.
             </p>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-subtle">
-              <button
-                type="button"
-                onClick={() => setIsAddOpen(false)}
-                className="px-4 py-2 rounded-lg border border-default text-sub hover:bg-surface-hover"
-              >
+            <div className="flex justify-end gap-2 pt-4 border-t border-subtle">
+              <button type="button" onClick={() => setIsAddOpen(false)} className={btnSecondary}>
                 Cancel
               </button>
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast font-semibold shadow-xs cursor-pointer"
-              >
-                Add Holding
+              <button type="submit" className={btnPrimary}>
+                Add holding
               </button>
             </div>
           </form>
@@ -757,53 +743,50 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
 
       {/* Price entry modal */}
       {isPriceOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
           <form
             onSubmit={handleSavePrices}
-            className="w-full max-w-md rounded-2xl bg-surface border border-default p-5 space-y-3 text-xs shadow-2xl"
+            className="w-full max-w-md rounded-xl bg-surface border border-default p-5 flex flex-col gap-4 shadow-xl"
           >
-            <h3 className="text-base font-bold text-main">Update Prices</h3>
-            <p className="text-[11px] text-muted">
-              Manual quote overrides. Folio also provides one-click automated quotes for TSX/TSX-V (<span className="text-main font-mono">.TO</span>, <span className="text-main font-mono">.V</span>), US equities, and Bank of Canada exchange rates. Paste one{" "}
-              <span className="text-main font-mono">SYMBOL,PRICE</span> per line.
-            </p>
+            <div>
+              <h3 className="text-base font-medium text-main">Update prices</h3>
+              <p className="mt-1 text-xs text-muted">
+                Manual quote overrides. Folio also fetches automated quotes for TSX/TSX-V (
+                <span className="font-mono text-sub">.TO</span>, <span className="font-mono text-sub">.V</span>), US
+                equities, and Bank of Canada exchange rates. Paste one{" "}
+                <span className="font-mono text-sub">SYMBOL,PRICE</span> per line.
+              </p>
+            </div>
 
             <div>
-              <label className="block text-muted mb-1 font-medium">Prices as of</label>
+              <label className={labelCls}>Prices as of</label>
               <input
                 type="date"
                 required
                 value={priceDate}
                 onChange={(e) => setPriceDate(e.target.value)}
-                className="w-full px-3 py-2 bg-input border border-default rounded-lg text-main font-mono"
+                className={`${inputCls} font-mono`}
               />
             </div>
 
             <div>
-              <label className="block text-muted mb-1 font-medium">Quotes</label>
+              <label className={labelCls}>Quotes</label>
               <textarea
                 required
                 rows={7}
                 value={priceText}
                 onChange={(e) => setPriceText(e.target.value)}
                 placeholder={"VFV.TO,145.20\nXEQT.TO,33.85\nZAG.TO,14.02"}
-                className="w-full px-3 py-2 bg-input border border-default rounded-lg text-main font-mono"
+                className="w-full px-3 py-2 rounded-lg border border-default bg-input text-sm text-main font-mono placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]"
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-subtle">
-              <button
-                type="button"
-                onClick={() => setIsPriceOpen(false)}
-                className="px-4 py-2 rounded-lg border border-default text-sub hover:bg-surface-hover"
-              >
+            <div className="flex justify-end gap-2 pt-4 border-t border-subtle">
+              <button type="button" onClick={() => setIsPriceOpen(false)} className={btnSecondary}>
                 Cancel
               </button>
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast font-semibold shadow-xs cursor-pointer"
-              >
-                Save &amp; Revalue
+              <button type="submit" className={btnPrimary}>
+                Save &amp; revalue
               </button>
             </div>
           </form>

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Lock, KeyRound, Eye, EyeOff, ShieldCheck, ArrowRight, Cpu } from "lucide-react";
+import { Lock, KeyRound, Eye, EyeOff, ShieldCheck, ArrowRight, BookOpen } from "lucide-react";
 import { api } from "../../services/api";
 
 interface LockScreenProps {
@@ -48,65 +48,65 @@ export const LockScreen: React.FC<LockScreenProps> = ({
   return (
     <div className="min-h-screen bg-canvas flex flex-col items-center justify-center p-4 relative select-none">
       <div className="w-full max-w-sm z-10">
-        {/* Folio Brand & Lock Icon */}
+        {/* Wordmark */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-accent-subtle text-accent-main mb-3.5 border border-accent-main/30 shadow-xs">
-            <Lock className="w-6 h-6" />
-          </div>
-          <h1 className="text-2xl font-bold text-main tracking-tight">Folio Vault</h1>
-          <p className="text-xs text-muted mt-1 max-w-xs mx-auto">
+          <Lock className="w-5 h-5 text-muted mx-auto mb-4" strokeWidth={1.5} aria-hidden="true" />
+          <h1 className="inline-flex items-center gap-2 text-2xl font-semibold text-main leading-none">
+            <BookOpen className="w-6 h-6 text-accent-main" strokeWidth={1.5} aria-hidden="true" />
+            Folio
+          </h1>
+          <p className="text-sm text-sub mt-2">
             {authMode === "cognito"
-              ? "Zero-Trust AWS Cognito authentication required"
+              ? "Your vault is protected by AWS Cognito"
               : isInitialSetup
-              ? "Set up your master passphrase to encrypt and secure your vault"
-              : "Enter master passphrase to unlock your personal finances"}
+              ? "Set a master passphrase to encrypt your vault"
+              : "Enter your master passphrase to unlock your vault"}
           </p>
-          {authMode === "cognito" && (
-            <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-subtle border border-default text-[10px] text-accent-subtle font-semibold">
-              <Cpu className="w-3 h-3" />
-              <span>AWS Cognito Protected</span>
-            </div>
-          )}
         </div>
 
-        {/* Form Container */}
-        <div className="bg-surface border border-default rounded-2xl p-6 shadow-xl">
+        {/* Form */}
+        <div className="bg-surface border border-default rounded-xl p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-2">
+              <label htmlFor="lock-passphrase" className="block text-xs text-sub mb-2">
                 {authMode === "cognito"
-                  ? "Cognito Access Token / Secret"
+                  ? "Cognito access token"
                   : isInitialSetup
-                  ? "New Master Passphrase"
-                  : "Master Passphrase"}
+                  ? "New master passphrase"
+                  : "Master passphrase"}
               </label>
               <div className="relative">
                 <input
+                  id="lock-passphrase"
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••••••"
                   autoFocus
                   required
-                  className="w-full px-4 py-2.5 pl-10 pr-12 rounded-xl bg-input border border-default text-main placeholder:text-muted focus:outline-hidden focus:ring-1 focus:ring-accent-main focus:border-accent-main text-sm font-mono transition-all"
+                  className="w-full h-9 pl-9 pr-10 rounded-lg bg-input border border-default text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] text-sm font-mono transition-colors"
                 />
-                <KeyRound className="w-4 h-4 text-muted absolute left-3.5 top-3" />
+                <KeyRound
+                  className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                  strokeWidth={1.5}
+                />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-3 text-muted hover:text-main"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded-md text-muted hover:text-main transition-colors cursor-pointer"
+                  aria-label={showPassword ? "Hide passphrase" : "Show passphrase"}
                 >
                   {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
+                    <EyeOff className="w-4 h-4" strokeWidth={1.5} />
                   ) : (
-                    <Eye className="w-4 h-4" />
+                    <Eye className="w-4 h-4" strokeWidth={1.5} />
                   )}
                 </button>
               </div>
             </div>
 
             {error && (
-              <div className="p-3 rounded-xl bg-negative-subtle border border-rose-500/30 text-negative text-xs font-medium">
+              <div className="p-3 rounded-lg bg-negative-subtle text-negative text-xs">
                 {error}
               </div>
             )}
@@ -114,28 +114,28 @@ export const LockScreen: React.FC<LockScreenProps> = ({
             <button
               type="submit"
               disabled={isLoading || !password}
-              className="w-full py-2.5 px-4 rounded-xl bg-accent-main hover:bg-accent-main disabled:opacity-50 disabled:cursor-not-allowed text-accent-contrast text-sm font-semibold shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+              className="w-full h-9 px-4 rounded-lg bg-accent-main hover:bg-accent-main disabled:opacity-50 disabled:cursor-not-allowed text-accent-contrast text-sm font-medium flex items-center justify-center gap-2 transition-colors active:scale-[0.98] cursor-pointer"
             >
               {isLoading ? (
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                <div className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin"></div>
               ) : (
                 <>
                   <span>
                     {authMode === "cognito"
                       ? "Authenticate with Cognito"
                       : isInitialSetup
-                      ? "Initialize Vault"
-                      : "Unlock Vault"}
+                      ? "Initialize vault"
+                      : "Unlock vault"}
                   </span>
-                  <ArrowRight className="w-4 h-4" />
+                  <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
                 </>
               )}
             </button>
           </form>
 
-          <div className="mt-5 pt-3.5 border-t border-subtle flex items-center justify-center gap-2 text-[11px] text-muted font-medium">
-            <ShieldCheck className="w-3.5 h-3.5 text-positive" />
-            <span>End-to-End Encrypted Session</span>
+          <div className="mt-6 pt-4 border-t border-subtle flex items-center justify-center gap-2 text-xs text-muted">
+            <ShieldCheck className="w-4 h-4 text-muted" strokeWidth={1.5} />
+            <span>End-to-end encrypted session</span>
           </div>
         </div>
       </div>
