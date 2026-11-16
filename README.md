@@ -221,7 +221,7 @@ flowchart LR
 ### Prerequisites
 
 - **Python 3.14** (used in CI, container image, and local development)
-- **Node.js 22.12+ or 20.19+** and **npm**
+- **Node.js 26 LTS** and **npm** (used in CI and the container image)
 
 ### 1-Command Local Launcher
 
