@@ -170,7 +170,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                       </div>
                       <div className="min-w-0">
                         <div className="font-medium text-sm text-main truncate">{m.name}</div>
-                        <div className="text-[11px] text-muted truncate">
+                        <div className="text-xs text-muted truncate">
                           {m.role || "Member"} {m.notes ? `• ${m.notes}` : ""}
                         </div>
                       </div>
@@ -245,6 +245,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                   <option value="Self">Self</option>
                   <option value="Partner">Partner or spouse</option>
                   <option value="Dependent">Dependent or child</option>
+                  <option value="Roommate">Roommate or housemate</option>
                   <option value="Other">Other household member</option>
                 </select>
               </div>

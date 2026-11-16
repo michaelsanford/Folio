@@ -1,8 +1,17 @@
 @import 'tailwindcss';
 
 @theme inline {
-  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  /* Families come from the active type style (see "Type styles" below). */
+  --font-sans: var(--app-font-sans);
+  --font-display: var(--app-font-display);
+  --font-mono: var(--app-font-mono);
+  /* Larger, more legible scale than Tailwind's defaults (xs 12px, sm 14px). */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.375rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
   --color-accent-main: var(--accent-primary);
   --color-surface-subtle: var(--bg-surface-subtle);
   --color-positive: var(--fin-positive);
@@ -11,95 +20,132 @@
 }
 
 :root {
-  /* Default: Folio Emerald dark */
-  --bg-canvas: #141415;
-  --bg-surface: #19191b;
-  --bg-surface-subtle: #1e1e20;
-  --bg-surface-hover: #232325;
-  --bg-sidebar: #0f0f10;
-  --bg-input: #19191b;
-  --border-subtle: rgba(237, 237, 237, 0.06);
-  --border-default: rgba(237, 237, 237, 0.1);
-  --border-strong: rgba(237, 237, 237, 0.18);
-  --text-primary: #ededed;
-  --text-secondary: #a1a1a6;
-  --text-muted: #85858b;
-  --accent-primary: #10b981;
-  --accent-primary-hover: #34d399;
-  --accent-subtle: rgba(16, 185, 129, 0.12);
-  --accent-subtle-text: #34d399;
-  --accent-contrast: #0f0f10;
-  --fin-positive: #4cc38a;
-  --fin-positive-subtle: rgba(76, 195, 138, 0.12);
-  --fin-negative: #e5484d;
-  --fin-negative-subtle: rgba(229, 72, 77, 0.12);
-  --fin-neutral: #85858b;
+  /* Default: Folio Emerald dark (warm) */
+  --bg-canvas: #1a1715;
+  --bg-surface: #201c19;
+  --bg-surface-subtle: #26221e;
+  --bg-surface-hover: #2d2824;
+  --bg-sidebar: #141110;
+  --bg-input: #201c19;
+  --border-subtle: rgba(236, 230, 221, 0.07);
+  --border-default: rgba(236, 230, 221, 0.11);
+  --border-strong: rgba(236, 230, 221, 0.2);
+  --text-primary: #ece6dd;
+  --text-secondary: #b3aa9e;
+  --text-muted: #968c80;
+  --accent-primary: #3fae86;
+  --accent-primary-hover: #5cc39c;
+  --accent-subtle: rgba(63, 174, 134, 0.14);
+  --accent-subtle-text: #6cc9a4;
+  --accent-contrast: #141110;
+  --fin-positive: #5bbf8a;
+  --fin-positive-subtle: rgba(91, 191, 138, 0.13);
+  --fin-negative: #e2725b;
+  --fin-negative-subtle: rgba(226, 114, 91, 0.13);
+  --fin-neutral: #968c80;
   --scrollbar-track: transparent;
-  --scrollbar-thumb: rgba(237, 237, 237, 0.12);
-  --fin-warning: #e5a83b;
-  --fin-warning-subtle: rgba(229, 168, 59, 0.12);
+  --scrollbar-thumb: rgba(236, 230, 221, 0.14);
+  --fin-warning: #e0a84a;
+  --fin-warning-subtle: rgba(224, 168, 74, 0.13);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* =========================================================
+   Type styles (data-type on <html>, chosen in Appearance)
+   ========================================================= */
+:root,
+[data-type="broadsheet"] {
+  --app-font-sans: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+  --app-font-display: "Newsreader", Georgia, "Times New Roman", serif;
+  --app-font-mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, monospace;
+  --app-display-tracking: -0.005em;
+}
+
+[data-type="modern"] {
+  --app-font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --app-font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --app-font-mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, monospace;
+  --app-display-tracking: -0.02em;
+}
+
+[data-type="friendly"] {
+  --app-font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --app-font-display: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --app-font-mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, monospace;
+  --app-display-tracking: -0.01em;
+}
+
+[data-type="terminal"] {
+  --app-font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --app-font-display: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --app-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --app-display-tracking: 0;
+}
+
+/* Terminal sets every figure, headline totals included, in the mono face. */
+[data-type="terminal"] .tabular-nums {
+  font-family: var(--app-font-mono);
 }
 
 /* =========================================================
    1. Folio Emerald
    ========================================================= */
 [data-theme="folio-emerald"][data-mode="dark"] {
-  --bg-canvas: #141415;
-  --bg-surface: #19191b;
-  --bg-surface-subtle: #1e1e20;
-  --bg-surface-hover: #232325;
-  --bg-sidebar: #0f0f10;
-  --bg-input: #19191b;
-  --border-subtle: rgba(237, 237, 237, 0.06);
-  --border-default: rgba(237, 237, 237, 0.1);
-  --border-strong: rgba(237, 237, 237, 0.18);
-  --text-primary: #ededed;
-  --text-secondary: #a1a1a6;
-  --text-muted: #85858b;
-  --accent-primary: #10b981;
-  --accent-primary-hover: #34d399;
-  --accent-subtle: rgba(16, 185, 129, 0.12);
-  --accent-subtle-text: #34d399;
-  --accent-contrast: #0f0f10;
-  --fin-positive: #4cc38a;
-  --fin-positive-subtle: rgba(76, 195, 138, 0.12);
-  --fin-negative: #e5484d;
-  --fin-negative-subtle: rgba(229, 72, 77, 0.12);
-  --fin-neutral: #85858b;
+  --bg-canvas: #1a1715;
+  --bg-surface: #201c19;
+  --bg-surface-subtle: #26221e;
+  --bg-surface-hover: #2d2824;
+  --bg-sidebar: #141110;
+  --bg-input: #201c19;
+  --border-subtle: rgba(236, 230, 221, 0.07);
+  --border-default: rgba(236, 230, 221, 0.11);
+  --border-strong: rgba(236, 230, 221, 0.2);
+  --text-primary: #ece6dd;
+  --text-secondary: #b3aa9e;
+  --text-muted: #968c80;
+  --accent-primary: #3fae86;
+  --accent-primary-hover: #5cc39c;
+  --accent-subtle: rgba(63, 174, 134, 0.14);
+  --accent-subtle-text: #6cc9a4;
+  --accent-contrast: #141110;
+  --fin-positive: #5bbf8a;
+  --fin-positive-subtle: rgba(91, 191, 138, 0.13);
+  --fin-negative: #e2725b;
+  --fin-negative-subtle: rgba(226, 114, 91, 0.13);
+  --fin-neutral: #968c80;
   --scrollbar-track: transparent;
-  --scrollbar-thumb: rgba(237, 237, 237, 0.12);
-  --fin-warning: #e5a83b;
-  --fin-warning-subtle: rgba(229, 168, 59, 0.12);
+  --scrollbar-thumb: rgba(236, 230, 221, 0.14);
+  --fin-warning: #e0a84a;
+  --fin-warning-subtle: rgba(224, 168, 74, 0.13);
 }
 
 [data-theme="folio-emerald"][data-mode="light"] {
-  --bg-canvas: #fafafa;
-  --bg-surface: #ffffff;
-  --bg-surface-subtle: #f4f4f5;
-  --bg-surface-hover: #ececee;
-  --bg-sidebar: #f5f5f6;
-  --bg-input: #ffffff;
-  --border-subtle: rgba(23, 23, 23, 0.08);
-  --border-default: rgba(23, 23, 23, 0.12);
-  --border-strong: rgba(23, 23, 23, 0.2);
-  --text-primary: #171717;
-  --text-secondary: #525252;
-  --text-muted: #737373;
-  --accent-primary: #047857;
-  --accent-primary-hover: #065f46;
-  --accent-subtle: rgba(4, 120, 87, 0.08);
-  --accent-subtle-text: #047857;
-  --accent-contrast: #ffffff;
-  --fin-positive: #15803d;
-  --fin-positive-subtle: rgba(21, 128, 61, 0.08);
-  --fin-negative: #dc2626;
-  --fin-negative-subtle: rgba(220, 38, 38, 0.08);
-  --fin-neutral: #737373;
+  --bg-canvas: #faf6ef;
+  --bg-surface: #fffdf9;
+  --bg-surface-subtle: #f4eee4;
+  --bg-surface-hover: #ece4d7;
+  --bg-sidebar: #f3ede3;
+  --bg-input: #fffdf9;
+  --border-subtle: rgba(42, 36, 31, 0.09);
+  --border-default: rgba(42, 36, 31, 0.14);
+  --border-strong: rgba(42, 36, 31, 0.22);
+  --text-primary: #2a241f;
+  --text-secondary: #5e554b;
+  --text-muted: #6f6458;
+  --accent-primary: #2b7155;
+  --accent-primary-hover: #225c45;
+  --accent-subtle: rgba(43, 113, 85, 0.1);
+  --accent-subtle-text: #2b7155;
+  --accent-contrast: #fffdf9;
+  --fin-positive: #2a7449;
+  --fin-positive-subtle: rgba(42, 116, 73, 0.1);
+  --fin-negative: #b4452f;
+  --fin-negative-subtle: rgba(180, 69, 47, 0.1);
+  --fin-neutral: #6f6458;
   --scrollbar-track: transparent;
-  --scrollbar-thumb: rgba(23, 23, 23, 0.16);
-  --fin-warning: #b45309;
-  --fin-warning-subtle: rgba(180, 83, 9, 0.12);
+  --scrollbar-thumb: rgba(42, 36, 31, 0.18);
+  --fin-warning: #94570f;
+  --fin-warning-subtle: rgba(148, 87, 15, 0.12);
 }
 
 /* =========================================================
@@ -536,7 +582,9 @@ html,
 body {
   background-color: var(--bg-canvas);
   color: var(--text-primary);
-  font-family: var(--font-sans);
+  font-family: var(--app-font-sans);
+  font-size: 1rem;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
   width: 100%;
@@ -545,9 +593,18 @@ body {
   transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out);
 }
 
-/* Figures: tabular everywhere a mono face is used */
-.font-mono {
-  font-variant-numeric: tabular-nums;
+/* Figures: tabular numerals line up in columns without a monospace face */
+.font-mono,
+.tabular-nums {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+h1,
+h2,
+.font-display {
+  font-family: var(--app-font-display);
+  font-optical-sizing: auto;
+  letter-spacing: var(--app-display-tracking);
 }
 
 /* Keyboard focus */

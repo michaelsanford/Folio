@@ -12,7 +12,7 @@ class HouseholdMember(Base):
     name = Column(String(100), nullable=False)
     color = Column(String(20), nullable=False, default="#10B981")
     avatar_icon = Column(String(50), nullable=False, default="user")
-    role = Column(String(50), nullable=True, default="Member")  # "Primary", "Partner", "Dependent"
+    role = Column(String(50), nullable=True, default="Member")  # "Self", "Partner", "Dependent", "Roommate", "Other"
     notes = Column(String(255), nullable=True)
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

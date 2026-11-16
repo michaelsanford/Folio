@@ -17,7 +17,7 @@ import {
 import { LazyChart } from "../common/LazyChart";
 import { Money } from "../common/Money";
 import { useChartTheme } from "../../hooks/useChartTheme";
-import { formatMoney, formatMoneyCompact } from "../../utils/format";
+import { formatMoney, formatMoneyCompact, getDateLocale } from "../../utils/format";
 import { CashFlowForecastView } from "./CashFlowForecastView";
 import type { Budget, BudgetItem, Category, Transaction } from "../../types";
 import { api } from "../../services/api";
@@ -32,7 +32,6 @@ type SortField = "NAME" | "PLANNED" | "ACTUAL" | "REMAINING" | "PERCENT";
 type SortDirection = "ASC" | "DESC";
 
 const card = "rounded-xl bg-surface border border-subtle";
-const mono = "IBM Plex Mono, ui-monospace, monospace";
 const iconButton =
   "h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer";
 const primaryButton =
@@ -112,7 +111,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth() + 1;
-  const monthName = currentDate.toLocaleString("default", { month: "long", year: "numeric" });
+  const monthName = currentDate.toLocaleString(getDateLocale(), { month: "long", year: "numeric" });
 
   // Compute month progress
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -357,7 +356,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
     borderWidth: 1,
     padding: [8, 12],
     extraCssText: "border-radius: 8px; box-shadow: none;",
-    textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: "IBM Plex Sans, sans-serif" },
+    textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: chartTheme.fontFamily },
   };
 
   // Overall donut gauge chart options
@@ -376,7 +375,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
         ...tooltipBase,
         trigger: "item",
         formatter: (p: any) =>
-          `${p.name}<div style="margin-top:4px;font-family:${mono}">${formatMoney(Number(p.value))} · ${p.percent}%</div>`,
+          `${p.name}<div style="margin-top:4px;font-family:${chartTheme.figureFontFamily}">${formatMoney(Number(p.value))} · ${p.percent}%</div>`,
       },
       series: [
         {
@@ -438,7 +437,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
         formatter: (params: any[]) => {
           let str = `<div style="color:${chartTheme.subtleTextColor}">${params[0].name}</div>`;
           params.forEach((p: any) => {
-            str += `<div style="margin-top:4px">${p.marker} ${p.seriesName} <span style="font-family:${mono}">${formatMoney(
+            str += `<div style="margin-top:4px">${p.marker} ${p.seriesName} <span style="font-family:${chartTheme.figureFontFamily}">${formatMoney(
               Number(p.value)
             )}</span></div>`;
           });
@@ -459,7 +458,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
         axisLabel: {
           color: chartTheme.subtleTextColor,
           fontSize: 11,
-          fontFamily: mono,
+          fontFamily: chartTheme.figureFontFamily,
           formatter: (v: number) => formatMoneyCompact(v),
         },
         splitLine: { lineStyle: { color: chartTheme.gridLineColor } },
@@ -595,7 +594,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
     >
       {dot && <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />}
       <span>{label}</span>
-      <span className="font-mono text-muted">{count}</span>
+      <span className="tabular-nums text-muted">{count}</span>
     </button>
   );
 
@@ -680,7 +679,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             <div className="relative h-44 my-2 flex items-center justify-center">
               <LazyChart option={overallGaugeOptions} className="h-full" />
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-2xl font-medium font-mono text-main">
+                <span className="font-display text-2xl font-medium tabular-nums text-main">
                   {overallPercentSpent}%
                 </span>
                 <span className="text-xs text-muted">used</span>
@@ -691,7 +690,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
           <div className="space-y-2 pt-4 border-t border-subtle text-xs">
             <div className="flex items-center justify-between">
               <span className="text-muted">Month timeline</span>
-              <span className="text-main font-mono">
+              <span className="text-main tabular-nums">
                 Day {currentDay} of {daysInMonth} · {monthElapsedPercent}%
               </span>
             </div>
@@ -734,7 +733,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className={`${card} p-5`}>
           <div className="text-sm text-sub">Planned</div>
-          <div className="mt-2 text-2xl font-medium leading-none">
+          <div className="mt-2 font-display text-2xl font-medium leading-none">
             <Money value={totalPlannedExpenses} className="text-main" />
           </div>
           <div className="mt-2 text-xs text-muted">Sum of all category targets</div>
@@ -742,7 +741,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
         <div className={`${card} p-5`}>
           <div className="text-sm text-sub">Spent so far</div>
-          <div className="mt-2 text-2xl font-medium leading-none">
+          <div className="mt-2 font-display text-2xl font-medium leading-none">
             <Money value={totalActualExpenses} className="text-main" />
           </div>
           <div className="mt-2 text-xs text-muted">
@@ -754,7 +753,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
         <div className={`${card} p-5`}>
           <div className="text-sm text-sub">Remaining</div>
-          <div className="mt-2 text-2xl font-medium leading-none">
+          <div className="mt-2 font-display text-2xl font-medium leading-none">
             <Money
               value={remainingBudget}
               className={remainingBudget >= 0 ? "text-main" : "text-negative"}
@@ -884,7 +883,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                               <span className="text-main">{cat.name}</span>
                               {cat.is_rollover && (
                                 <span
-                                  className="rounded-md px-1.5 py-0.5 text-[11px] bg-surface-subtle text-sub"
+                                  className="rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-sub"
                                   title="Envelope rollover enabled"
                                 >
                                   Rollover
@@ -921,7 +920,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       <td className="py-3 px-4 text-right">
                         {isEditing ? (
                           <div className="flex items-center justify-end gap-1">
-                            <span className="text-muted font-mono">$</span>
+                            <span className="text-muted tabular-nums">$</span>
                             <input
                               type="number"
                               step="10"
@@ -932,7 +931,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                                 if (e.key === "Escape") setEditingTargetId(null);
                               }}
                               autoFocus
-                              className="w-24 h-8 px-2 rounded-lg border border-[var(--accent-primary)] bg-input text-sm text-main font-mono text-right focus:outline-none"
+                              className="w-24 h-8 px-2 rounded-lg border border-[var(--accent-primary)] bg-input text-sm text-main tabular-nums text-right focus:outline-none"
                             />
                             <button
                               onClick={() => handleSavePlannedAmount(item.category_id, targetInput)}
@@ -966,7 +965,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                               <Money value={item.planned_amount} className="text-main" />
                             </div>
                             {item.rollover_amount !== undefined && item.rollover_amount !== 0 && (
-                              <div className="text-[11px] text-muted mt-0.5">
+                              <div className="text-xs text-muted mt-0.5">
                                 <Money
                                   value={item.rollover_amount}
                                   signed
@@ -976,7 +975,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                               </div>
                             )}
                             {item.available_amount !== undefined && item.available_amount !== item.planned_amount && (
-                              <div className="text-[11px] text-muted mt-0.5">
+                              <div className="text-xs text-muted mt-0.5">
                                 Available <Money value={item.available_amount} />
                               </div>
                             )}
@@ -987,7 +986,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       {/* Spent */}
                       <td className="py-3 px-4 text-right">
                         <Money value={item.actual_amount} className="text-main" />
-                        <div className="text-[11px] text-muted font-mono">{item.percentUsed}%</div>
+                        <div className="text-xs text-muted tabular-nums">{item.percentUsed}%</div>
                       </td>
 
                       {/* Remaining */}
@@ -1104,13 +1103,13 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       <span className="text-muted">Target</span>
                       {isEditing ? (
                         <div className="flex items-center gap-1">
-                          <span className="text-muted font-mono">$</span>
+                          <span className="text-muted tabular-nums">$</span>
                           <input
                             type="number"
                             step="10"
                             value={targetInput}
                             onChange={(e) => setTargetInput(parseFloat(e.target.value) || 0)}
-                            className="w-20 h-7 px-2 rounded-lg border border-[var(--accent-primary)] bg-input text-xs text-main font-mono text-right focus:outline-none"
+                            className="w-20 h-7 px-2 rounded-lg border border-[var(--accent-primary)] bg-input text-xs text-main tabular-nums text-right focus:outline-none"
                           />
                           <button
                             onClick={() => handleSavePlannedAmount(item.category_id, targetInput)}
@@ -1207,7 +1206,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   className={`flex-1 ${segmentButton(addModalTab === "existing")}`}
                 >
                   Existing category{" "}
-                  <span className="font-mono text-muted">{unbudgetedCategories.length}</span>
+                  <span className="tabular-nums text-muted">{unbudgetedCategories.length}</span>
                 </button>
                 <button
                   onClick={() => setAddModalTab("new")}
@@ -1248,7 +1247,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       <div>
                         <label className="block text-xs text-sub mb-2">Monthly target</label>
                         <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm font-mono">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm tabular-nums">
                             $
                           </span>
                           <input
@@ -1257,7 +1256,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                             step="10"
                             value={existingCatTarget}
                             onChange={(e) => setExistingCatTarget(parseFloat(e.target.value) || 0)}
-                            className={`${inputClass} pl-7 font-mono`}
+                            className={`${inputClass} pl-7 tabular-nums`}
                           />
                         </div>
                       </div>
@@ -1334,7 +1333,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   <div>
                     <label className="block text-xs text-sub mb-2">Monthly target</label>
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm font-mono">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm tabular-nums">
                         $
                       </span>
                       <input
@@ -1343,7 +1342,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                         step="10"
                         value={newCatTarget}
                         onChange={(e) => setNewCatTarget(parseFloat(e.target.value) || 0)}
-                        className={`${inputClass} pl-7 font-mono`}
+                        className={`${inputClass} pl-7 tabular-nums`}
                       />
                     </div>
                   </div>
@@ -1424,7 +1423,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
               ) : (
                 <div>
                   <div className="text-xs text-muted mb-2">
-                    <span className="font-mono">{drilldownTransactions.length}</span>{" "}
+                    <span className="tabular-nums">{drilldownTransactions.length}</span>{" "}
                     {drilldownTransactions.length === 1 ? "transaction" : "transactions"}
                   </div>
                   <ul className="divide-y divide-subtle">
@@ -1434,7 +1433,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                           <div className="text-sm text-main truncate">
                             {t.normalized_payee || t.raw_payee}
                           </div>
-                          <div className="text-xs text-muted font-mono truncate">
+                          <div className="text-xs text-muted tabular-nums truncate">
                             {t.transaction_date} · {t.raw_payee}
                           </div>
                         </div>

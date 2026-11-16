@@ -15,11 +15,11 @@ describe("useChartTheme Hook", () => {
     const { result } = renderHook(() => useChartTheme(), { wrapper });
 
     expect(result.current.isDark).toBe(true);
-    expect(result.current.accentColor).toBe("#10b981");
-    expect(result.current.positiveColor).toBe("#4cc38a");
-    expect(result.current.negativeColor).toBe("#e5484d");
+    expect(result.current.accentColor).toBe("#3fae86");
+    expect(result.current.positiveColor).toBe("#5bbf8a");
+    expect(result.current.negativeColor).toBe("#e2725b");
     expect(result.current.palette.length).toBeGreaterThan(0);
-    expect(result.current.tooltipBg).toBe("#232325");
+    expect(result.current.tooltipBg).toBe("#2d2824");
   });
 
   it("returns appropriate chart colors for light mode", () => {
@@ -32,8 +32,8 @@ describe("useChartTheme Hook", () => {
     const { result } = renderHook(() => useChartTheme(), { wrapper });
 
     expect(result.current.isDark).toBe(false);
-    expect(result.current.accentColor).toBe("#047857");
-    expect(result.current.tooltipBg).toBe("#ffffff");
+    expect(result.current.accentColor).toBe("#2b7155");
+    expect(result.current.tooltipBg).toBe("#fffdf9");
   });
 
   it("returns bloomberg terminal chart colors", () => {
