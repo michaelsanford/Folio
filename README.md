@@ -94,6 +94,7 @@ Folio is architected for Canadian legal, tax, and banking realities:
   - Supports multi-user household collaboration with entities (`HouseholdMember`).
   - Canadian statutory ownership rules: Registered accounts (**TFSA**, **RRSP**, **FHSA**, **RESP**) are legally individual, while **Chequing**, **Savings**, and **Mortgages** support joint ownership.
   - Granular household member filtering across the ledger, account balances, and goal tracking.
+  - Member relationships: Self, Partner or spouse, Dependent or child, Roommate or housemate, and Other.
 
 - **Canadian Mortgage Mathematics**:
   - Implements **semi-annual compounding, not in advance**, as mandated by the Canadian *Interest Act* (s. 6), rather than the US monthly compounding convention. Using US mathematics overstates Canadian mortgage interest by thousands over a 25-year amortization.
@@ -174,12 +175,14 @@ Folio provides statutory tracking for Canadian tax-advantaged accounts:
 - All monetary values are stored in the database as exact integer minor units (**cents**).
 - Eliminates floating-point rounding errors (`0.1 + 0.2 = 0.30000000000000004`) across loan amortization schedules, budget balances, and transaction totals.
 - The HTTP API accepts and emits decimal dollars for seamless integration.
+- **Number format preferences** (Appearance → Numbers and currency, saved per device): presets for English Canada (`$1,234.56`), French Canada (`1 234,56 $`) and accounting (`($1,234.56)`), or a custom mix of negative style (minus or brackets), thousands separator (comma, period, space, apostrophe, none), decimal mark, and dollar sign before or after the amount. Charts, tables and month names follow the chosen style.
 
 ---
 
 ### 8. Interactive Ledger & Transfer Pairing
 
 - High-density desktop transaction table and mobile-optimized card feed.
+- Four type styles (Appearance → Type style, saved per device): **Broadsheet** (default; Source Sans 3 with Newsreader serif headlines), **Modern** (Inter), **Friendly** (Figtree), and **Terminal** (IBM Plex with monospaced figures). Amounts always use tabular figures so they align in columns, and charts follow the chosen style. The default Folio Emerald palette uses warm umber (dark) and cream paper (light) tones, and every text colour meets WCAG AA contrast.
 - Multi-split transactions (e.g. mortgage payment split between principal, interest, and escrow).
 - **Automated Transfer Pairing**: Identifies offsetting transactions between accounts (e.g. Chequing debit and Visa credit), linking them via `transfer_transaction_id` so they do not artificially inflate income or expenses.
 - Inline category editing, merchant pattern rules creation, and batch categorization.
@@ -218,7 +221,7 @@ flowchart LR
 ### Prerequisites
 
 - **Python 3.14** (used in CI, container image, and local development)
-- **Node.js 22.12+ or 20.19+** and **npm**
+- **Node.js 26 LTS** and **npm** (used in CI and the container image)
 
 ### 1-Command Local Launcher
 

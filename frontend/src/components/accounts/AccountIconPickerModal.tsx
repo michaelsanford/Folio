@@ -216,7 +216,7 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
                       className="w-4 h-4"
                       style={{ color: isSelected ? selectedColor : undefined, strokeWidth: 1.5 }}
                     />
-                    <span className="text-[11px] text-muted truncate w-full text-center">
+                    <span className="text-xs text-muted truncate w-full text-center">
                       {opt.name.split(" ")[0]}
                     </span>
                   </button>

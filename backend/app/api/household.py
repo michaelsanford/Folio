@@ -19,7 +19,7 @@ def list_household_members(db: Session = Depends(get_db)):
 
 @router.post("/members", response_model=HouseholdMemberResponse, status_code=status.HTTP_201_CREATED)
 def create_household_member(member_in: HouseholdMemberCreate, db: Session = Depends(get_db)):
-    """Creates a new household member (e.g. Partner, Primary, Dependent)."""
+    """Creates a new household member (e.g. Self, Partner, Dependent, Roommate)."""
     from app.core.s3_sync import sync_db_if_configured
     member = HouseholdMember(**member_in.model_dump())
     db.add(member)

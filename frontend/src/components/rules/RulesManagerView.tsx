@@ -312,7 +312,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
             className={tabClass(activeTab === "rules")}
           >
             <span>Active rules</span>
-            <span className="text-xs font-mono font-normal text-muted">{rules.length}</span>
+            <span className="text-xs tabular-nums font-normal text-muted">{rules.length}</span>
           </button>
 
           <button
@@ -366,7 +366,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                   aria-label="Amount"
                   value={testAmount}
                   onChange={(e) => setTestAmount(parseFloat(e.target.value) || 0)}
-                  className="w-28 h-9 px-3 rounded-lg border border-default bg-input text-sm text-main font-mono placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
+                  className="w-28 h-9 px-3 rounded-lg border border-default bg-input text-sm text-main tabular-nums placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
                 />
                 <button onClick={handleTestMatch} className={`${secondaryButton} flex-1 sm:flex-none`}>
                   Test match
@@ -415,8 +415,8 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                     <div key={rule.id} className="p-4 space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs text-muted">#{rule.priority}</span>
-                          <span className="rounded-md px-1.5 py-0.5 text-[11px] bg-surface-subtle text-sub">
+                          <span className="tabular-nums text-xs text-muted">#{rule.priority}</span>
+                          <span className="rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-sub">
                             {PATTERN_TYPE_LABELS[rule.pattern_type] ?? rule.pattern_type}
                           </span>
                         </div>
@@ -484,7 +484,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                       const cat = categories.find((c) => c.id === rule.category_id);
                       return (
                         <tr key={rule.id} className="h-12 text-main bg-surface-hover transition-colors">
-                          <td className="px-4 font-mono text-xs text-muted">#{rule.priority}</td>
+                          <td className="px-4 tabular-nums text-xs text-muted">#{rule.priority}</td>
                           <td className="px-4">
                             <span className="rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-sub">
                               {PATTERN_TYPE_LABELS[rule.pattern_type] ?? rule.pattern_type}
@@ -607,7 +607,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                     placeholder="-4.85"
                     value={sandboxAmount}
                     onChange={(e) => setSandboxAmount(e.target.value)}
-                    className={`${inputClass} font-mono`}
+                    className={`${inputClass} tabular-nums`}
                   />
                 </div>
 
@@ -701,7 +701,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                   {/* Confidence meter */}
                   <div className="w-full sm:w-56 space-y-2">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-mono text-main">
+                      <span className="tabular-nums text-main">
                         {Math.round(classificationResult.confidence * 100)}%
                       </span>
                       <span className="text-muted">
@@ -770,7 +770,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label htmlFor="minConfidenceSlider" className="text-main">Minimum confidence</label>
-                  <span className="font-mono text-main">
+                  <span className="tabular-nums text-main">
                     {Math.round(minConfidence * 100)}%
                   </span>
                 </div>
@@ -902,7 +902,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                     onChange={(e) =>
                       setNewRule({ ...newRule, priority: parseInt(e.target.value) || 10 })
                     }
-                    className={`${inputClass} font-mono`}
+                    className={`${inputClass} tabular-nums`}
                   />
                 </div>
               </div>

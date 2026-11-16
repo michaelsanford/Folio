@@ -10,7 +10,7 @@ import type {
 } from "../../types";
 import { api } from "../../services/api";
 import { Money } from "../common/Money";
-import { formatMoney } from "../../utils/format";
+import { formatMoney, formatNumber } from "../../utils/format";
 
 const inputClass =
   "h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]";
@@ -146,7 +146,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
     return (
       <span
-        className="inline-flex items-center gap-1 text-[11px] font-mono text-muted cursor-help shrink-0"
+        className="inline-flex items-center gap-1 text-xs tabular-nums text-muted cursor-help shrink-0"
         title={tooltip}
       >
         <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
@@ -511,7 +511,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       {selectedTxnIds.size > 0 && (
         <div className="p-4 rounded-xl bg-surface border border-accent-main/30 flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-4 animate-in fade-in">
           <div className="text-sm text-sub">
-            <span className="font-mono text-main">{selectedTxnIds.size}</span> selected
+            <span className="tabular-nums text-main">{selectedTxnIds.size}</span> selected
           </div>
 
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
@@ -625,7 +625,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                           {renderMemberTag(txn)}
                         </div>
                         {txn.normalized_payee && txn.normalized_payee !== txn.raw_payee && (
-                          <div className="text-[11px] text-muted font-mono truncate">{txn.raw_payee}</div>
+                          <div className="text-xs text-muted font-mono truncate">{txn.raw_payee}</div>
                         )}
                       </div>
                       <Money
@@ -636,7 +636,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
-                      <span className="text-muted font-mono">{txn.transaction_date?.split("T")[0]}</span>
+                      <span className="text-muted tabular-nums">{txn.transaction_date?.split("T")[0]}</span>
                       <span className="text-muted">·</span>
                       <span className="text-sub truncate max-w-[100px]">
                         {matchedAccount?.name || "Account"}
@@ -771,7 +771,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                           className={checkboxClass}
                         />
                       </td>
-                      <td className="px-4 py-2 font-mono text-xs text-muted whitespace-nowrap">
+                      <td className="px-4 py-2 tabular-nums text-xs text-muted whitespace-nowrap">
                         {txn.transaction_date?.split("T")[0]}
                       </td>
                       <td className="px-4 py-2 text-sub">{matchedAccount?.name || "Account"}</td>
@@ -781,7 +781,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                           {renderMemberTag(txn)}
                         </div>
                         {txn.normalized_payee && txn.normalized_payee !== txn.raw_payee && (
-                          <div className="text-[11px] text-muted font-mono truncate max-w-xs">
+                          <div className="text-xs text-muted font-mono truncate max-w-xs">
                             {txn.raw_payee}
                           </div>
                         )}
@@ -856,10 +856,10 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
         {/* Pagination */}
         <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-subtle">
-          <div className="text-xs text-muted font-mono">
+          <div className="text-xs text-muted tabular-nums">
             {totalCount === 0
               ? "No transactions"
-              : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, totalCount)} of ${totalCount.toLocaleString("en-CA")}`}
+              : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, totalCount)} of ${formatNumber(totalCount)}`}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -870,7 +870,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
             >
               Previous
             </button>
-            <span className="text-xs text-muted font-mono">
+            <span className="text-xs text-muted tabular-nums">
               Page {page} of {totalPages}
             </span>
             <button
@@ -940,7 +940,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                         prev.map((s, i) => (i === idx ? { ...s, amount: val } : s))
                       );
                     }}
-                    className={`w-28 font-mono text-right ${inputClass}`}
+                    className={`w-28 tabular-nums text-right ${inputClass}`}
                   />
 
                   {modalSplits.length > 1 && (
@@ -1051,7 +1051,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                         amount: parseFloat(e.target.value) || 0,
                       })
                     }
-                    className={`w-full font-mono ${inputClass}`}
+                    className={`w-full tabular-nums ${inputClass}`}
                     required
                   />
                 </div>
@@ -1166,7 +1166,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                     <label htmlFor="confirmMinConfidence" className="text-sm text-main">
                       Confidence threshold
                     </label>
-                    <span className="text-sm font-mono text-main">
+                    <span className="text-sm tabular-nums text-main">
                       {Math.round(autoClassifyMinConfidence * 100)}%
                     </span>
                   </div>

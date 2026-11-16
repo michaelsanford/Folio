@@ -22,7 +22,7 @@ import type {
 } from "../../types";
 import { api } from "../../services/api";
 import { Money } from "../common/Money";
-import { formatMoney } from "../../utils/format";
+import { formatMoney, getDateLocale } from "../../utils/format";
 
 interface GoalsViewProps {
   accounts: Account[];
@@ -116,13 +116,13 @@ const CraRoomCard: React.FC<CraRoomCardProps> = ({
         </div>
 
         <div className="mt-4 flex items-baseline justify-between gap-3">
-          <div className="text-2xl font-medium leading-none text-main">
+          <div className="font-display text-2xl font-medium leading-none text-main">
             <Money value={contributed ?? 0} />
             <span className="ml-2 text-xs text-muted">
               of {formatMoney(limit ?? defaultLimit, { cents: false })} limit
             </span>
           </div>
-          <span className={`text-xs font-mono ${isOver ? "text-negative" : "text-sub"}`}>
+          <span className={`text-xs tabular-nums ${isOver ? "text-negative" : "text-sub"}`}>
             {formatMoney(remainingAbs, { cents: false })} {isOver ? "over limit" : "remaining"}
           </span>
         </div>
@@ -467,7 +467,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
       {/* Goal type filter */}
       <div className="flex items-center gap-1 overflow-x-auto">
         <button onClick={() => setTypeFilter("ALL")} className={segment(typeFilter === "ALL")}>
-          All goals <span className="font-mono text-muted">{goals.length}</span>
+          All goals <span className="tabular-nums text-muted">{goals.length}</span>
         </button>
         {(["EMERGENCY_FUND", "SAVINGS", "TFSA_ANNUAL", "FHSA_ANNUAL", "HBP_REPAYMENT", "DEBT_PAYOFF"] as GoalType[]).map(
           (t) => {
@@ -475,7 +475,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
             if (count === 0 && typeFilter !== t) return null;
             return (
               <button key={t} onClick={() => setTypeFilter(t)} className={segment(typeFilter === t)}>
-                {GOAL_TYPE_META[t].label} <span className="font-mono text-muted">{count}</span>
+                {GOAL_TYPE_META[t].label} <span className="tabular-nums text-muted">{count}</span>
               </button>
             );
           }
@@ -562,13 +562,13 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                   {/* Amounts */}
                   <div className="mt-4 flex items-end justify-between gap-3">
                     <div>
-                      <Money value={current} className="text-xl font-medium text-main" />
+                      <Money value={current} className="font-display text-xl font-medium text-main" />
                       <div className="mt-1 text-xs text-muted">
                         of {formatMoney(g.target_amount ?? 0)} target
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-base font-medium font-mono text-main">
+                      <div className="text-base font-medium tabular-nums text-main">
                         {progress.toFixed(0)}%
                       </div>
                       <div className="mt-1 text-xs text-muted">
@@ -577,7 +577,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                             <CheckCircle2 className="w-4 h-4" strokeWidth={1.5} /> Reached
                           </span>
                         ) : (
-                          <span className="font-mono">
+                          <span className="tabular-nums">
                             {formatMoney(Math.max(0, (g.target_amount ?? 0) - current), { cents: false })} left
                           </span>
                         )}
@@ -610,7 +610,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                     {g.target_date && (
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-muted" strokeWidth={1.5} />
-                        <span>Target {new Date(g.target_date).toLocaleDateString()}</span>
+                        <span>Target {new Date(g.target_date).toLocaleDateString(getDateLocale())}</span>
                       </div>
                     )}
 
@@ -686,15 +686,15 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                     <div className="text-sm text-sub">{calcMonths}-month emergency target</div>
                     <Money
                       value={calcData.suggested_target_amount ?? calcData.suggested_target ?? 0}
-                      className="block mt-2 text-2xl font-medium leading-none text-main"
+                      className="block mt-2 font-display text-2xl font-medium leading-none text-main"
                     />
                     <div className="mt-2 text-xs text-muted">
                       Based on{" "}
-                      <span className="font-mono text-sub">
+                      <span className="tabular-nums text-sub">
                         {formatMoney(calcData.monthly_average_included_expense ?? calcData.monthly_fixed_expense ?? 0)}
                       </span>{" "}
                       a month of bare-bones living expenses; unadjusted spending was{" "}
-                      <span className="font-mono">
+                      <span className="tabular-nums">
                         {formatMoney(
                           calcData.monthly_average_total_expense ??
                             (calcData.total_spent_in_period
@@ -842,7 +842,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                     onChange={(e) =>
                       setGoalForm({ ...goalForm, target_amount: parseFloat(e.target.value) || 0 })
                     }
-                    className={`${inputCls} font-mono`}
+                    className={`${inputCls} tabular-nums`}
                     required
                   />
                 </div>
@@ -859,9 +859,9 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                     onChange={(e) =>
                       setGoalForm({ ...goalForm, current_amount: parseFloat(e.target.value) || 0 })
                     }
-                    className={`${inputCls} font-mono`}
+                    className={`${inputCls} tabular-nums`}
                   />
-                  <span className="mt-1 block text-[11px] text-muted">
+                  <span className="mt-1 block text-xs text-muted">
                     A linked account overrides this
                   </span>
                 </div>

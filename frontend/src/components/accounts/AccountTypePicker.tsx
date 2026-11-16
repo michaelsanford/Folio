@@ -214,7 +214,7 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
                               <span className="text-sm font-medium text-main">
                                 {item.name}
                               </span>
-                              <span className="rounded-md px-1.5 py-0.5 text-[11px] font-mono bg-surface-subtle text-sub shrink-0">
+                              <span className="rounded-md px-1.5 py-0.5 text-xs font-mono bg-surface-subtle text-sub shrink-0">
                                 {item.badge}
                               </span>
                             </div>

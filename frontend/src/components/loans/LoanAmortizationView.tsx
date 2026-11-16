@@ -63,7 +63,6 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
 
   const hasEscrow = (scheduleData?.escrow_payment ?? 0) > 0;
 
-  const mono = "IBM Plex Mono, ui-monospace, monospace";
 
   // ECharts stacked bar options: principal carries the accent, the rest stay neutral.
   const barOptions = {
@@ -76,7 +75,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
       borderWidth: 1,
       padding: [8, 12],
       extraCssText: "border-radius: 8px; box-shadow: none;",
-      textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: "IBM Plex Sans, sans-serif" },
+      textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: chartTheme.fontFamily },
       formatter: (params: any[]) => {
         let total = 0;
         let content = `<div style="color: ${chartTheme.subtleTextColor}; margin-bottom: 4px;">${params[0]?.name}</div>`;
@@ -84,12 +83,12 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
           total += Number(p.value || 0);
           content += `<div style="display: flex; justify-content: space-between; gap: 16px; font-size: 12px;">
             <span>${p.marker}${p.seriesName}</span>
-            <span style="font-family: ${mono};">${formatMoney(Number(p.value))}</span>
+            <span style="font-family: ${chartTheme.figureFontFamily};">${formatMoney(Number(p.value))}</span>
           </div>`;
         });
         content += `<div style="border-top: 1px solid ${chartTheme.gridLineColor}; margin-top: 4px; padding-top: 4px; display: flex; justify-content: space-between; gap: 16px; font-size: 12px;">
           <span>Total payment</span>
-          <span style="font-family: ${mono};">${formatMoney(total)}</span>
+          <span style="font-family: ${chartTheme.figureFontFamily};">${formatMoney(total)}</span>
         </div>`;
         return content;
       },
@@ -114,7 +113,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
       data: next12Months.map((m) => m.date),
       axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
       axisTick: { show: false },
-      axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11, fontFamily: mono },
+      axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11, fontFamily: chartTheme.figureFontFamily },
     },
     yAxis: {
       type: "value",
@@ -123,7 +122,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
       axisLabel: {
         color: chartTheme.subtleTextColor,
         fontSize: 11,
-        fontFamily: mono,
+        fontFamily: chartTheme.figureFontFamily,
         formatter: (val: number) => formatMoneyCompact(val),
       },
     },
@@ -188,22 +187,22 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
               <div className="text-sm text-sub">Current balance</div>
               <Money
                 value={scheduleData.current_balance ?? 0}
-                className="block mt-2 text-2xl font-medium leading-none text-main"
+                className="block mt-2 font-display text-2xl font-medium leading-none text-main"
               />
               <div className="mt-2 text-xs text-muted">
                 Original principal{" "}
-                <span className="font-mono">{formatMoney(scheduleData.original_principal ?? 0)}</span>
+                <span className="tabular-nums">{formatMoney(scheduleData.original_principal ?? 0)}</span>
               </div>
             </div>
 
             <div className={`${card} p-5`}>
               <div className="text-sm text-sub">Interest rate (APR)</div>
-              <div className="mt-2 text-2xl font-medium leading-none font-mono text-main">
+              <div className="mt-2 font-display text-2xl font-medium leading-none tabular-nums text-main">
                 {scheduleData.interest_rate ?? 0}%
               </div>
               <div className="mt-2 text-xs text-muted">
                 Total interest{" "}
-                <span className="font-mono">
+                <span className="tabular-nums">
                   {formatMoney(scheduleData.total_interest ?? 0, { cents: false })}
                 </span>
               </div>
@@ -213,7 +212,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
               <div className="text-sm text-sub">Monthly payment</div>
               <Money
                 value={scheduleData.monthly_payment ?? 0}
-                className="block mt-2 text-2xl font-medium leading-none text-main"
+                className="block mt-2 font-display text-2xl font-medium leading-none text-main"
               />
               <div className="mt-2 text-xs text-muted">
                 {(scheduleData.escrow_payment ?? 0) > 0
@@ -224,7 +223,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
 
             <div className={`${card} p-5`}>
               <div className="text-sm text-sub">Projected payoff</div>
-              <div className="mt-2 text-2xl font-medium leading-none font-mono text-main">
+              <div className="mt-2 font-display text-2xl font-medium leading-none tabular-nums text-main">
                 {scheduleData.payoff_date || "—"}
               </div>
               <div className="mt-2 text-xs text-muted">
@@ -248,7 +247,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
             <div className="flex items-center justify-between px-5 sm:px-6 h-14 border-b border-subtle">
               <h2 className="text-base font-medium text-main">Amortization schedule</h2>
               <span className="text-xs text-muted">
-                <span className="font-mono">{scheduleData.schedule.length}</span> periods
+                <span className="tabular-nums">{scheduleData.schedule.length}</span> periods
               </span>
             </div>
 
@@ -257,22 +256,22 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
               {scheduleData.schedule.map((row) => (
                 <div key={row.period} className="px-4 py-3 flex flex-col gap-2">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-muted font-mono">
+                    <span className="text-xs text-muted tabular-nums">
                       #{row.period} · {row.payment_date}
                     </span>
                     <Money value={row.total_payment} className="text-main" />
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-xs">
                     <div>
-                      <span className="block text-[11px] text-muted">Principal</span>
+                      <span className="block text-xs text-muted">Principal</span>
                       <Money value={row.principal} className="text-sub" />
                     </div>
                     <div>
-                      <span className="block text-[11px] text-muted">Interest</span>
+                      <span className="block text-xs text-muted">Interest</span>
                       <Money value={row.interest} className="text-sub" />
                     </div>
                     <div>
-                      <span className="block text-[11px] text-muted">Balance</span>
+                      <span className="block text-xs text-muted">Balance</span>
                       <Money value={row.remaining_balance} className="text-main" />
                     </div>
                   </div>
@@ -297,8 +296,8 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
                 <tbody className="divide-y divide-subtle text-sub">
                   {scheduleData.schedule.map((row) => (
                     <tr key={row.period} className="h-9 bg-surface-hover transition-colors">
-                      <td className="px-5 sm:px-6 font-mono text-muted">#{row.period}</td>
-                      <td className="px-4 font-mono">{row.payment_date}</td>
+                      <td className="px-5 sm:px-6 tabular-nums text-muted">#{row.period}</td>
+                      <td className="px-4 tabular-nums">{row.payment_date}</td>
                       <td className="px-4 text-right">
                         <Money value={row.total_payment} className="text-main" />
                       </td>

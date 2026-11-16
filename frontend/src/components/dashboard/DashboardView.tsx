@@ -4,7 +4,7 @@ import { AccountIcon } from "../common/AccountIcon";
 import { Money } from "../common/Money";
 import { isAssetAccount } from "../../constants/canadianAccountTypes";
 import { useChartTheme } from "../../hooks/useChartTheme";
-import { formatMoney, formatMoneyCompact } from "../../utils/format";
+import { formatMoney, formatMoneyCompact, getDateLocale } from "../../utils/format";
 import type { Account, DashboardAnalyticsResponse } from "../../types";
 
 interface DashboardViewProps {
@@ -22,7 +22,7 @@ const StatCard: React.FC<{ label: string; children: React.ReactNode; meta: React
 }) => (
   <div className={`${card} p-5`}>
     <div className="text-sm text-sub">{label}</div>
-    <div className="mt-2 text-2xl font-medium leading-none">{children}</div>
+    <div className="mt-2 font-display text-2xl font-medium leading-none">{children}</div>
     <div className="mt-2 text-xs text-muted">{meta}</div>
   </div>
 );
@@ -45,20 +45,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const { monthly_cash_flow, net_worth_history, category_spending, sankey } = analytics;
 
-  const monthTitle = new Date().toLocaleDateString("en-CA", { month: "long", year: "numeric" });
+  const monthTitle = new Date().toLocaleDateString(getDateLocale(), { month: "long", year: "numeric" });
 
   const lastPoint = net_worth_history[net_worth_history.length - 1];
   const prevPoint = net_worth_history[net_worth_history.length - 2];
   const monthChange = lastPoint && prevPoint ? lastPoint.net_worth - prevPoint.net_worth : null;
 
-  const mono = "IBM Plex Mono, ui-monospace, monospace";
   const tooltipBase = {
     backgroundColor: chartTheme.tooltipBg,
     borderColor: chartTheme.tooltipBorder,
     borderWidth: 1,
     padding: [8, 12],
     extraCssText: "border-radius: 8px; box-shadow: none;",
-    textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: "IBM Plex Sans, sans-serif" },
+    textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: chartTheme.fontFamily },
   };
 
   // Net worth: the main chart. One accent line on a ruled monthly grid.
@@ -71,7 +70,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       formatter: (params: any[]) => {
         const item = params[0];
         if (!item) return "";
-        return `<div style="color:${chartTheme.subtleTextColor}">${item.name}</div><div style="margin-top:4px;font-family:${mono}">${formatMoney(Number(item.value))}</div>`;
+        return `<div style="color:${chartTheme.subtleTextColor}">${item.name}</div><div style="margin-top:4px;font-family:${chartTheme.figureFontFamily}">${formatMoney(Number(item.value))}</div>`;
       },
     },
     grid: { left: 8, right: 16, bottom: 8, top: 16, containLabel: true },
@@ -80,7 +79,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       data: net_worth_history.map((h) => h.date),
       axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
       axisTick: { show: false },
-      axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11, fontFamily: mono, margin: 12 },
+      axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11, fontFamily: chartTheme.figureFontFamily, margin: 12 },
       splitLine: { show: true, lineStyle: { color: chartTheme.gridLineColor } },
       boundaryGap: false,
     },
@@ -92,7 +91,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       axisLabel: {
         color: chartTheme.subtleTextColor,
         fontSize: 11,
-        fontFamily: mono,
+        fontFamily: chartTheme.figureFontFamily,
         formatter: (val: number) => formatMoneyCompact(val),
       },
     },
@@ -108,7 +107,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         endLabel: {
           show: true,
           color: chartTheme.textColor,
-          fontFamily: mono,
+          fontFamily: chartTheme.figureFontFamily,
           fontSize: 11,
           offset: [-8, -16],
           align: "right",
@@ -138,9 +137,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       triggerOn: "mousemove",
       formatter: (params: any) => {
         if (params.dataType === "edge") {
-          return `${params.data.source} → ${params.data.target}<div style="margin-top:4px;font-family:${mono}">${formatMoney(Number(params.data.value))}</div>`;
+          return `${params.data.source} → ${params.data.target}<div style="margin-top:4px;font-family:${chartTheme.figureFontFamily}">${formatMoney(Number(params.data.value))}</div>`;
         }
-        return `${params.name}<div style="margin-top:4px;font-family:${mono}">${formatMoney(Number(params.value || 0))}</div>`;
+        return `${params.name}<div style="margin-top:4px;font-family:${chartTheme.figureFontFamily}">${formatMoney(Number(params.value || 0))}</div>`;
       },
     },
     series: [
@@ -164,7 +163,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           value: l.value,
         })),
         lineStyle: { color: "target", curveness: 0.5, opacity: 0.18 },
-        label: { color: chartTheme.textColor, fontSize: 12, fontFamily: "IBM Plex Sans, sans-serif" },
+        label: { color: chartTheme.textColor, fontSize: 12, fontFamily: chartTheme.fontFamily },
         itemStyle: { borderWidth: 0, borderRadius: 2 },
       },
     ],
@@ -186,7 +185,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               analytics.current_net_worth < 0 ? "text-negative" : "text-main"
             }`}
           />
-          <div className="mt-2 text-xs font-mono text-muted">
+          <div className="mt-2 text-xs tabular-nums text-muted">
             {monthChange !== null && (
               <span className={monthChange >= 0 ? "text-positive" : "text-negative"}>
                 {formatMoney(monthChange, { signed: true, cents: false })}
@@ -226,7 +225,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </StatCard>
         <StatCard
           label="Net savings"
-          meta={<span className="font-mono">{monthly_cash_flow.savings_rate}% of income</span>}
+          meta={<span className="tabular-nums">{monthly_cash_flow.savings_rate}% of income</span>}
         >
           <Money
             value={monthly_cash_flow.net_savings}
@@ -273,7 +272,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </div>
                     <div className="shrink-0 flex items-baseline gap-2">
                       <Money value={cat.amount} cents={false} className="text-sub" />
-                      <span className="w-9 text-right text-xs font-mono text-muted">
+                      <span className="w-9 text-right text-xs tabular-nums text-muted">
                         {cat.percentage}%
                       </span>
                     </div>

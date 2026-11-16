@@ -23,6 +23,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { ThemePickerModal } from "../common/ThemePickerModal";
 import { Money } from "../common/Money";
 import { formatMoney } from "../../utils/format";
+import { useFormatPrefs } from "../../hooks/useFormatPrefs";
 
 export type NavTab =
   | "dashboard"
@@ -65,6 +66,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
   const { resolvedMode, toggleMode, activeThemeDef } = useTheme();
+  // Views call formatMoney directly (chart axes, tooltips); remount them when number formats change.
+  const formatPrefs = useFormatPrefs();
+  const formatKey = JSON.stringify(formatPrefs);
 
   const totalAssets = accounts
     .filter((a) => isAssetAccount(a.type))
@@ -114,7 +118,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             value={netWorth}
             className={`block mt-1 text-lg font-medium ${netWorth < 0 ? "text-negative" : "text-main"}`}
           />
-          <div className="flex items-center justify-between mt-2 text-[11px] font-mono text-muted">
+          <div className="flex items-center justify-between mt-2 text-xs tabular-nums text-muted">
             <span>Assets {formatMoney(totalAssets, { cents: false })}</span>
             <span>Debt {formatMoney(totalLiabilities, { cents: false })}</span>
           </div>
@@ -167,7 +171,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 {householdMembers.slice(0, 3).map((m) => (
                   <span
                     key={m.id}
-                    className="w-5 h-5 rounded-full ring-2 ring-[var(--bg-sidebar)] text-[11px] flex items-center justify-center font-medium text-white"
+                    className="w-5 h-5 rounded-full ring-2 ring-[var(--bg-sidebar)] text-xs flex items-center justify-center font-medium text-white"
                     style={{ backgroundColor: m.color || "#6b7280" }}
                     title={m.name}
                   >
@@ -259,7 +263,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
         {/* Main Body */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 pt-4 pb-24 sm:px-6 md:p-8 max-w-full">
-          {children}
+          <React.Fragment key={formatKey}>{children}</React.Fragment>
         </main>
 
         {/* Mobile Bottom Navigation */}
@@ -271,7 +275,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <button
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
-                className={`flex flex-col items-center gap-1 px-2 py-1 text-[11px] transition-colors ${
+                className={`flex flex-col items-center gap-1 px-2 py-1 text-xs transition-colors ${
                   isActive ? "text-main font-medium" : "text-muted"
                 }`}
               >
