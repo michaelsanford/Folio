@@ -4,7 +4,7 @@ import { LazyChart } from "../common/LazyChart";
 import { Money } from "../common/Money";
 import { isInvestmentAccount } from "../../constants/canadianAccountTypes";
 import { useChartTheme } from "../../hooks/useChartTheme";
-import { formatMoney, formatMoneyCompact } from "../../utils/format";
+import { formatMoney, formatMoneyCompact, formatNumber } from "../../utils/format";
 import type { Account, HoldingValuation, PerformanceResponse } from "../../types";
 import { api } from "../../services/api";
 
@@ -209,14 +209,13 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
     }
   };
 
-  const mono = "IBM Plex Mono, ui-monospace, monospace";
   const tooltipBase = {
     backgroundColor: chartTheme.tooltipBg,
     borderColor: chartTheme.tooltipBorder,
     borderWidth: 1,
     padding: [8, 12],
     extraCssText: "border-radius: 8px; box-shadow: none;",
-    textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: "IBM Plex Sans, sans-serif" },
+    textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: chartTheme.fontFamily },
   };
 
   const allocationOptions = useMemo(() => {
@@ -231,7 +230,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         ...tooltipBase,
         trigger: "item",
         formatter: (p: any) =>
-          `${p.name}<div style="margin-top:4px;font-family:${mono}">${formatMoney(p.value, { currency })} · ${p.percent}%</div>`,
+          `${p.name}<div style="margin-top:4px;font-family:${chartTheme.figureFontFamily}">${formatMoney(p.value, { currency })} · ${p.percent}%</div>`,
       },
       series: [
         {
@@ -239,7 +238,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           radius: ["55%", "80%"],
           avoidLabelOverlap: true,
           itemStyle: { borderColor: chartTheme.tooltipBg, borderWidth: 2 },
-          label: { color: chartTheme.textColor, fontSize: 11, fontFamily: mono },
+          label: { color: chartTheme.textColor, fontSize: 11, fontFamily: chartTheme.figureFontFamily },
           data,
         },
       ],
@@ -270,7 +269,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         data: ["Portfolio"],
         axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
         axisTick: { show: false },
-        axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11, fontFamily: mono },
+        axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11, fontFamily: chartTheme.figureFontFamily },
       },
       yAxis: {
         type: "value",
@@ -279,7 +278,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         axisLabel: {
           color: chartTheme.subtleTextColor,
           fontSize: 11,
-          fontFamily: mono,
+          fontFamily: chartTheme.figureFontFamily,
           formatter: (v: number) => formatMoneyCompact(v),
         },
       },
@@ -369,7 +368,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
             >
               <span className="w-1.5 h-1.5 rounded-full bg-positive" />
               <span>USD/CAD</span>
-              <span className="font-mono text-main">{fxRate.rate!.toFixed(4)}</span>
+              <span className="tabular-nums text-main">{fxRate.rate!.toFixed(4)}</span>
               <span className="text-xs text-muted hidden sm:inline">Bank of Canada</span>
             </div>
           )}
@@ -413,8 +412,8 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         {fxAvailable && fxRate && (
           <div className="flex items-center gap-2 shrink-0">
             <span>BoC Valet daily</span>
-            <span className="font-mono text-main">{fxRate.rate!.toFixed(4)}</span>
-            {fxRate.as_of_date && <span className="font-mono">{fxRate.as_of_date}</span>}
+            <span className="tabular-nums text-main">{fxRate.rate!.toFixed(4)}</span>
+            {fxRate.as_of_date && <span className="tabular-nums">{fxRate.as_of_date}</span>}
           </div>
         )}
       </div>
@@ -439,10 +438,10 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
             <Money
               value={performance.market_value}
               currency={currency}
-              className="block mt-2 text-2xl font-medium leading-none text-main"
+              className="block mt-2 font-display text-2xl font-medium leading-none text-main"
             />
             <div className="mt-2 text-xs text-muted">
-              Cost <span className="font-mono">{formatMoney(performance.cost_basis, { currency })}</span>
+              Cost <span className="tabular-nums">{formatMoney(performance.cost_basis, { currency })}</span>
             </div>
           </div>
 
@@ -464,7 +463,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
             <Money
               value={performance.net_invested}
               currency={currency}
-              className="block mt-2 text-2xl font-medium leading-none text-main"
+              className="block mt-2 font-display text-2xl font-medium leading-none text-main"
             />
             <div className="mt-2 text-xs text-muted">Contributions less withdrawals</div>
           </div>
@@ -519,7 +518,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                       return (
                         <td
                           key={p}
-                          className={`px-3 text-right font-mono tabular-nums ${
+                          className={`px-3 text-right tabular-nums ${
                             value === null
                               ? "text-muted"
                               : value >= 0
@@ -604,14 +603,14 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                       <div className="text-main font-mono">{h.symbol}</div>
                       {h.name && <div className="text-xs text-muted">{h.name}</div>}
                     </td>
-                    <td className="px-3 text-right text-sub font-mono tabular-nums">
-                      {Number(h.quantity).toLocaleString("en-CA", { maximumFractionDigits: 8 })}
+                    <td className="px-3 text-right text-sub tabular-nums">
+                      {formatNumber(Number(h.quantity), 8)}
                     </td>
                     <td className="px-3 text-right">
                       {h.is_priced ? (
                         <>
                           <Money value={h.price ?? 0} currency={currency} className="text-main" />
-                          <div className="text-[11px] font-mono text-muted">as of {h.price_as_of}</div>
+                          <div className="text-xs tabular-nums text-muted">as of {h.price_as_of}</div>
                         </>
                       ) : (
                         <span className="text-xs text-warning">No price</span>
@@ -630,7 +629,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                         signed
                         className={h.unrealized_gain >= 0 ? "text-positive" : "text-negative"}
                       />
-                      <div className="text-[11px] font-mono text-muted">
+                      <div className="text-xs tabular-nums text-muted">
                         {percent(h.unrealized_gain_pct)}
                       </div>
                     </td>
@@ -667,7 +666,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                   value={newHolding.symbol}
                   onChange={(e) => setNewHolding({ ...newHolding, symbol: e.target.value })}
                   placeholder="VFV.TO"
-                  className={`${inputCls} font-mono`}
+                  className={`${inputCls} tabular-nums`}
                 />
               </div>
               <div>
@@ -700,7 +699,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                   value={newHolding.quantity}
                   onChange={(e) => setNewHolding({ ...newHolding, quantity: e.target.value })}
                   placeholder="100"
-                  className={`${inputCls} font-mono`}
+                  className={`${inputCls} tabular-nums`}
                 />
               </div>
               <div>
@@ -710,7 +709,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                   value={newHolding.cost_basis}
                   onChange={(e) => setNewHolding({ ...newHolding, cost_basis: e.target.value })}
                   placeholder="10000.00"
-                  className={`${inputCls} font-mono`}
+                  className={`${inputCls} tabular-nums`}
                 />
               </div>
               <div>
@@ -718,7 +717,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                 <input
                   value={newHolding.fee}
                   onChange={(e) => setNewHolding({ ...newHolding, fee: e.target.value })}
-                  className={`${inputCls} font-mono`}
+                  className={`${inputCls} tabular-nums`}
                 />
               </div>
             </div>
@@ -765,7 +764,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                 required
                 value={priceDate}
                 onChange={(e) => setPriceDate(e.target.value)}
-                className={`${inputCls} font-mono`}
+                className={`${inputCls} tabular-nums`}
               />
             </div>
 

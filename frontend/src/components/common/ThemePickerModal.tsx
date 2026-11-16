@@ -1,6 +1,9 @@
 import React, { useEffect } from "react";
 import { X, Sun, Moon, Monitor, Check } from "lucide-react";
-import { useTheme, THEMES, type ThemeId, type ColorMode, type ThemeDefinition } from "../../context/ThemeContext";
+import { NumberFormatSettings } from "./NumberFormatSettings";
+import { useTheme, THEMES, TYPE_STYLES, type ThemeId, type ColorMode, type ThemeDefinition } from "../../context/ThemeContext";
+import { formatMoney } from "../../utils/format";
+import { useFormatPrefs } from "../../hooks/useFormatPrefs";
 
 interface ThemePickerModalProps {
   isOpen: boolean;
@@ -8,7 +11,8 @@ interface ThemePickerModalProps {
 }
 
 export const ThemePickerModal: React.FC<ThemePickerModalProps> = ({ isOpen, onClose }) => {
-  const { theme, mode, resolvedMode, setTheme, setMode } = useTheme();
+  const { theme, mode, resolvedMode, setTheme, setMode, typeStyle, setTypeStyle } = useTheme();
+  const formatPrefs = useFormatPrefs();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -79,12 +83,12 @@ export const ThemePickerModal: React.FC<ThemePickerModalProps> = ({ isOpen, onCl
             <h2 id="theme-modal-title" className="text-base font-medium text-main">
               Appearance
             </h2>
-            <p className="text-xs text-muted mt-1">Palette, contrast and colour mode</p>
+            <p className="text-xs text-muted mt-1">Colour mode, type, palette and number formats</p>
           </div>
           <button
             onClick={onClose}
             className="h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer"
-            aria-label="Close theme settings"
+            aria-label="Close appearance settings"
           >
             <X className="w-4 h-4" strokeWidth={1.5} />
           </button>
@@ -130,6 +134,51 @@ export const ThemePickerModal: React.FC<ThemePickerModalProps> = ({ isOpen, onCl
             </div>
           </div>
 
+          {/* Type styles */}
+          <div>
+            <div className="flex items-baseline justify-between mb-2">
+              <div className="text-xs text-muted">Type style</div>
+              <span className="text-xs text-muted">Fonts for text, headings and figures</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {TYPE_STYLES.map((t) => {
+                const isSelected = typeStyle === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setTypeStyle(t.id)}
+                    aria-pressed={isSelected}
+                    className={`relative text-left p-4 rounded-lg border transition-colors cursor-pointer ${
+                      isSelected
+                        ? "bg-surface-subtle border-accent-main"
+                        : "bg-surface border-default hover:border-[var(--border-strong)] bg-surface-hover"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-main">{t.name}</span>
+                      {isSelected && <Check className="w-4 h-4 text-accent-main" strokeWidth={1.5} />}
+                    </div>
+                    {/* Sample set in the style's own fonts, so the choice is visible before applying it */}
+                    <div className="flex items-baseline justify-between gap-3 text-main">
+                      <span className="text-lg font-medium" style={{ fontFamily: t.display }}>
+                        Net worth
+                      </span>
+                      <span
+                        className="text-lg font-medium whitespace-nowrap"
+                        style={{ fontFamily: t.figures, fontVariantNumeric: "tabular-nums" }}
+                      >
+                        {formatMoney(248310.42, {}, formatPrefs)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted mt-2 leading-snug" style={{ fontFamily: t.sans }}>
+                      {t.description}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Financial themes */}
           <div>
             <div className="flex items-baseline justify-between mb-2">
@@ -150,6 +199,15 @@ export const ThemePickerModal: React.FC<ThemePickerModalProps> = ({ isOpen, onCl
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {developerThemes.map(renderThemeCard)}
             </div>
+          </div>
+
+          {/* Number formats */}
+          <div className="pt-6 border-t border-subtle">
+            <div className="flex items-baseline justify-between mb-3">
+              <div className="text-xs text-muted">Numbers and currency</div>
+              <span className="text-xs text-muted">Saved on this device</span>
+            </div>
+            <NumberFormatSettings />
           </div>
         </div>
 

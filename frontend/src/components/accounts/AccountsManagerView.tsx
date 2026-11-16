@@ -326,11 +326,11 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className={`${card} p-5`}>
           <div className="text-sm text-sub">Assets</div>
-          <Money value={totalAssets} className="block mt-2 text-2xl font-medium leading-none text-main" />
+          <Money value={totalAssets} className="block mt-2 font-display text-2xl font-medium leading-none text-main" />
         </div>
         <div className={`${card} p-5`}>
           <div className="text-sm text-sub">Liabilities and debt</div>
-          <Money value={totalLiabilities} className="block mt-2 text-2xl font-medium leading-none text-main" />
+          <Money value={totalLiabilities} className="block mt-2 font-display text-2xl font-medium leading-none text-main" />
         </div>
         <div className={`${card} p-5`}>
           <div className="text-sm text-sub">Net position</div>
@@ -359,7 +359,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
               }`}
             >
               <span>{tab.label}</span>
-              <span className="text-xs font-mono font-normal text-muted">{tab.count}</span>
+              <span className="text-xs tabular-nums font-normal text-muted">{tab.count}</span>
             </button>
           );
         })}
@@ -475,7 +475,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                   {acc.interest_rate ? (
                     <div className="flex items-center justify-between text-xs text-muted">
                       <span>Interest rate (APR)</span>
-                      <span className="font-mono text-sub">{acc.interest_rate}%</span>
+                      <span className="tabular-nums text-sub">{acc.interest_rate}%</span>
                     </div>
                   ) : null}
 
@@ -602,7 +602,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                     onChange={(e) =>
                       setFormData({ ...formData, account_number_mask: e.target.value })
                     }
-                    className={`${inputClass} font-mono`}
+                    className={`${inputClass} tabular-nums`}
                   />
                 </div>
               </div>
@@ -620,7 +620,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                       current_balance: parseFloat(e.target.value) || 0,
                     })
                   }
-                  className={`${inputClass} font-mono`}
+                  className={`${inputClass} tabular-nums`}
                 />
               </div>
 
@@ -639,7 +639,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                         credit_limit: parseFloat(e.target.value) || 0,
                       })
                     }
-                    className={`${inputClass} font-mono`}
+                    className={`${inputClass} tabular-nums`}
                   />
                 </div>
               )}
@@ -661,7 +661,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                             interest_rate: parseFloat(e.target.value) || 0,
                           })
                         }
-                        className={`${inputClass} font-mono`}
+                        className={`${inputClass} tabular-nums`}
                       />
                     </div>
                     <div>
@@ -676,7 +676,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                             loan_term_months: parseInt(e.target.value) || 360,
                           })
                         }
-                        className={`${inputClass} font-mono`}
+                        className={`${inputClass} tabular-nums`}
                       />
                     </div>
                   </div>
@@ -695,7 +695,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                             loan_original_principal: parseFloat(e.target.value) || 0,
                           })
                         }
-                        className={`${inputClass} font-mono`}
+                        className={`${inputClass} tabular-nums`}
                       />
                     </div>
                     <div>
@@ -711,7 +711,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                             monthly_payment: parseFloat(e.target.value) || 0,
                           })
                         }
-                        className={`${inputClass} font-mono`}
+                        className={`${inputClass} tabular-nums`}
                       />
                     </div>
                   </div>
@@ -730,7 +730,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                             escrow_payment: parseFloat(e.target.value) || 0,
                           })
                         }
-                        className={`${inputClass} font-mono`}
+                        className={`${inputClass} tabular-nums`}
                       />
                     </div>
                   )}

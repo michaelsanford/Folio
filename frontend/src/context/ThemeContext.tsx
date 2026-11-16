@@ -28,10 +28,10 @@ export const THEMES: ThemeDefinition[] = [
     id: "folio-emerald",
     name: "Folio Emerald",
     category: "Financial",
-    description: "Graphite surfaces with a banker's-lamp green",
-    accentHex: "#10b981",
-    darkCanvasHex: "#141415",
-    lightCanvasHex: "#fafafa",
+    description: "Warm umber and cream paper with a banker's-lamp green",
+    accentHex: "#3fae86",
+    darkCanvasHex: "#1a1715",
+    lightCanvasHex: "#faf6ef",
   },
   {
     id: "bloomberg",
@@ -98,6 +98,55 @@ export const THEMES: ThemeDefinition[] = [
   },
 ];
 
+export type TypeStyleId = "broadsheet" | "modern" | "friendly" | "terminal";
+
+export interface TypeStyleDefinition {
+  id: TypeStyleId;
+  name: string;
+  description: string;
+  /** Body font stack (mirrors --app-font-sans in index.css). */
+  sans: string;
+  /** Headline font stack (mirrors --app-font-display). */
+  display: string;
+  /** Stack for figures; differs from `sans` only in Terminal. */
+  figures: string;
+}
+
+export const TYPE_STYLES: TypeStyleDefinition[] = [
+  {
+    id: "broadsheet",
+    name: "Broadsheet",
+    description: "Serif headlines over a clear sans, like a financial paper.",
+    sans: "'Source Sans 3', ui-sans-serif, system-ui, sans-serif",
+    display: "Newsreader, Georgia, 'Times New Roman', serif",
+    figures: "'Source Sans 3', ui-sans-serif, system-ui, sans-serif",
+  },
+  {
+    id: "modern",
+    name: "Modern",
+    description: "Inter throughout. Neutral, compact and precise.",
+    sans: "Inter, ui-sans-serif, system-ui, sans-serif",
+    display: "Inter, ui-sans-serif, system-ui, sans-serif",
+    figures: "Inter, ui-sans-serif, system-ui, sans-serif",
+  },
+  {
+    id: "friendly",
+    name: "Friendly",
+    description: "Figtree throughout. Round, open and relaxed.",
+    sans: "Figtree, ui-sans-serif, system-ui, sans-serif",
+    display: "Figtree, ui-sans-serif, system-ui, sans-serif",
+    figures: "Figtree, ui-sans-serif, system-ui, sans-serif",
+  },
+  {
+    id: "terminal",
+    name: "Terminal",
+    description: "IBM Plex with monospaced figures. Dense and technical.",
+    sans: "'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif",
+    display: "'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif",
+    figures: "'IBM Plex Mono', ui-monospace, monospace",
+  },
+];
+
 export interface ThemeContextType {
   theme: ThemeId;
   mode: ColorMode;
@@ -109,12 +158,16 @@ export interface ThemeContextType {
   toggleMode: () => void;
   toggleColorMode: () => void;
   activeThemeDef: ThemeDefinition;
+  typeStyle: TypeStyleId;
+  setTypeStyle: (style: TypeStyleId) => void;
+  activeTypeStyleDef: TypeStyleDefinition;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 const THEME_STORAGE_KEY = "folio-theme";
 const MODE_STORAGE_KEY = "folio-color-mode";
+const TYPE_STORAGE_KEY = "folio-type-style";
 
 interface ThemeProviderProps {
   children: React.ReactNode;
@@ -143,6 +196,16 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
       return stored;
     }
     return "system";
+  });
+
+  const [typeStyle, setTypeStyleState] = useState<TypeStyleId>(() => {
+    try {
+      const stored = localStorage.getItem(TYPE_STORAGE_KEY) as TypeStyleId;
+      if (stored && TYPE_STYLES.some((t) => t.id === stored)) return stored;
+    } catch {
+      /* storage unavailable */
+    }
+    return "broadsheet";
   });
 
   const [systemIsDark, setSystemIsDark] = useState<boolean>(() => {
@@ -178,6 +241,19 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
     }
   }, [theme, resolvedMode]);
 
+  useEffect(() => {
+    document.documentElement.setAttribute("data-type", typeStyle);
+  }, [typeStyle]);
+
+  const setTypeStyle = (style: TypeStyleId) => {
+    setTypeStyleState(style);
+    try {
+      localStorage.setItem(TYPE_STORAGE_KEY, style);
+    } catch {
+      /* storage unavailable: lasts for this session only */
+    }
+  };
+
   const setTheme = (newTheme: ThemeId) => {
     setThemeState(newTheme);
     localStorage.setItem(THEME_STORAGE_KEY, newTheme);
@@ -194,6 +270,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
   };
 
   const activeThemeDef = THEMES.find((t) => t.id === theme) || THEMES[0];
+  const activeTypeStyleDef = TYPE_STYLES.find((t) => t.id === typeStyle) || TYPE_STYLES[0];
 
   return (
     <ThemeContext.Provider
@@ -208,6 +285,9 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
         toggleMode,
         toggleColorMode: toggleMode,
         activeThemeDef,
+        typeStyle,
+        setTypeStyle,
+        activeTypeStyleDef,
       }}
     >
       {children}

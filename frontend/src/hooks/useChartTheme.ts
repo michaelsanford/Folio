@@ -1,4 +1,4 @@
-import { useTheme } from "../context/ThemeContext";
+import { useTheme, type ThemeId } from "../context/ThemeContext";
 
 export interface ChartThemeTokens {
   isDark: boolean;
@@ -18,12 +18,24 @@ export interface ChartThemeTokens {
   negativeColor: string;
   neutralColor: string;
   palette: string[];
+  /** Label and tooltip font for the active type style. */
+  fontFamily: string;
+  /** Font for numbers on axes and in tooltips. */
+  figureFontFamily: string;
 }
 
-export const useChartTheme = (): ChartThemeTokens => {
-  const { theme, resolvedMode } = useTheme();
-  const isDark = resolvedMode === "dark";
+type ColorTokens = Omit<ChartThemeTokens, "fontFamily" | "figureFontFamily">;
 
+export const useChartTheme = (): ChartThemeTokens => {
+  const { theme, resolvedMode, activeTypeStyleDef } = useTheme();
+  return {
+    ...colorTokens(theme, resolvedMode === "dark"),
+    fontFamily: activeTypeStyleDef.sans,
+    figureFontFamily: activeTypeStyleDef.figures,
+  };
+};
+
+const colorTokens = (theme: ThemeId, isDark: boolean): ColorTokens => {
   switch (theme) {
     case "bloomberg":
       return {
@@ -190,25 +202,25 @@ export const useChartTheme = (): ChartThemeTokens => {
     default:
       return {
         isDark,
-        textColor: isDark ? "#a1a1a6" : "#525252",
-        subtleTextColor: isDark ? "#85858b" : "#737373",
-        gridLineColor: isDark ? "rgba(237, 237, 237, 0.06)" : "rgba(23, 23, 23, 0.06)",
-        axisLineColor: isDark ? "rgba(237, 237, 237, 0.12)" : "rgba(23, 23, 23, 0.12)",
-        tooltipBg: isDark ? "#232325" : "#ffffff",
-        tooltipBorder: isDark ? "rgba(237, 237, 237, 0.1)" : "rgba(23, 23, 23, 0.12)",
-        tooltipText: isDark ? "#ededed" : "#171717",
-        accentColor: isDark ? "#10b981" : "#047857",
+        textColor: isDark ? "#b3aa9e" : "#5e554b",
+        subtleTextColor: isDark ? "#968c80" : "#6f6458",
+        gridLineColor: isDark ? "rgba(236, 230, 221, 0.06)" : "rgba(42, 36, 31, 0.07)",
+        axisLineColor: isDark ? "rgba(236, 230, 221, 0.12)" : "rgba(42, 36, 31, 0.14)",
+        tooltipBg: isDark ? "#2d2824" : "#fffdf9",
+        tooltipBorder: isDark ? "rgba(236, 230, 221, 0.11)" : "rgba(42, 36, 31, 0.14)",
+        tooltipText: isDark ? "#ece6dd" : "#2a241f",
+        accentColor: isDark ? "#3fae86" : "#2b7155",
         accentGradient: {
-          start: isDark ? "rgba(16, 185, 129, 0.12)" : "rgba(4, 120, 87, 0.08)",
-          end: isDark ? "rgba(16, 185, 129, 0.0)" : "rgba(4, 120, 87, 0.0)",
+          start: isDark ? "rgba(63, 174, 134, 0.16)" : "rgba(43, 113, 85, 0.1)",
+          end: isDark ? "rgba(63, 174, 134, 0.0)" : "rgba(43, 113, 85, 0.0)",
         },
-        positiveColor: isDark ? "#4cc38a" : "#15803d",
-        negativeColor: isDark ? "#e5484d" : "#dc2626",
-        neutralColor: isDark ? "#85858b" : "#737373",
+        positiveColor: isDark ? "#5bbf8a" : "#2a7449",
+        negativeColor: isDark ? "#e2725b" : "#b4452f",
+        neutralColor: isDark ? "#968c80" : "#6f6458",
         // Accent leads; the rest are muted, distinguishable tones for share charts.
         palette: isDark
-          ? ["#10b981", "#7c9cbf", "#c9a46a", "#8f8fa3", "#b07b8c", "#6fa8a0", "#a1a1a6", "#5d5d63"]
-          : ["#047857", "#4f6f94", "#9a7434", "#6b6b80", "#8c5466", "#3f7f77", "#737373", "#a3a3a3"],
+          ? ["#3fae86", "#7c9cbf", "#d1a35e", "#a08fa8", "#c27d6e", "#6fa8a0", "#b3aa9e", "#6b625a"]
+          : ["#2b7155", "#4f6f94", "#9a6a2a", "#76678a", "#a3533f", "#3f7f77", "#6f6458", "#b5a998"],
       };
   }
 };

@@ -8,7 +8,6 @@ import type { CashFlowForecastResponse } from "../../types";
 import { api } from "../../services/api";
 
 const card = "rounded-xl bg-surface border border-subtle";
-const mono = "IBM Plex Mono, ui-monospace, monospace";
 const inputClass =
   "w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] disabled:opacity-50";
 
@@ -80,24 +79,24 @@ export const CashFlowForecastView: React.FC = () => {
         borderWidth: 1,
         padding: [8, 12],
         extraCssText: "border-radius: 8px; box-shadow: none;",
-        textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: "IBM Plex Sans, sans-serif" },
+        textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: chartTheme.fontFamily },
         axisPointer: { type: "line", lineStyle: { color: chartTheme.axisLineColor } },
         formatter: (params: any[]) => {
           if (!params || params.length === 0) return "";
           const idx = params[0].dataIndex;
           const pt = forecast.daily_curve[idx];
           let html = `<div style="color:${chartTheme.subtleTextColor}">${pt.date}</div>`;
-          html += `<div style="margin-top:4px">Balance <span style="font-family:${mono};color:${
+          html += `<div style="margin-top:4px">Balance <span style="font-family:${chartTheme.figureFontFamily};color:${
             pt.cash_balance >= 0 ? chartTheme.tooltipText : chartTheme.negativeColor
           }">${formatMoney(pt.cash_balance)}</span></div>`;
           if (pt.projected_income > 0) {
-            html += `<div>Income <span style="font-family:${mono};color:${chartTheme.positiveColor}">${formatMoney(
+            html += `<div>Income <span style="font-family:${chartTheme.figureFontFamily};color:${chartTheme.positiveColor}">${formatMoney(
               pt.projected_income,
               { signed: true }
             )}</span></div>`;
           }
           if (pt.projected_expense > 0) {
-            html += `<div>Outflow <span style="font-family:${mono}">${formatMoney(
+            html += `<div>Outflow <span style="font-family:${chartTheme.figureFontFamily}">${formatMoney(
               -pt.projected_expense
             )}</span></div>`;
           }
@@ -119,7 +118,7 @@ export const CashFlowForecastView: React.FC = () => {
         axisLabel: {
           color: chartTheme.subtleTextColor,
           fontSize: 11,
-          fontFamily: mono,
+          fontFamily: chartTheme.figureFontFamily,
           margin: 12,
           formatter: (val: string) => {
             const parts = val.split("-");
@@ -134,7 +133,7 @@ export const CashFlowForecastView: React.FC = () => {
         axisLabel: {
           color: chartTheme.subtleTextColor,
           fontSize: 11,
-          fontFamily: mono,
+          fontFamily: chartTheme.figureFontFamily,
           formatter: (v: number) => formatMoneyCompact(v),
         },
       },
@@ -160,7 +159,7 @@ export const CashFlowForecastView: React.FC = () => {
                   formatter: "Zero balance",
                   color: chartTheme.negativeColor,
                   fontSize: 11,
-                  fontFamily: "IBM Plex Sans, sans-serif",
+                  fontFamily: chartTheme.fontFamily,
                 },
               },
             ],
@@ -229,7 +228,7 @@ export const CashFlowForecastView: React.FC = () => {
               value={expectedPaycheck}
               disabled={paySchedule === "NONE"}
               onChange={(e) => setExpectedPaycheck(parseFloat(e.target.value) || 0)}
-              className={`${inputClass} font-mono`}
+              className={`${inputClass} tabular-nums`}
             />
           </div>
 
@@ -240,7 +239,7 @@ export const CashFlowForecastView: React.FC = () => {
               value={nextPayDate}
               disabled={paySchedule === "NONE"}
               onChange={(e) => setNextPayDate(e.target.value)}
-              className={`${inputClass} font-mono`}
+              className={`${inputClass} tabular-nums`}
             />
           </div>
         </div>
@@ -255,7 +254,7 @@ export const CashFlowForecastView: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className={`${card} p-5`}>
             <div className="text-sm text-sub">Starting cash</div>
-            <div className="mt-2 text-2xl font-medium leading-none">
+            <div className="mt-2 font-display text-2xl font-medium leading-none">
               <Money value={forecast.starting_cash} className="text-main" />
             </div>
             <div className="mt-2 text-xs text-muted">Chequing and savings today</div>
@@ -263,7 +262,7 @@ export const CashFlowForecastView: React.FC = () => {
 
           <div className={`${card} p-5`}>
             <div className="text-sm text-sub">Ending cash after {days} days</div>
-            <div className="mt-2 text-2xl font-medium leading-none">
+            <div className="mt-2 font-display text-2xl font-medium leading-none">
               <Money value={forecast.ending_cash} className="text-main" />
             </div>
             <div className="mt-2 text-xs text-muted">
@@ -280,14 +279,14 @@ export const CashFlowForecastView: React.FC = () => {
 
           <div className={`${card} p-5`}>
             <div className="text-sm text-sub">Lowest projected balance</div>
-            <div className="mt-2 text-2xl font-medium leading-none">
+            <div className="mt-2 font-display text-2xl font-medium leading-none">
               <Money
                 value={forecast.lowest_cash_point}
                 className={forecast.lowest_cash_point >= 0 ? "text-main" : "text-negative"}
               />
             </div>
             <div className="mt-2 text-xs text-muted">
-              On <span className="font-mono text-sub">{forecast.lowest_cash_date}</span>
+              On <span className="tabular-nums text-sub">{forecast.lowest_cash_date}</span>
             </div>
           </div>
         </div>
@@ -302,7 +301,7 @@ export const CashFlowForecastView: React.FC = () => {
             <p className="mt-1">
               Your projected cash drops to{" "}
               <Money value={forecast.lowest_cash_point} /> on{" "}
-              <span className="font-mono">{forecast.lowest_cash_date}</span>. To avoid overdraft
+              <span className="tabular-nums">{forecast.lowest_cash_date}</span>. To avoid overdraft
               fees or missed loan and mortgage payments, move funds from an emergency HISA or cut
               discretionary spending before that date.
             </p>
@@ -339,7 +338,7 @@ export const CashFlowForecastView: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 px-5 pt-5 pb-4">
             <h3 className="text-base font-medium text-main">
               Upcoming scheduled events{" "}
-              <span className="font-mono text-sm text-muted">{forecast.scheduled_events.length}</span>
+              <span className="tabular-nums text-sm text-muted">{forecast.scheduled_events.length}</span>
             </h3>
             <span className="text-xs text-muted">Loan payments and paydays</span>
           </div>
@@ -360,7 +359,7 @@ export const CashFlowForecastView: React.FC = () => {
                   const isIncome = ev.event_type === "INCOME";
                   return (
                     <tr key={idx} className="h-12 bg-surface-hover transition-colors">
-                      <td className="px-5 font-mono text-sub whitespace-nowrap">{ev.date}</td>
+                      <td className="px-5 tabular-nums text-sub whitespace-nowrap">{ev.date}</td>
                       <td className="px-4">
                         <span
                           className={`rounded-md px-1.5 py-0.5 text-xs ${

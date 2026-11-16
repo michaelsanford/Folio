@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
-import { ThemeProvider, useTheme, THEMES } from "./ThemeContext";
+import { ThemeProvider, useTheme, THEMES, TYPE_STYLES } from "./ThemeContext";
 
 const TestComponent = () => {
   const { theme, colorMode, resolvedMode, setTheme, setColorMode, toggleColorMode } = useTheme();
@@ -87,5 +87,34 @@ describe("ThemeContext & ThemeProvider", () => {
     expect(themeIds).toContain("tokyo-night");
     expect(themeIds).toContain("dracula");
     expect(themeIds.length).toBe(8);
+  });
+
+  it("defaults to the Broadsheet type style, applies it to <html> and persists changes", () => {
+    const TypeProbe = () => {
+      const { typeStyle, setTypeStyle } = useTheme();
+      return (
+        <div>
+          <span data-testid="type-style">{typeStyle}</span>
+          <button onClick={() => setTypeStyle("terminal")}>Set Terminal</button>
+        </div>
+      );
+    };
+    render(
+      <ThemeProvider>
+        <TypeProbe />
+      </ThemeProvider>
+    );
+
+    expect(screen.getByTestId("type-style").textContent).toBe("broadsheet");
+    expect(document.documentElement.getAttribute("data-type")).toBe("broadsheet");
+
+    fireEvent.click(screen.getByText("Set Terminal"));
+    expect(screen.getByTestId("type-style").textContent).toBe("terminal");
+    expect(document.documentElement.getAttribute("data-type")).toBe("terminal");
+    expect(localStorage.getItem("folio-type-style")).toBe("terminal");
+  });
+
+  it("offers at least three distinct type styles", () => {
+    expect(TYPE_STYLES.map((t) => t.id)).toEqual(["broadsheet", "modern", "friendly", "terminal"]);
   });
 });
