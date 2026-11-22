@@ -19,21 +19,20 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v7
 
-      - name: Set up Python 3.13
-        uses: actions/setup-python@v7
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          python-version: "3.14"
-          cache: "pip"
-          cache-dependency-path: backend/requirements-dev.txt
+          working-directory: backend
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r backend/requirements-dev.txt
+        working-directory: backend
+        run: uv sync --locked
 
       - name: Run Pytest Suite
-        run: |
-          pytest backend/tests
+        working-directory: backend
+        run: uv run --no-sync pytest
 
   frontend-test-and-build:
     name: Frontend Tests & Typecheck

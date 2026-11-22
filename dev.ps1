@@ -152,11 +152,17 @@ Nothing was wiped.
     Write-Host "Your master passphrase is configuration, not data, and is unaffected." -ForegroundColor Gray
 }
 
-# 2. Check Python Virtual Environment
-if (-not (Test-Path $PythonExe)) {
-    Write-Host "Creating Python virtual environment in backend\.venv..." -ForegroundColor Yellow
-    python -m venv (Join-Path $BackendPath ".venv")
-    & $PythonExe -m pip install -r (Join-Path $BackendPath "requirements-dev.txt")
+# 2. Sync Python Virtual Environment with uv
+if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+    throw "uv is not installed. Install via: winget install astral-sh.uv"
+}
+Write-Host "Syncing Python virtual environment in backend\.venv with uv..." -ForegroundColor Yellow
+Push-Location $BackendPath
+try {
+    & uv sync
+    if ($LASTEXITCODE -ne 0) { throw "Failed to sync backend Python environment with uv." }
+} finally {
+    Pop-Location
 }
 
 # 3. Ensure authentication is configured.
@@ -191,7 +197,7 @@ Folio is fail-closed, so starting without one would reject every API request.
 Configure it non-interactively instead, then re-run:
 
   # generate a hash (reads the passphrase from stdin)
-  "your passphrase" | python backend\scripts\hash_password.py
+  "your passphrase" | uv run --directory backend python scripts\hash_password.py
 
   # then add it to backend\.env
   FOLIO_MASTER_PASSWORD_HASH=<hash>
