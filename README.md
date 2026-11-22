@@ -220,6 +220,7 @@ flowchart LR
 
 ### Prerequisites
 
+- **uv** (`winget install astral-sh.uv` — manages Python 3.14 and the backend virtual environment automatically)
 - **Python 3.14** (used in CI, container image, and local development)
 - **Node.js 26 LTS** and **npm** (used in CI and the container image)
 
@@ -231,7 +232,7 @@ Launch both the FastAPI backend and Vite frontend with hot-reloading:
 .\dev.ps1
 ```
 
-This initializes the virtual environment, installs requirements, starts the backend on `http://localhost:8000`, the frontend on `http://localhost:5173`, and opens your browser.
+This syncs the Python virtual environment with `uv`, installs frontend dependencies if needed, starts the backend on `http://localhost:8000`, the frontend on `http://localhost:5173`, and opens your browser.
 
 ### First Run: Master Passphrase Vault
 
@@ -247,7 +248,7 @@ On first run, `dev.ps1` prompts for a master passphrase, bcrypt-hashes it locall
 To generate a bcrypt hash manually:
 
 ```powershell
-"your passphrase" | python backend\scripts\hash_password.py
+"your passphrase" | uv run --directory backend python scripts\hash_password.py
 ```
 
 ### Database Migrations & Maintenance
@@ -256,8 +257,8 @@ The schema is managed by Alembic and upgraded automatically on startup.
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m alembic current      # Show applied revision
-.\.venv\Scripts\python.exe -m alembic upgrade head # Apply pending migrations
+uv run alembic current      # Show applied revision
+uv run alembic upgrade head # Apply pending migrations
 ```
 
 One-shot maintenance operations for existing installations:
@@ -287,7 +288,7 @@ Folio includes automated GitHub Actions workflows:
 - **Continuous Integration ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))**: Runs Pytest (181 tests), Vitest (35 unit tests), `tsc -b`, and Vite production bundle on every commit.
 - **CodeQL Security Analysis ([`.github/workflows/codeql.yml`](.github/workflows/codeql.yml))**: Static application security testing (SAST) for Python and TypeScript.
 - **Gitleaks Secret Scanner ([`.github/workflows/secret-scan.yml`](.github/workflows/secret-scan.yml))**: Scans commits for exposed secrets, tokens, or private keys.
-- **Dependabot ([`.github/dependabot.yml`](.github/dependabot.yml))**: Automated weekly grouped updates for `pip`, `npm`, and GitHub Actions.
+- **Dependabot ([`.github/dependabot.yml`](.github/dependabot.yml))**: Automated weekly grouped updates for `uv`, `npm`, and GitHub Actions.
 
 ---
 

@@ -6,7 +6,22 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# Stage 2: Unified Execution Environment (Docker Compose / AWS Lambda Web Adapter)
+# Stage 2: Build Backend Python Environment with uv
+FROM python:3.14-slim AS backend-builder
+COPY --from=ghcr.io/astral-sh/uv:0.13.9 /uv /bin/uv
+
+WORKDIR /app
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_PYTHON_PREFERENCE=only-system
+
+# Runtime dependencies only; the dev dependency group (pytest) is excluded.
+COPY backend/pyproject.toml backend/uv.lock backend/.python-version ./
+RUN uv sync --locked --no-dev --no-install-project --no-cache
+
+# Stage 3: Unified Execution Environment (Docker Compose / AWS Lambda Web Adapter)
 FROM python:3.14-slim
 COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0 /lambda-adapter /opt/extensions/lambda-adapter
 
@@ -14,6 +29,7 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    PATH="/app/.venv/bin:$PATH" \
     PORT=8000 \
     AWS_LWA_PORT=8000 \
     AWS_LWA_ASYNC_INIT=true
@@ -24,11 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY backend/requirements.txt .
-# Runtime dependencies only; requirements-dev.txt adds the test tooling and is
-# deliberately not installed into the image.
-RUN pip install --no-cache-dir -r requirements.txt
-
+COPY --from=backend-builder /app/.venv /app/.venv
 COPY backend/ .
 # Copy compiled Frontend PWA into /app/static
 COPY --from=frontend-builder /app/frontend/dist /app/static
