@@ -3,8 +3,8 @@
 Reads the passphrase from stdin rather than argv so it never appears in the
 process list or shell history.
 
-    python scripts/hash_password.py < passphrase.txt
-    Read-Host -AsSecureString | ... | python scripts/hash_password.py
+    uv run python scripts/hash_password.py < passphrase.txt
+    Read-Host -AsSecureString | ... | uv run python scripts/hash_password.py
 """
 import sys
 

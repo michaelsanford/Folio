@@ -44,12 +44,17 @@ try {
         # Lambda environment, both of which are readable with modest IAM access.
         # Piped over stdin so it never appears in the process list either.
         Write-Host "Hashing master passphrase locally (bcrypt)..." -ForegroundColor Yellow
-        $PythonExe = Join-Path $PSScriptRoot "backend\.venv\Scripts\python.exe"
-        if (-not (Test-Path $PythonExe)) { $PythonExe = "python" }
-        $HashScript = Join-Path $PSScriptRoot "backend\scripts\hash_password.py"
+        $BackendPath = Join-Path $PSScriptRoot "backend"
+        $HashScript = Join-Path $BackendPath "scripts\hash_password.py"
 
         $Plain = [System.Net.NetworkCredential]::new("", $MasterPassword).Password
-        $Hash = ($Plain | & $PythonExe $HashScript)
+        if (Get-Command uv -ErrorAction SilentlyContinue) {
+            $Hash = ($Plain | & uv run --directory $BackendPath --quiet python $HashScript)
+        } else {
+            $PythonExe = Join-Path $BackendPath ".venv\Scripts\python.exe"
+            if (-not (Test-Path $PythonExe)) { $PythonExe = "python" }
+            $Hash = ($Plain | & $PythonExe $HashScript)
+        }
         $Plain = $null
         if ($LASTEXITCODE -ne 0 -or -not $Hash) { throw "Failed to hash the master passphrase." }
         $ParamOverrides += " MasterPasswordHash=$($Hash.Trim())"

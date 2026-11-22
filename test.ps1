@@ -8,17 +8,15 @@ Write-Host "==========================================" -ForegroundColor Cyan
 $RootPath = $PSScriptRoot
 $BackendPath = Join-Path $RootPath "backend"
 $FrontendPath = Join-Path $RootPath "frontend"
-$PytestExe = Join-Path $BackendPath ".venv\Scripts\pytest.exe"
-
 # 1. Backend Pytest Suite
 Write-Host "`n[1/3] Running Backend Pytest Suite..." -ForegroundColor Yellow
-if (-not (Test-Path $PytestExe)) {
-    throw "Pytest not found in backend\.venv. Run dev.ps1 first to setup environment."
+if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+    throw "uv is not installed. Install via: winget install astral-sh.uv"
 }
 
 Push-Location $BackendPath
 try {
-    & $PytestExe tests
+    & uv run pytest
     if ($LASTEXITCODE -ne 0) { throw "Backend Pytest tests failed." }
 } finally {
     Pop-Location
