@@ -1,9 +1,9 @@
-"""Minimal in-process rate limiting for the login endpoint.
+"""Minimal in-process rate limiting for authentication and MFA challenge endpoints.
 
-Deliberately not a distributed limiter: Folio runs as a single instance (the SAM
-template pins reserved concurrency to 1), so a per-process sliding window is
-sufficient and adds no dependency. It bounds an online guessing attack against a
-single master passphrase, which previously had no limit at all.
+Deliberately dependency-free: SAM ReservedConcurrency defaults to 0 (or 1 when
+configured for strict single-writer mode), so a per-process sliding window
+provides lightweight per-instance throttling across /api/auth/login,
+/api/auth/cognito/login, and /api/auth/cognito/challenge.
 """
 import threading
 import time

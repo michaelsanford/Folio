@@ -1,3 +1,21 @@
+<#
+.SYNOPSIS
+    Build and deploy the Folio serverless application to AWS SAM and optionally invite a Cognito user.
+
+.DESCRIPTION
+    Validates prerequisites and parameters, builds the ARM64 container image with Docker BuildKit
+    (attestations disabled for Lambda manifest compatibility), deploys the CloudFormation stack,
+    and optionally invites an owner or household user in the invite-only Cognito User Pool.
+
+.EXAMPLE
+    .\deploy.ps1 -Region ca-central-1 -StackName folio-prod -OwnerEmail you@example.com
+
+.EXAMPLE
+    .\deploy.ps1 -Region ca-central-1 -StackName Folio-QA -Environment qa -ExistingVaultBucket folio-vault-qa-012345678901-ca-central-1
+
+.EXAMPLE
+    .\deploy.ps1 -Region ca-central-1 -StackName Folio-QA -Environment qa -DisableCognito -MasterPassword (Read-Host -AsSecureString)
+#>
 [CmdletBinding()]
 param (
     [string]$Region = "ca-central-1",
