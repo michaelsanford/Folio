@@ -45,6 +45,8 @@ backend/data/uploads/*
 .idea/**/dataSources.local.xml
 .idea/**/dataSources/
 .idea/**/httpRequests/
+.idea/**/awsToolkit.xml
+.idea/**/csv-editor.xml
 
 # VS Code
 .vscode/*
