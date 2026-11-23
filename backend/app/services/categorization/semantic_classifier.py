@@ -97,20 +97,23 @@ TAXONOMY_PRIORITY: list[tuple[str, list[str]]] = [
         "restaurants",
         [
             "RESTAURANT", "RESTO", "BISTRO", "BRASSERIE", "GRILL", "BAKERY",
-            "BOULANGERIE", "PATISSERIE", "PÂTISSERIE", "PIZZA", "PIZZERIA", "BURGER",
-            "TACO", "SUSHI", "RAMEN", "NOODLE", "BBQ", "BARBECUE", "DINER",
-            "EATERY", "KITCHEN", "STEAKHOUSE", "ROTISSERIE", "RÔTISSERIE",
-            "SHAWARMA", "KEBAB", "FALAFEL", "POKE", "BAGEL", "CREPERIE", "CRÊPERIE",
-            "TRATTORIA", "TAQUERIA", "CANTINE", "CANTEEN", "CAFE", "CAFÉ",
-            "AUBERGE", "TRAITEUR", "CHARCUTERIE", "GASTRO", "BUFFET",
+            "BOULANGERIE", "BOULANGER", "PATISSERIE", "PÂTISSERIE", "PIZZA", "PIZZERIA", "BURGER",
+            "TACO", "SUSHI", "ONIGIRI", "IZAKAYA", "RAMEN", "PHO", "THAI", "DIM SUM",
+            "DUMPLING", "NOODLE", "BBQ", "BARBECUE", "DINER", "EATERY", "KITCHEN",
+            "STEAKHOUSE", "ROTISSERIE", "RÔTISSERIE", "SHAWARMA", "KEBAB", "FALAFEL",
+            "POKE", "BAGEL", "CREPERIE", "CRÊPERIE", "TRATTORIA", "TAQUERIA", "CANTINE",
+            "CANTEEN", "CAFE", "CAFÉ", "AUBERGE", "TRAITEUR", "CHARCUTERIE", "GASTRO",
+            "BUFFET", "BUBBLE TEA", "BOBA", "GELATO", "CREMERIE", "CRÈMERIE",
+            "BRUNCH", "SANDWICHERIE",
         ],
     ),
     (
         "groceries",
         [
             "SUPERMARKET", "SUPERMARCHÉ", "SUPERMARCHE", "GROCERY", "GROCERIES",
-            "EPICERIE", "ÉPICERIE", "ALIMENTATION", "PRODUCE", "BUTCHER",
-            "BOUCHERIE", "POISSONNERIE", "SUPERSTORE", "MARCHÉ", "MARCHE",
+            "EPICERIE", "ÉPICERIE", "DEPANNEUR", "DÉPANNEUR", "ALIMENTATION", "PRODUCE",
+            "BUTCHER", "BOUCHERIE", "POISSONNERIE", "FRUITERIE", "FROMAGERIE",
+            "BULK BARN", "SUPERSTORE", "MARCHÉ", "MARCHE",
             "MARKET", "FOOD MARKET", "COSTCO", "METRO", "IGA", "MAXI",
             "SUPER C", "PROVIGO", "LOBLAWS", "SOBEYS", "SAFEWAY", "FARM BOY",
             "NO FRILLS", "FOOD BASICS", "TRADER JOE", "WHOLE FOODS", "ALDI",
@@ -232,6 +235,34 @@ TAXONOMY_PRIORITY: list[tuple[str, list[str]]] = [
             "VÊTEMENTS", "APPAREL", "SHOES", "CHAUSSURES", "JEWELRY", "BIJOUTERIE",
             "MAGASIN", "MALL", "CENTRE COMMERCIAL", "DEPARTMENT STORE",
             "GRAND MAGASIN", "THRIFT", "FRIPERIE", "VINTAGE", "RETAIL", "MODE",
+        ],
+    ),
+    (
+        "auto-maintenance",
+        [
+            "GARAGE", "MECHANIC", "MECANIQUE", "MÉCANIQUE", "AUTO SERVICE", "TIRE",
+            "PNEU", "PNEUS", "OIL CHANGE", "CAR WASH", "LAVE-AUTO", "LAVE AUTO",
+            "MUFFLER", "BRAKES", "FREINS",
+        ],
+    ),
+    (
+        "cc-payment",
+        [
+            "AUTOMATIC PAYMENT -THANK YOU", "AUTOMATIC PAYMENT - THANK YOU",
+            "PAYMENT THANK YOU", "CREDIT CARD PAYMENT", "PAIEMENT CARTE DE CREDIT",
+        ],
+    ),
+    (
+        "internal-transfer",
+        [
+            "WWW TRF", "WWW TFR", "WWW TRANSFER", "ONLINE TRANSFER",
+            "E-TRANSFER SENT", "BR TO BR",
+        ],
+    ),
+    (
+        "mortgage-principal",
+        [
+            "MORTGAGE", "HYPOTHEQUE", "HYPOTHÈQUE",
         ],
     ),
 ]

@@ -40,6 +40,7 @@ def evaluate_transaction(
         account_type=req.account_type,
         enable_bedrock=req.enable_bedrock,
         min_confidence=req.min_confidence,
+        notes=req.notes,
     )
     return ClassificationEvaluateResponse(
         matched=res.matched,
@@ -135,6 +136,7 @@ def auto_classify_uncategorized(
         items = [
             {
                 "raw_payee": txn.raw_payee,
+                "notes": txn.notes,
                 "amount": txn.amount,
                 "account_id": txn.account_id,
                 "account_type": (

@@ -125,15 +125,21 @@ function AppContent() {
       onManageHousehold={() => setIsHouseholdModalOpen(true)}
     >
       {/* Empty State Banner if no accounts configured */}
-      {accounts.length === 0 && !isLoading && (
+      {accounts.length === 0 && !isLoading && activeTab !== "ingestion" && (
         <div className="mb-6 p-5 rounded-xl bg-surface border border-default flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <div className="text-base font-medium text-main">Welcome to Folio</div>
             <div className="text-sm text-muted mt-1">
-              Add your accounts to get started, or load sample Canadian data to explore
+              Import a bank statement to create accounts automatically, add accounts manually, or load sample Canadian data
             </div>
           </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={() => setActiveTab("ingestion")}
+              className="flex-1 sm:flex-none h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer"
+            >
+              Import statement
+            </button>
             <button
               onClick={() => setActiveTab("accounts")}
               className="flex-1 sm:flex-none h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer"

@@ -153,7 +153,14 @@ def create_transaction(txn_in: TransactionCreate, db: Session = Depends(get_db))
 
     # Adaptive learning: remember category assigned to payee
     if txn.splits and txn.splits[0].category_id:
-        auto_learn_rule(db, raw_payee=txn.raw_payee, category_id=txn.splits[0].category_id, normalized_payee=txn.normalized_payee)
+        auto_learn_rule(
+            db,
+            raw_payee=txn.raw_payee,
+            category_id=txn.splits[0].category_id,
+            normalized_payee=txn.normalized_payee,
+            notes=txn.notes,
+        )
+        db.commit()
 
     # Recalculate account balance
     recalculate_account_balance(db, txn.account_id)
@@ -202,7 +209,14 @@ def update_transaction(
 
     # Adaptive learning
     if txn.splits and txn.splits[0].category_id:
-        auto_learn_rule(db, raw_payee=txn.raw_payee, category_id=txn.splits[0].category_id, normalized_payee=txn.normalized_payee)
+        auto_learn_rule(
+            db,
+            raw_payee=txn.raw_payee,
+            category_id=txn.splits[0].category_id,
+            normalized_payee=txn.normalized_payee,
+            notes=txn.notes,
+        )
+        db.commit()
 
     recalculate_account_balance(db, txn.account_id)
     return txn
@@ -247,7 +261,13 @@ def batch_categorize(req: BatchCategorizeRequest, db: Session = Depends(get_db))
             txn.splits.append(TransactionSplit(category_id=req.category_id, amount=txn.amount))
 
         # Auto-learn rule for each merchant
-        auto_learn_rule(db, raw_payee=txn.raw_payee, category_id=req.category_id, normalized_payee=req.normalized_payee or txn.normalized_payee)
+        auto_learn_rule(
+            db,
+            raw_payee=txn.raw_payee,
+            category_id=req.category_id,
+            normalized_payee=req.normalized_payee or txn.normalized_payee,
+            notes=txn.notes,
+        )
 
     db.commit()
     return {"updated_count": len(transactions)}

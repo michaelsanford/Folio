@@ -7,6 +7,8 @@ import type {
   CategorizationRule,
   Budget,
   IngestionPreviewResponse,
+  IngestionAccountResolution,
+  IngestionCommitResponse,
   AmortizationScheduleResponse,
   LoanSplitSuggestion,
   DashboardAnalyticsResponse,
@@ -431,10 +433,12 @@ export const api = {
   },
 
   // Statement Ingestion
-  uploadStatementPreview: async (accountId: string, file: File) => {
+  uploadStatementPreview: async (accountId: string | null, file: File) => {
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("account_id", accountId);
+    if (accountId && accountId.trim()) {
+      formData.append("account_id", accountId.trim());
+    }
 
     const token = getStoredToken();
     const authHeader: Record<string, string> = token
@@ -456,15 +460,13 @@ export const api = {
     return res.json() as Promise<IngestionPreviewResponse>;
   },
   commitIngestionBatch: (req: {
-    account_id: string;
+    account_id?: string | null;
     statement_file_id?: string;
+    accounts?: IngestionAccountResolution[];
+    auto_detect_transfers?: boolean;
     items: any[];
   }) =>
-    request<{
-      committed_count: number;
-      account_id: string;
-      new_account_balance: number;
-    }>("/ingestion/commit", {
+    request<IngestionCommitResponse>("/ingestion/commit", {
       method: "POST",
       body: JSON.stringify(req),
     }),

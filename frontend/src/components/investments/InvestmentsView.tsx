@@ -492,13 +492,13 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
             <span className="text-main">Money-weighted</span> measures what you earned including timing.
           </p>
 
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-sm min-w-[440px]">
+          <div className="mt-4">
+            <table className="w-full table-fixed text-xs sm:text-sm">
               <thead>
                 <tr className="text-xs text-muted border-b border-subtle">
-                  <th className="text-left font-normal h-9 pr-4">Measure</th>
+                  <th className="text-left font-normal h-9 pr-2 w-[32%] sm:w-auto">Measure</th>
                   {PERIOD_ORDER.map((p) => (
-                    <th key={p} className="text-right font-normal h-9 px-3">
+                    <th key={p} className="text-right font-normal h-9 px-1 sm:px-3">
                       {p}
                     </th>
                   ))}
@@ -512,13 +512,13 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                   ] as const
                 ).map(([label, key]) => (
                   <tr key={key} className="h-10 border-b border-subtle last:border-0">
-                    <td className="pr-4 text-main">{label}</td>
+                    <td className="pr-2 text-main truncate" title={label}>{label}</td>
                     {PERIOD_ORDER.map((p) => {
                       const value = performance.returns[p]?.[key] ?? null;
                       return (
                         <td
                           key={p}
-                          className={`px-3 text-right tabular-nums ${
+                          className={`px-1 sm:px-3 text-right tabular-nums ${
                             value === null
                               ? "text-muted"
                               : value >= 0
@@ -566,17 +566,78 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           <h2 className="text-base font-medium text-main">Holdings</h2>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[720px]">
+        {/* Mobile & tablet cards (< lg) */}
+        <div className="block lg:hidden divide-y divide-subtle">
+          {isLoading ? (
+            <div className="py-8 text-center text-sm text-muted">Loading positions…</div>
+          ) : (performance?.holdings.length ?? 0) === 0 ? (
+            <div className="py-8 text-center text-sm text-muted">
+              No holdings yet. Add one to start tracking performance.
+            </div>
+          ) : (
+            performance?.holdings.map((h) => (
+              <div key={h.holding_id} className="p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-main font-mono truncate">{h.symbol}</div>
+                    {h.name && <div className="text-xs text-muted truncate">{h.name}</div>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-right">
+                      <Money value={h.market_value} currency={currency} className="text-sm text-main" />
+                      <div className="text-xs tabular-nums">
+                        <Money
+                          value={h.unrealized_gain}
+                          currency={currency}
+                          signed
+                          className={h.unrealized_gain >= 0 ? "text-positive" : "text-negative"}
+                        />{" "}
+                        <span className="text-muted">({percent(h.unrealized_gain_pct)})</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleDelete(h)}
+                      title={`Remove ${h.symbol}`}
+                      className="p-1.5 rounded-lg text-muted hover:text-negative bg-surface-hover transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" strokeWidth={1.5} />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted tabular-nums">
+                  <span>Qty {formatNumber(Number(h.quantity), 8)}</span>
+                  <span>·</span>
+                  <span>
+                    {h.is_priced ? (
+                      <>
+                        Price <Money value={h.price ?? 0} currency={currency} className="text-sub" />
+                      </>
+                    ) : (
+                      <span className="text-warning">No price</span>
+                    )}
+                  </span>
+                  <span>·</span>
+                  <span>
+                    Cost <Money value={h.cost_basis} currency={currency} className="text-sub" />
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop holdings table (>= lg) */}
+        <div className="hidden lg:block">
+          <table className="w-full table-fixed text-sm">
             <thead>
               <tr className="text-xs text-muted border-b border-subtle">
-                <th className="text-left font-normal h-9 px-5 sm:px-6">Symbol</th>
-                <th className="text-right font-normal h-9 px-3">Quantity</th>
-                <th className="text-right font-normal h-9 px-3">Price</th>
-                <th className="text-right font-normal h-9 px-3">Cost basis</th>
-                <th className="text-right font-normal h-9 px-3">Market value</th>
-                <th className="text-right font-normal h-9 px-3">Unrealized</th>
-                <th className="h-9 px-3"></th>
+                <th className="text-left font-normal h-9 px-3 w-[22%]">Symbol</th>
+                <th className="text-right font-normal h-9 px-3 w-[13%]">Quantity</th>
+                <th className="text-right font-normal h-9 px-3 w-[16%]">Price</th>
+                <th className="text-right font-normal h-9 px-3 w-[14%]">Cost basis</th>
+                <th className="text-right font-normal h-9 px-3 w-[14%]">Market value</th>
+                <th className="text-right font-normal h-9 px-3 w-[14%]">Unrealized</th>
+                <th className="h-9 px-2 w-11"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-subtle">
@@ -599,14 +660,20 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
               {!isLoading &&
                 performance?.holdings.map((h) => (
                   <tr key={h.holding_id} className="h-14 bg-surface-hover transition-colors">
-                    <td className="px-5 sm:px-6">
-                      <div className="text-main font-mono">{h.symbol}</div>
-                      {h.name && <div className="text-xs text-muted">{h.name}</div>}
+                    <td className="px-3 min-w-0">
+                      <div className="text-main font-mono truncate" title={h.symbol}>
+                        {h.symbol}
+                      </div>
+                      {h.name && (
+                        <div className="text-xs text-muted truncate" title={h.name}>
+                          {h.name}
+                        </div>
+                      )}
                     </td>
-                    <td className="px-3 text-right text-sub tabular-nums">
+                    <td className="px-3 text-right text-sub tabular-nums whitespace-nowrap">
                       {formatNumber(Number(h.quantity), 8)}
                     </td>
-                    <td className="px-3 text-right">
+                    <td className="px-3 text-right whitespace-nowrap">
                       {h.is_priced ? (
                         <>
                           <Money value={h.price ?? 0} currency={currency} className="text-main" />
@@ -616,13 +683,13 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                         <span className="text-xs text-warning">No price</span>
                       )}
                     </td>
-                    <td className="px-3 text-right">
+                    <td className="px-3 text-right whitespace-nowrap">
                       <Money value={h.cost_basis} currency={currency} className="text-sub" />
                     </td>
-                    <td className="px-3 text-right">
+                    <td className="px-3 text-right whitespace-nowrap">
                       <Money value={h.market_value} currency={currency} className="text-main" />
                     </td>
-                    <td className="px-3 text-right">
+                    <td className="px-3 text-right whitespace-nowrap">
                       <Money
                         value={h.unrealized_gain}
                         currency={currency}
@@ -633,7 +700,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                         {percent(h.unrealized_gain_pct)}
                       </div>
                     </td>
-                    <td className="px-3 text-right">
+                    <td className="px-2 text-right">
                       <button
                         onClick={() => handleDelete(h)}
                         title={`Remove ${h.symbol}`}
