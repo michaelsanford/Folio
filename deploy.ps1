@@ -6,7 +6,10 @@ param (
     [securestring]$MasterPassword,
     # Exact origin allowed to call the API cross-origin. Leave empty when the PWA
     # is served by the function itself, which needs no CORS at all.
-    [string]$AllowedOrigin = ""
+    [string]$AllowedOrigin = "",
+    # 0 = unreserved (required on sandbox/new AWS accounts with concurrency quota 10);
+    # set to 1 on accounts with quota > 10 to enforce single-writer SQLite safety.
+    [int]$ReservedConcurrency = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,18 +29,27 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 }
 
 $AccountId = (aws sts get-caller-identity --query "Account" --output text).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $AccountId) {
+    throw "AWS authentication failed. Check AWS_PROFILE / credentials."
+}
 Write-Host "Authenticated as AWS Account: $AccountId in $Region" -ForegroundColor Green
 
+$PrevAttestations = $env:BUILDX_NO_DEFAULT_ATTESTATIONS
 Push-Location $PSScriptRoot
 
 try {
     # 2. SAM Build
     Write-Host "`n[2/4] Building Serverless Application (SAM)..." -ForegroundColor Yellow
-    sam build -t template.yaml
+    # Disable OCI provenance attestations so BuildKit emits single-platform manifests Lambda accepts.
+    $env:BUILDX_NO_DEFAULT_ATTESTATIONS = "1"
+    sam build -t template.yaml --use-buildkit
+    if ($LASTEXITCODE -ne 0) {
+        throw "SAM build failed with exit code $LASTEXITCODE."
+    }
 
     # 3. SAM Deploy
     Write-Host "`n[3/4] Deploying SAM Stack ($StackName)..." -ForegroundColor Yellow
-    $ParamOverrides = "EnvironmentName=$Environment"
+    $ParamOverrides = @("EnvironmentName=$Environment")
 
     if ($MasterPassword) {
         # Hash locally so the passphrase itself never reaches CloudFormation or the
@@ -57,11 +69,15 @@ try {
         }
         $Plain = $null
         if ($LASTEXITCODE -ne 0 -or -not $Hash) { throw "Failed to hash the master passphrase." }
-        $ParamOverrides += " MasterPasswordHash=$($Hash.Trim())"
+        $ParamOverrides += "MasterPasswordHash=$($Hash.Trim())"
     }
 
     if ($AllowedOrigin) {
-        $ParamOverrides += " AllowedOrigin=$AllowedOrigin"
+        $ParamOverrides += "AllowedOrigin=$AllowedOrigin"
+    }
+
+    if ($ReservedConcurrency -gt 0) {
+        $ParamOverrides += "ReservedConcurrency=$ReservedConcurrency"
     }
 
     sam deploy `
@@ -70,34 +86,36 @@ try {
         --resolve-s3 `
         --resolve-image-repos `
         --capabilities CAPABILITY_IAM `
-        --parameter-overrides $ParamOverrides `
+        --parameter-overrides @ParamOverrides `
         --no-fail-on-empty-changeset
+    if ($LASTEXITCODE -ne 0) {
+        throw "SAM deploy failed with exit code $LASTEXITCODE."
+    }
 
     # 4. Retrieve Outputs
     Write-Host "`n[4/4] Retrieving Live Serverless Endpoint..." -ForegroundColor Yellow
-    $AppUrl = aws cloudformation describe-stacks `
+    $OutputsRaw = aws cloudformation describe-stacks `
         --stack-name "$StackName" `
         --region "$Region" `
-        --query "Stacks[0].Outputs[?OutputKey=='FolioAppUrl'].OutputValue" `
-        --output text
+        --query "Stacks[0].Outputs" `
+        --output json
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to retrieve CloudFormation stack outputs for $StackName."
+    }
 
-    $VaultBucket = aws cloudformation describe-stacks `
-        --stack-name "$StackName" `
-        --region "$Region" `
-        --query "Stacks[0].Outputs[?OutputKey=='S3VaultBucket'].OutputValue" `
-        --output text
-
-    $UserPoolId = aws cloudformation describe-stacks `
-        --stack-name "$StackName" `
-        --region "$Region" `
-        --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolId'].OutputValue" `
-        --output text
-
-    $ClientId = aws cloudformation describe-stacks `
-        --stack-name "$StackName" `
-        --region "$Region" `
-        --query "Stacks[0].Outputs[?OutputKey=='CognitoClientId'].OutputValue" `
-        --output text
+    $OutputsMap = @{}
+    if ($OutputsRaw) {
+        $ParsedOutputs = $OutputsRaw | ConvertFrom-Json
+        foreach ($Item in $ParsedOutputs) {
+            if ($Item.OutputKey) {
+                $OutputsMap[$Item.OutputKey] = $Item.OutputValue
+            }
+        }
+    }
+    $AppUrl = $OutputsMap["FolioAppUrl"]
+    $VaultBucket = $OutputsMap["S3VaultBucket"]
+    $UserPoolId = $OutputsMap["CognitoUserPoolId"]
+    $ClientId = $OutputsMap["CognitoClientId"]
 
     Write-Host "`n========================================================" -ForegroundColor Green
     Write-Host "Folio Serverless SAM Deployment Complete!" -ForegroundColor Green
@@ -109,5 +127,10 @@ try {
     }
     Write-Host "========================================================" -ForegroundColor Green
 } finally {
+    if ($null -ne $PrevAttestations) {
+        $env:BUILDX_NO_DEFAULT_ATTESTATIONS = $PrevAttestations
+    } else {
+        Remove-Item Env:\BUILDX_NO_DEFAULT_ATTESTATIONS -ErrorAction SilentlyContinue
+    }
     Pop-Location
 }

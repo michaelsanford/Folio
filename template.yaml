@@ -42,8 +42,18 @@ Parameters:
     Default: 'amazon.nova-micro-v1:0'
     Description: Model ID for AWS Bedrock auto-classification (e.g. amazon.nova-micro-v1:0 or anthropic.claude-3-haiku-20240307-v1:0)
 
+  ReservedConcurrency:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    Description: >-
+      Optional Lambda ReservedConcurrentExecutions (set to 1 on accounts with
+      Lambda concurrency quota > 10 to enforce single-writer SQLite safety;
+      leave 0 on new/sandbox accounts whose account quota is 10).
+
 Conditions:
   HasAllowedOrigin: !Not [!Equals [!Ref AllowedOrigin, '']]
+  HasReservedConcurrency: !Not [!Equals [!Ref ReservedConcurrency, 0]]
 
 Globals:
   Function:
@@ -57,6 +67,7 @@ Resources:
   FolioStorageVault:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       BucketName: !Sub 'folio-vault-${AWS::AccountId}-${AWS::Region}'
       BucketEncryption:
@@ -127,7 +138,10 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       PackageType: Image
-      ReservedConcurrentExecutions: 1
+      ReservedConcurrentExecutions: !If
+        - HasReservedConcurrency
+        - !Ref ReservedConcurrency
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           AWS_LWA_PORT: "8000"
@@ -137,7 +151,6 @@ Resources:
           # Lambda's filesystem is read-only outside /tmp; statement uploads must land there.
           FOLIO_UPLOAD_DIR: "/tmp/uploads"
           S3_BUCKET_NAME: !Ref FolioStorageVault
-          AWS_DEFAULT_REGION: !Ref AWS::Region
           FOLIO_MASTER_PASSWORD_HASH: !Ref MasterPasswordHash
           COGNITO_USER_POOL_ID: !Ref FolioUserPool
           COGNITO_CLIENT_ID: !Ref FolioUserPoolClient
@@ -153,23 +166,23 @@ Resources:
         # AllowCredentials is invalid per the CORS specification and browsers
         # reject it -- set AllowedOrigin to a real origin only if you front the
         # function with a custom domain.
-        Cors:
-          AllowOrigins: !If
-            - HasAllowedOrigin
-            - [!Ref AllowedOrigin]
-            - []
-          AllowMethods:
-            - 'GET'
-            - 'POST'
-            - 'PUT'
-            - 'DELETE'
-            - 'OPTIONS'
-            - 'HEAD'
-          AllowHeaders:
-            - 'Content-Type'
-            - 'Authorization'
-            - 'X-Folio-Origin-Verify'
-          AllowCredentials: true
+        Cors: !If
+          - HasAllowedOrigin
+          - AllowOrigins:
+              - !Ref AllowedOrigin
+            AllowMethods:
+              - 'GET'
+              - 'POST'
+              - 'PUT'
+              - 'PATCH'
+              - 'DELETE'
+              - 'HEAD'
+            AllowHeaders:
+              - 'Content-Type'
+              - 'Authorization'
+              - 'X-Folio-Origin-Verify'
+            AllowCredentials: true
+          - !Ref AWS::NoValue
       Policies:
         - S3CrudPolicy:
             BucketName: !Sub 'folio-vault-${AWS::AccountId}-${AWS::Region}'
