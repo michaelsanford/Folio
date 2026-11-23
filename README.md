@@ -289,7 +289,7 @@ Run the complete 3-phase automated test suite (Backend Pytest + Frontend Vitest 
 
 Folio includes automated GitHub Actions workflows:
 
-- **Continuous Integration ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))**: Runs Pytest (193 tests), Vitest (55 unit tests across 14 suites), `tsc -b`, and Vite production bundle on every commit.
+- **Continuous Integration ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))**: Runs Pytest (199 tests), Vitest (58 unit tests across 14 suites), `tsc -b`, and Vite production bundle on every commit.
 - **CodeQL Security Analysis ([`.github/workflows/codeql.yml`](.github/workflows/codeql.yml))**: Static application security testing (SAST) for Python and TypeScript.
 - **Gitleaks Secret Scanner ([`.github/workflows/secret-scan.yml`](.github/workflows/secret-scan.yml))**: Scans commits for exposed secrets, tokens, or private keys.
 - **Dependabot ([`.github/dependabot.yml`](.github/dependabot.yml))**: Automated weekly grouped updates for `uv`, `npm`, and GitHub Actions.
@@ -337,11 +337,26 @@ Folio includes a native AWS SAM template (`template.yaml` + `Dockerfile`) utiliz
 ### 1-Command SAM Deployment
 
 ```powershell
-# Default deploy (unreserved Lambda concurrency; works on new/sandbox AWS accounts with quota 10)
-.\deploy.ps1 -Region ca-central-1 -StackName folio-prod
+# Deploy with invite-only Cognito + bootstrap/invite your owner email (idempotent; re-run with another -OwnerEmail for additional household users)
+.\deploy.ps1 -Region ca-central-1 -StackName folio-prod -OwnerEmail you@example.com
+
+# Deploy an isolated QA stack with its own vault bucket (folio-vault-qa-<account>-<region>)
+.\deploy.ps1 -Region ca-central-1 -StackName Folio-QA -Environment qa -OwnerEmail you@example.com
+
+# Or deploy a QA/dev stack in single Master Passphrase mode without Cognito
+.\deploy.ps1 -Region ca-central-1 -StackName Folio-QA -Environment qa -DisableCognito -MasterPassword (Read-Host -AsSecureString)
+
+# Reuse a retained vault bucket from a previous deployment
+.\deploy.ps1 -Region ca-central-1 -StackName Folio-QA -Environment qa -ExistingVaultBucket folio-vault-qa-012345678901-ca-central-1
 
 # Accounts with Lambda concurrency quota > 10 (enforces single-writer SQLite safety)
 .\deploy.ps1 -Region ca-central-1 -StackName folio-prod -ReservedConcurrency 1
+
+# Tear down stack interactively (prompts before deleting retained S3 vault, ECR CompanionStack, and Log Groups)
+.\teardown.ps1 -Region ca-central-1 -StackName Folio-QA
+
+# Non-interactive complete eradication of stack + all stack-associated retained resources (no prompts)
+.\teardown.ps1 -Region ca-central-1 -StackName Folio-QA -Force
 
 # Optional: validate and lint template before deploying
 sam validate -t template.yaml --lint
@@ -349,13 +364,21 @@ sam validate -t template.yaml --lint
 
 `deploy.ps1` fails fast on authentication, `sam build --use-buildkit`, `sam deploy`, or `describe-stacks` errors so a failed container build never provisions orphaned CloudFormation companion stacks.
 
+### First-Time Sign-In (Invite-Only Cognito)
+
+When deploying with `-OwnerEmail you@example.com`, Cognito emails an invitation with a temporary password (`no-reply@verificationemail.com`). On your first sign-in in the Folio web app:
+
+1. Enter your invited **Email address** and the emailed temporary password.
+2. Choose a permanent passphrase (**20+ characters**, at least one lowercase letter).
+3. Scan the rendered **TOTP QR code** (or copy the manual setup key) into your authenticator app and enter the 6-digit verification code to issue `HttpOnly` session and refresh cookies.
+
 ### Serverless Architecture Highlights
 
 1. **Lambda Web Adapter**: Runs the standard FastAPI app and compiled React 19 PWA directly inside AWS Lambda without code changes.
 2. **Lambda Function URL**: Direct HTTPS endpoint with automated TLS (`Cors` is conditionally enabled only when `AllowedOrigin` is provided, and omitted via `AWS::NoValue` for same-origin deploys). Custom domains cannot bind directly to `*.lambda-url.*.on.aws`; front the Function URL with CloudFront + a `us-east-1` ACM certificate paired with `OriginVerifySecret`.
-3. **AWS Cognito User Pool**: Manages owner identity, credentials, and TOTP MFA tokens.
+3. **Invite-Only AWS Cognito + Built-in Sign-In & MFA**: Provisioned with `AllowAdminCreateUserOnly: true`, case-insensitive email usernames, 20-char passphrases, and mandatory TOTP MFA (`SOFTWARE_TOKEN_MFA`). The web app handles email/password login, first-login passphrase replacement, inline SVG QR TOTP enrollment, `HttpOnly` session + refresh cookies, and sidebar/mobile sign-out; pass `-DisableCognito -MasterPassword` to use single Master Passphrase mode instead.
 4. **Optional Single-Writer Concurrency**: `ReservedConcurrency` defaults to `0` (unreserved) so sandbox/new AWS accounts with a concurrency quota of 10 can deploy; pass `-ReservedConcurrency 1` on accounts with quota > 10 to enforce `ReservedConcurrentExecutions: 1`.
-5. **Automated S3 Sync**: Restores `folio.db` on cold-start and checkpoints debounced snapshots back to the private S3 vault (`DeletionPolicy: Retain` + `UpdateReplacePolicy: Retain`).
+5. **Automated S3 Sync & Vault Preservation**: Restores `folio.db` on cold-start and checkpoints debounced snapshots back to the environment-scoped private S3 vault (`folio-vault-${EnvironmentName}-${AWS::AccountId}-${AWS::Region}` with `DeletionPolicy: Retain` + `UpdateReplacePolicy: Retain`). Reattach a retained bucket with `-ExistingVaultBucket`, or run `.\teardown.ps1` to selectively keep or delete retained vaults, ECR repositories, and log groups.
 6. **Optional AWS Bedrock Recourse**: Scoped IAM permissions allowing Amazon Nova Micro invocation when `EnableBedrock` is set to `'true'`.
 7. **Cost**: **$0.00/month** baseline within the AWS Lambda Always-Free Tier (1M requests/month) + Cognito (50,000 free MAUs) + S3 standard storage.
 
@@ -365,8 +388,10 @@ sam validate -t template.yaml --lint
 
 | Environment Variable | SAM Parameter | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `FOLIO_ENV` | `EnvironmentName` | `development` (`prod` in SAM) | Runtime mode: `development` or `prod`/`production` |
+| `FOLIO_ENV` | `EnvironmentName` | `development` (`prod` in SAM) | Runtime mode and S3 vault prefix (`[a-z0-9-]`) |
 | `FOLIO_DEFAULT_CURRENCY` | — | `CAD` | Default currency for new accounts and transactions |
+| — | `EnableCognito` (`-DisableCognito`) | `true` | Provision invite-only AWS Cognito User Pool + TOTP MFA (`false` for Master Passphrase mode) |
+| `FOLIO_SECRET_KEY` | `SessionSecretKey` | Auto-derived in dev / random in `-DisableCognito` | HMAC signing secret for local HS256 cookies when Cognito is disabled |
 | `FOLIO_MASTER_PASSWORD_HASH` | `MasterPasswordHash` (`-MasterPassword`) | `""` | Bcrypt hash of the master passphrase (hashed locally before deploy) |
 | `FOLIO_BEDROCK_ENABLED` | `EnableBedrock` | `false` | Enable Tier 4 AWS Bedrock AI auto-classification |
 | `FOLIO_BEDROCK_MODEL_ID` | `BedrockModelId` | `amazon.nova-micro-v1:0` | AWS Bedrock model identifier (e.g. Nova Micro, Claude 3 Haiku) |
@@ -374,7 +399,7 @@ sam validate -t template.yaml --lint
 | `FOLIO_CLASSIFICATION_THRESHOLD`| — | `0.75` | Minimum confidence score for automatic category assignment |
 | `COGNITO_USER_POOL_ID` | Output from SAM | `""` | AWS Cognito User Pool ID |
 | `COGNITO_CLIENT_ID` | Output from SAM | `""` | AWS Cognito App Client ID |
-| `S3_BUCKET_NAME` | Generated by SAM| `""` | Private S3 vault bucket for database backups |
+| `S3_BUCKET_NAME` | `ExistingVaultBucketName` (`-ExistingVaultBucket`) | Auto-created (`folio-vault-<env>-<acct>-<region>`) | Private S3 vault bucket (reuse an existing bucket or let SAM create one) |
 | `FOLIO_ORIGIN_VERIFY_SECRET` | `OriginVerifySecret` | `""` | Shared secret header required when fronted by CloudFront / WAF |
 | `FOLIO_CORS_ORIGINS` | `AllowedOrigin` | `""` | Allowed CORS origins (only needed when using separate domains) |
 | — | `ReservedConcurrency` | `0` | Optional Lambda `ReservedConcurrentExecutions` (`1` requires account quota > 10) |

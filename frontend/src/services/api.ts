@@ -17,6 +17,8 @@ import type {
   PriceQuote,
   AuthStatusResponse,
   CognitoConfigResponse,
+  CognitoChallengeType,
+  CognitoAuthResponse,
   HouseholdMember,
   Goal,
   EmergencyFundCalcResponse,
@@ -108,6 +110,26 @@ export const api = {
       setStoredToken(res.access_token);
       return res;
     },
+    cognitoLogin: (email: string, password: string) =>
+      request<CognitoAuthResponse>("/auth/cognito/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      }),
+    cognitoChallenge: (payload: {
+      challenge: CognitoChallengeType;
+      username: string;
+      session: string;
+      new_password?: string;
+      totp_code?: string;
+    }) =>
+      request<CognitoAuthResponse>("/auth/cognito/challenge", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    cognitoRefresh: () =>
+      request<{ authenticated: boolean }>("/auth/cognito/refresh", {
+        method: "POST",
+      }),
     logout: async () => {
       try {
         await request<void>("/auth/logout", { method: "POST" });

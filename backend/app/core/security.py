@@ -10,19 +10,23 @@ from app.core.config import settings
 logger = logging.getLogger("folio.security")
 
 COOKIE_NAME = "folio_session"
+REFRESH_COOKIE_NAME = "folio_refresh"
 
 # Cached JWKS client instance for Cognito
 _jwk_client: PyJWKClient | None = None
+_jwk_client_url: str | None = None
 
 
 def get_jwk_client() -> PyJWKClient | None:
     """Returns or initializes the PyJWKClient for Cognito JWKS public key rotation."""
-    global _jwk_client
+    global _jwk_client, _jwk_client_url
     if not settings.is_cognito_enabled:
         return None
-    if _jwk_client is None:
+    jwks_url = settings.cognito_jwks_url
+    if _jwk_client is None or _jwk_client_url != jwks_url:
         try:
-            _jwk_client = PyJWKClient(settings.cognito_jwks_url, cache_keys=True, max_cached_keys=16)
+            _jwk_client = PyJWKClient(jwks_url, cache_keys=True, max_cached_keys=16)
+            _jwk_client_url = jwks_url
         except Exception as e:
             logger.error(f"Failed to initialize Cognito JWKS client: {e}")
             return None
@@ -97,19 +101,21 @@ def decode_cognito_token(token: str) -> dict | None:
             signing_key.key,
             algorithms=["RS256"],
             issuer=settings.cognito_issuer,
-            options={"verify_exp": True, "verify_iss": True},
+            options={"verify_exp": True, "verify_iss": True, "verify_aud": False},
         )
-        
-        # Validate client_id / audience against configured Cognito App Client ID
-        token_client_id = payload.get("client_id") or payload.get("aud")
-        if token_client_id and token_client_id != settings.COGNITO_CLIENT_ID:
-            logger.warning("Cognito token audience/client_id mismatch")
+
+        # Verify token_use claim (must be 'access' or 'id') and bind client_id / aud
+        token_use = payload.get("token_use")
+        if token_use == "access":
+            token_client_id = payload.get("client_id")
+        elif token_use == "id":
+            token_client_id = payload.get("aud")
+        else:
+            logger.warning(f"Invalid Cognito token_use: {token_use}")
             return None
 
-        # Verify token_use claim (must be 'access' or 'id')
-        token_use = payload.get("token_use")
-        if token_use not in ("access", "id"):
-            logger.warning(f"Invalid Cognito token_use: {token_use}")
+        if token_client_id != settings.COGNITO_CLIENT_ID:
+            logger.warning("Cognito token audience/client_id mismatch")
             return None
 
         return payload
@@ -124,13 +130,14 @@ def decode_cognito_token(token: str) -> dict | None:
 def decode_access_token(token: str) -> dict | None:
     """
     Decode and validate an access token.
-    First tries Cognito JWKS RS256 if Cognito is configured,
-    then falls back to local HS256 signature verification.
+    Uses Cognito JWKS RS256 exclusively when Cognito is configured,
+    or local HS256 verification when Master Passphrase mode is configured.
     """
     if settings.is_cognito_enabled:
-        cognito_payload = decode_cognito_token(token)
-        if cognito_payload:
-            return cognito_payload
+        return decode_cognito_token(token)
+
+    if not (settings.FOLIO_MASTER_PASSWORD or settings.FOLIO_MASTER_PASSWORD_HASH):
+        return None
 
     # Local HS256 token verification
     try:

@@ -1,10 +1,13 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import React from "react";
 import { LockScreen } from "./LockScreen";
 import { api } from "../../services/api";
 
 describe("LockScreen Component", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
   it("renders master passphrase input and lock branding", () => {
     render(<LockScreen onUnlocked={vi.fn()} />);
 
@@ -46,6 +49,149 @@ describe("LockScreen Component", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Incorrect master password")).toBeDefined();
+    });
+  });
+
+  it("handles Cognito invited-user onboarding through NEW_PASSWORD_REQUIRED and MFA_SETUP", async () => {
+    const onUnlocked = vi.fn();
+    const cognitoLoginSpy = vi.spyOn(api.auth, "cognitoLogin").mockResolvedValueOnce({
+      status: "challenge",
+      challenge: "NEW_PASSWORD_REQUIRED",
+      session: "sess-1",
+      username: "owner@example.com",
+      message: "Choose a permanent passphrase (20+ chars).",
+    });
+    const cognitoChallengeSpy = vi
+      .spyOn(api.auth, "cognitoChallenge")
+      .mockResolvedValueOnce({
+        status: "challenge",
+        challenge: "MFA_SETUP",
+        session: "sess-2",
+        username: "owner@example.com",
+        totp_secret: "JBSWY3DPEHPK3PXP",
+        otpauth_uri: "otpauth://totp/Folio:owner%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=Folio",
+        qr_data_uri: "data:image/svg+xml;charset=utf-8,%3Csvg%3E%3C/svg%3E",
+      })
+      .mockResolvedValueOnce({
+        status: "authenticated",
+        username: "owner@example.com",
+      });
+
+    render(<LockScreen onUnlocked={onUnlocked} authMode="cognito" />);
+
+    fireEvent.change(screen.getByLabelText("Email address"), {
+      target: { value: "Owner@Example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "TempPass123!" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Sign in/i }));
+
+    await waitFor(() => {
+      expect(cognitoLoginSpy).toHaveBeenCalledWith("owner@example.com", "TempPass123!");
+      expect(screen.getByLabelText("New passphrase")).toBeDefined();
+    });
+
+    // Rejects short passphrase client-side
+    fireEvent.change(screen.getByLabelText("New passphrase"), {
+      target: { value: "too-short" },
+    });
+    fireEvent.change(screen.getByLabelText("Confirm passphrase"), {
+      target: { value: "too-short" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Continue to MFA setup/i }));
+    expect(screen.getByText(/at least 20 characters/i)).toBeDefined();
+    expect(cognitoChallengeSpy).not.toHaveBeenCalled();
+
+    // Rejects mismatched passphrases client-side
+    fireEvent.change(screen.getByLabelText("New passphrase"), {
+      target: { value: "very-long-household-passphrase-one" },
+    });
+    fireEvent.change(screen.getByLabelText("Confirm passphrase"), {
+      target: { value: "very-long-household-passphrase-two" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Continue to MFA setup/i }));
+    expect(screen.getByText(/Passphrases do not match/i)).toBeDefined();
+    expect(cognitoChallengeSpy).not.toHaveBeenCalled();
+
+    // Submits matching valid passphrase -> transitions to MFA_SETUP with QR and secret
+    fireEvent.change(screen.getByLabelText("Confirm passphrase"), {
+      target: { value: "very-long-household-passphrase-one" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Continue to MFA setup/i }));
+
+    await waitFor(() => {
+      expect(cognitoChallengeSpy).toHaveBeenCalledWith({
+        challenge: "NEW_PASSWORD_REQUIRED",
+        username: "owner@example.com",
+        session: "sess-1",
+        new_password: "very-long-household-passphrase-one",
+      });
+      const qrImg = screen.getByAltText("Authenticator QR code") as HTMLImageElement;
+      expect(qrImg.src).toContain("data:image/svg+xml");
+      expect(screen.getByText("JBSW Y3DP EHPK 3PXP")).toBeDefined();
+    });
+
+    // Verifies 6-digit setup code -> unlocks app
+    fireEvent.change(screen.getByLabelText("6-digit verification code"), {
+      target: { value: "123 456" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Verify & sign in/i }));
+
+    await waitFor(() => {
+      expect(cognitoChallengeSpy).toHaveBeenCalledWith({
+        challenge: "MFA_SETUP",
+        username: "owner@example.com",
+        session: "sess-2",
+        totp_code: "123456",
+      });
+      expect(onUnlocked).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("handles returning Cognito user SOFTWARE_TOKEN_MFA login", async () => {
+    const onUnlocked = vi.fn();
+    vi.spyOn(api.auth, "cognitoLogin").mockResolvedValueOnce({
+      status: "challenge",
+      challenge: "SOFTWARE_TOKEN_MFA",
+      session: "mfa-sess",
+      username: "owner@example.com",
+      message: "Enter the 6-digit code from your authenticator app.",
+    });
+    const challengeSpy = vi
+      .spyOn(api.auth, "cognitoChallenge")
+      .mockResolvedValueOnce({
+        status: "authenticated",
+        username: "owner@example.com",
+      });
+
+    render(<LockScreen onUnlocked={onUnlocked} authMode="cognito" />);
+
+    fireEvent.change(screen.getByLabelText("Email address"), {
+      target: { value: "owner@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "very-long-household-passphrase-one" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Sign in/i }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Authenticator code")).toBeDefined();
+    });
+
+    fireEvent.change(screen.getByLabelText("Authenticator code"), {
+      target: { value: "654321" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Verify & unlock/i }));
+
+    await waitFor(() => {
+      expect(challengeSpy).toHaveBeenCalledWith({
+        challenge: "SOFTWARE_TOKEN_MFA",
+        username: "owner@example.com",
+        session: "mfa-sess",
+        totp_code: "654321",
+      });
+      expect(onUnlocked).toHaveBeenCalledTimes(1);
     });
   });
 });

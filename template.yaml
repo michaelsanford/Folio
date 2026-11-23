@@ -6,7 +6,9 @@ Parameters:
   EnvironmentName:
     Type: String
     Default: prod
-    Description: Stage environment name (e.g. prod, staging, dev)
+    AllowedPattern: '^[a-z0-9][a-z0-9-]{0,20}$'
+    ConstraintDescription: Must be 1-21 lowercase alphanumeric characters or hyphens (used in S3 bucket naming).
+    Description: Stage environment name (e.g. prod, staging, qa, dev)
 
   MasterPasswordHash:
     Type: String
@@ -51,9 +53,34 @@ Parameters:
       Lambda concurrency quota > 10 to enforce single-writer SQLite safety;
       leave 0 on new/sandbox accounts whose account quota is 10).
 
+  ExistingVaultBucketName:
+    Type: String
+    Default: ''
+    Description: >-
+      Optional name of an existing S3 vault bucket to reuse (for example, a
+      bucket retained from an earlier stack). When set, CloudFormation skips
+      creating FolioStorageVault and connects Lambda to this bucket instead.
+
+  EnableCognito:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: >-
+      Provision an invite-only AWS Cognito User Pool + TOTP MFA for authentication
+      (true), or disable Cognito to use single Master Passphrase mode (false).
+
+  SessionSecretKey:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: >-
+      HMAC signing secret for local HS256 session cookies when EnableCognito is false.
+
 Conditions:
   HasAllowedOrigin: !Not [!Equals [!Ref AllowedOrigin, '']]
   HasReservedConcurrency: !Not [!Equals [!Ref ReservedConcurrency, 0]]
+  CreateVaultBucket: !Equals [!Ref ExistingVaultBucketName, '']
+  UseCognito: !Equals [!Ref EnableCognito, 'true']
 
 Globals:
   Function:
@@ -66,10 +93,11 @@ Resources:
   # 1. Private S3 Vault for Database Snapshots and Statement Archives
   FolioStorageVault:
     Type: AWS::S3::Bucket
+    Condition: CreateVaultBucket
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      BucketName: !Sub 'folio-vault-${AWS::AccountId}-${AWS::Region}'
+      BucketName: !Sub 'folio-vault-${EnvironmentName}-${AWS::AccountId}-${AWS::Region}'
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -92,10 +120,18 @@ Resources:
   # 2. AWS Cognito User Pool for Zero-Trust Identity
   FolioUserPool:
     Type: AWS::Cognito::UserPool
+    Condition: UseCognito
     Properties:
       UserPoolName: !Sub 'folio-userpool-${EnvironmentName}'
+      UsernameAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: false
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: true  # Prevents public sign-ups (Owner-only private vault)
+        InviteMessageTemplate:
+          EmailSubject: 'Your Folio Vault Invitation'
+          EmailMessage: 'You have been invited to Folio. Sign in with email {username} and temporary password: {####}'
       AutoVerifiedAttributes:
         - email
       MfaConfiguration: "ON"     # Supports TOTP Authenticator apps (Google Authenticator, 1Password, Apple Keychain)
@@ -116,6 +152,7 @@ Resources:
   # 3. Cognito User Pool App Client for SPA PWA
   FolioUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
+    Condition: UseCognito
     Properties:
       ClientName: !Sub 'folio-client-${EnvironmentName}'
       UserPoolId: !Ref FolioUserPool
@@ -150,10 +187,11 @@ Resources:
           SQLITE_DB_PATH: "/tmp/folio.db"
           # Lambda's filesystem is read-only outside /tmp; statement uploads must land there.
           FOLIO_UPLOAD_DIR: "/tmp/uploads"
-          S3_BUCKET_NAME: !Ref FolioStorageVault
+          S3_BUCKET_NAME: !If [CreateVaultBucket, !Ref FolioStorageVault, !Ref ExistingVaultBucketName]
+          FOLIO_SECRET_KEY: !Ref SessionSecretKey
           FOLIO_MASTER_PASSWORD_HASH: !Ref MasterPasswordHash
-          COGNITO_USER_POOL_ID: !Ref FolioUserPool
-          COGNITO_CLIENT_ID: !Ref FolioUserPoolClient
+          COGNITO_USER_POOL_ID: !If [UseCognito, !Ref FolioUserPool, '']
+          COGNITO_CLIENT_ID: !If [UseCognito, !Ref FolioUserPoolClient, '']
           COGNITO_REGION: !Ref AWS::Region
           FOLIO_ORIGIN_VERIFY_SECRET: !Ref OriginVerifySecret
           FOLIO_CORS_ORIGINS: !Ref AllowedOrigin
@@ -184,9 +222,25 @@ Resources:
             AllowCredentials: true
           - !Ref AWS::NoValue
       Policies:
-        - S3CrudPolicy:
-            BucketName: !Sub 'folio-vault-${AWS::AccountId}-${AWS::Region}'
         - Statement:
+            - Effect: Allow
+              Action:
+                - 's3:GetObject'
+                - 's3:PutObject'
+                - 's3:DeleteObject'
+                - 's3:AbortMultipartUpload'
+                - 's3:ListMultipartUploadParts'
+                - 's3:ListBucket'
+                - 's3:GetBucketLocation'
+              Resource:
+                - !If
+                  - CreateVaultBucket
+                  - !GetAtt FolioStorageVault.Arn
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ExistingVaultBucketName}'
+                - !If
+                  - CreateVaultBucket
+                  - !Sub '${FolioStorageVault.Arn}/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ExistingVaultBucketName}/*'
             - Effect: Allow
               Action:
                 - 'bedrock:InvokeModel'
@@ -203,13 +257,15 @@ Outputs:
     Value: !GetAtt FolioServerlessFunctionUrl.FunctionUrl
 
   CognitoUserPoolId:
+    Condition: UseCognito
     Description: AWS Cognito User Pool ID
     Value: !Ref FolioUserPool
 
   CognitoClientId:
+    Condition: UseCognito
     Description: AWS Cognito App Client ID
     Value: !Ref FolioUserPoolClient
 
   S3VaultBucket:
     Description: S3 Storage Vault Bucket Name
-    Value: !Ref FolioStorageVault
+    Value: !If [CreateVaultBucket, !Ref FolioStorageVault, !Ref ExistingVaultBucketName]

@@ -101,6 +101,23 @@ function AppContent() {
     }
   };
 
+  const handleSignOut = async () => {
+    try {
+      await api.auth.logout();
+    } catch {
+      // Clear local session state even if server logout fails
+    }
+    setAccounts([]);
+    setCategories([]);
+    setHouseholdMembers([]);
+    setAnalytics(null);
+    setAuthStatus((prev) => ({
+      ...prev,
+      authenticated: false,
+      auth_required: true,
+    }));
+  };
+
   // Auth Loading
   if (authStatus.is_loading) {
     return (
@@ -123,6 +140,7 @@ function AppContent() {
       accounts={accounts}
       householdMembers={householdMembers}
       onManageHousehold={() => setIsHouseholdModalOpen(true)}
+      onSignOut={authStatus.auth_required ? handleSignOut : undefined}
     >
       {/* Empty State Banner if no accounts configured */}
       {accounts.length === 0 && !isLoading && activeTab !== "ingestion" && (
