@@ -86,6 +86,7 @@ class IngestionCommitItem(BaseModel):
     amount: float
     currency: str | None = None
     category_id: str | None = None
+    category_name: str | None = None
     notes: str | None = None
     import_hash: str
     source_account_key: str | None = None

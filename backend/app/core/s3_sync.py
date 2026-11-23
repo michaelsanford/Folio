@@ -1,16 +1,47 @@
+import logging
 import os
 import sqlite3
-import logging
+import threading
 from pathlib import Path
 
 logger = logging.getLogger("folio.s3_sync")
+
+S3_DB_KEY = "database/folio.db"
+_sync_lock = threading.RLock()
+_last_known_etag: str | None = None
+
+
+def _remove_sqlite_sidecars(db_path: Path) -> None:
+    """Remove stale SQLite WAL/SHM sidecar files before replacing the DB file."""
+    for suffix in ("-wal", "-shm"):
+        sidecar = Path(f"{db_path}{suffix}")
+        try:
+            sidecar.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.debug(f"Could not remove SQLite sidecar {sidecar}: {exc}")
+
+
+def _fetch_remote_etag(client, bucket_name: str, s3_key: str = S3_DB_KEY) -> str | None:
+    """Read the current S3 object ETag via head_object, or None if absent/unreadable."""
+    try:
+        head = client.head_object(Bucket=bucket_name, Key=s3_key)
+    except Exception as exc:
+        logger.debug(f"head_object failed for s3://{bucket_name}/{s3_key}: {exc}")
+        return None
+    if isinstance(head, dict):
+        etag = head.get("ETag")
+        return str(etag) if etag else None
+    return None
 
 
 def get_s3_client(region: str | None = None):
     """Attempt to initialize boto3 S3 client."""
     try:
         import boto3
-        return boto3.client("s3", region_name=region or os.getenv("AWS_DEFAULT_REGION", "ca-central-1"))
+        return boto3.client(
+            "s3",
+            region_name=region or os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "ca-central-1")),
+        )
     except Exception as e:
         logger.debug(f"boto3 not available or credentials missing: {e}")
         return None
@@ -20,6 +51,8 @@ def restore_db_from_s3(db_path: Path, bucket_name: str, region: str = "ca-centra
     """
     On serverless cold-start, pulls the latest SQLite database from S3 into local /tmp storage.
     """
+    global _last_known_etag
+
     if not bucket_name:
         logger.info("No S3_BUCKET_NAME configured. Skipping S3 database restore.")
         return False
@@ -30,26 +63,31 @@ def restore_db_from_s3(db_path: Path, bucket_name: str, region: str = "ca-centra
         return False
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    s3_key = "database/folio.db"
+    s3_key = S3_DB_KEY
 
-    try:
-        logger.info(f"Checking for existing SQLite database in S3 bucket '{bucket_name}' ({s3_key})...")
-        client.download_file(bucket_name, s3_key, str(db_path))
-        logger.info(f"Successfully restored SQLite database from S3 ({db_path}).")
-        return True
-    except Exception as e:
-        error_code = getattr(e, "response", {}).get("Error", {}).get("Code", "")
-        if error_code in ("404", "NoSuchKey"):
-            logger.info("No existing database found in S3. Initializing fresh database.")
-        else:
-            logger.warning(f"Unable to download database from S3: {e}. Starting with local instance.")
-        return False
+    with _sync_lock:
+        try:
+            logger.info(f"Checking for existing SQLite database in S3 bucket '{bucket_name}' ({s3_key})...")
+            _remove_sqlite_sidecars(db_path)
+            client.download_file(bucket_name, s3_key, str(db_path))
+            _last_known_etag = _fetch_remote_etag(client, bucket_name, s3_key)
+            logger.info(f"Successfully restored SQLite database from S3 ({db_path}).")
+            return True
+        except Exception as e:
+            error_code = getattr(e, "response", {}).get("Error", {}).get("Code", "")
+            if error_code in ("404", "NoSuchKey"):
+                logger.info("No existing database found in S3. Initializing fresh database.")
+            else:
+                logger.warning(f"Unable to download database from S3: {e}. Starting with local instance.")
+            return False
 
 
 def sync_db_to_s3(db_path: Path, bucket_name: str, region: str = "ca-central-1") -> bool:
     """
     Checkpoints SQLite WAL and syncs database snapshot to S3 bucket.
     """
+    global _last_known_etag
+
     if not bucket_name or not db_path.exists():
         return False
 
@@ -57,25 +95,66 @@ def sync_db_to_s3(db_path: Path, bucket_name: str, region: str = "ca-central-1")
     if not client:
         return False
 
-    try:
-        # Checkpoint WAL pages into the main database file before uploading
-        conn = sqlite3.connect(str(db_path))
-        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        conn.close()
+    with _sync_lock:
+        try:
+            # Checkpoint WAL pages into the main database file before uploading
+            conn = sqlite3.connect(str(db_path))
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.close()
 
-        s3_key = "database/folio.db"
-        logger.info(f"Synchronizing database snapshot to S3 ({bucket_name}/{s3_key})...")
-        client.upload_file(
-            str(db_path),
-            bucket_name,
-            s3_key,
-            ExtraArgs={"ServerSideEncryption": "AES256"},
-        )
-        logger.info("Database snapshot successfully uploaded to S3.")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to sync SQLite database to S3: {e}")
+            s3_key = S3_DB_KEY
+            logger.info(f"Synchronizing database snapshot to S3 ({bucket_name}/{s3_key})...")
+            client.upload_file(
+                str(db_path),
+                bucket_name,
+                s3_key,
+                ExtraArgs={"ServerSideEncryption": "AES256"},
+            )
+            _last_known_etag = _fetch_remote_etag(client, bucket_name, s3_key)
+            logger.info("Database snapshot successfully uploaded to S3.")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to sync SQLite database to S3: {e}")
+            return False
+
+
+def ensure_db_fresh(db_path: Path, bucket_name: str, region: str = "ca-central-1") -> bool:
+    """Pull a newer S3 database snapshot if another Lambda container updated it."""
+    global _last_known_etag
+
+    if not bucket_name:
         return False
+
+    from app.core.sync_scheduler import sync_scheduler
+
+    if sync_scheduler.has_pending_changes():
+        return False
+
+    with _sync_lock:
+        if sync_scheduler.has_pending_changes():
+            return False
+
+        client = get_s3_client(region)
+        if not client:
+            return False
+
+        remote_etag = _fetch_remote_etag(client, bucket_name, S3_DB_KEY)
+        if not remote_etag or remote_etag == _last_known_etag:
+            return False
+
+        try:
+            from app.core.database import engine
+
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            engine.dispose()
+            _remove_sqlite_sidecars(db_path)
+            client.download_file(bucket_name, S3_DB_KEY, str(db_path))
+            _last_known_etag = remote_etag
+            logger.info(f"Refreshed SQLite database from S3 (ETag {remote_etag}).")
+            return True
+        except Exception as exc:
+            logger.warning(f"Failed to refresh SQLite database from S3: {exc}")
+            return False
 
 
 def sync_db_if_configured() -> bool:
@@ -94,4 +173,3 @@ def sync_now() -> bool:
     """Force an immediate snapshot upload, bypassing the debounce."""
     from app.core.sync_scheduler import sync_scheduler
     return sync_scheduler.flush()
-

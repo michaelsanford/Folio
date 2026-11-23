@@ -27,6 +27,11 @@ Base = declarative_base()
 
 def get_db() -> Generator[Session, None, None]:
     """FastAPI database session dependency."""
+    if settings.S3_BUCKET_NAME:
+        from app.core.s3_sync import ensure_db_fresh
+
+        ensure_db_fresh(settings.SQLITE_DB_PATH, settings.S3_BUCKET_NAME, settings.AWS_REGION)
+
     db = SessionLocal()
     try:
         yield db

@@ -3,12 +3,14 @@ import re
 from pathlib import Path
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.s3_sync import sync_db_if_configured, sync_now
 from app.models.account import Account, AccountType, LoanCompounding
 from app.models.category import Category
+from app.models.rule import CategorizationRule
 from app.models.statement_file import StatementFile
 from app.models.transaction import Transaction, TransactionSplit, TransactionStatus
 from app.schemas.ingestion import (
@@ -27,8 +29,9 @@ from app.services.ingestion.deduplication import generate_transaction_hash
 from app.services.ingestion.pdf_parser import parse_pdf_content
 from app.services.ingestion.ofx_parser import parse_ofx_content
 from app.services.categorization.transfer_matcher import link_offsetting_transfers
+from app.api.categories import seed_default_categories
+from app.api.rules import auto_learn_rules_bulk, seed_default_rules
 from app.api.transactions import recalculate_account_balance
-from app.api.rules import auto_learn_rules_bulk
 
 router = APIRouter(prefix="/ingestion", tags=["Statement Ingestion"])
 
@@ -113,6 +116,10 @@ async def upload_statement_preview(
     db.add(stmt_file)
     db.commit()
     db.refresh(stmt_file)
+
+    if db.query(CategorizationRule.id).first() is None:
+        seed_default_categories(db)
+        seed_default_rules(db)
 
     # Route parser based on extension
     if ext == ".pdf":
@@ -256,11 +263,14 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
                 if existing_txn:
                     continue
 
-            cat_id = item.category_id if item.category_id and item.category_id.strip() else None
+            cat_id = item.category_id.strip() if item.category_id and item.category_id.strip() else None
+            cat_name = item.category_name.strip() if item.category_name and item.category_name.strip() else None
+            cat: Category | None = None
             if cat_id:
                 cat = db.query(Category).filter(Category.id == cat_id).first()
-                if not cat:
-                    cat_id = None
+            if not cat and cat_name:
+                cat = db.query(Category).filter(func.lower(Category.name) == cat_name.lower()).first()
+            cat_id = cat.id if cat else None
 
             row_currency = (
                 (item.currency or target_account.currency or settings.DEFAULT_CURRENCY)

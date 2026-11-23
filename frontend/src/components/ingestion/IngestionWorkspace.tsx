@@ -127,15 +127,39 @@ function isGenericPayee(rawPayee: string | null | undefined): boolean {
   );
 }
 
+function resolveCategoryId(
+  suggestedId: string | null | undefined,
+  suggestedName: string | null | undefined,
+  categories: Category[]
+): string {
+  if (suggestedId && categories.some((c) => c.id === suggestedId)) {
+    return suggestedId;
+  }
+  if (suggestedName) {
+    const targetName = suggestedName.trim().toLowerCase();
+    const matched = categories.find((c) => c.name.trim().toLowerCase() === targetName);
+    if (matched) {
+      return matched.id;
+    }
+  }
+  return suggestedId || "";
+}
+
 function getEffectiveCategory(
   rowKey: string,
   item: ParsedTransactionItem,
-  rowCategories: Record<string, string>
+  rowCategories: Record<string, string>,
+  categories: Category[]
 ): string {
   if (Object.prototype.hasOwnProperty.call(rowCategories, rowKey)) {
-    return rowCategories[rowKey] ?? "";
+    const val = rowCategories[rowKey] ?? "";
+    if (!val) return "";
+    if (categories.some((c) => c.id === val)) {
+      return val;
+    }
+    return resolveCategoryId(val, item.suggested_category_name, categories);
   }
-  return item.suggested_category_id || "";
+  return resolveCategoryId(item.suggested_category_id, item.suggested_category_name, categories);
 }
 
 export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
@@ -225,8 +249,13 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
         if (!item.is_duplicate) {
           initialSelected.add(rk);
         }
-        if (item.suggested_category_id) {
-          initialCats[rk] = item.suggested_category_id;
+        const resolvedCatId = resolveCategoryId(
+          item.suggested_category_id,
+          item.suggested_category_name,
+          categories
+        );
+        if (resolvedCatId) {
+          initialCats[rk] = resolvedCatId;
         }
       });
 
@@ -338,7 +367,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
     const matchingKeys = indexedItems
       .filter((other) => {
         if (other.rowKey === rowKey) return false;
-        if (getEffectiveCategory(other.rowKey, other.item, rowCategories)) return false;
+        if (getEffectiveCategory(other.rowKey, other.item, rowCategories, categories)) return false;
 
         const otherRaw = other.item.raw_payee.trim().toUpperCase();
         const otherNotes = (other.item.notes || "").trim().toUpperCase();
@@ -438,20 +467,34 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
 
     setIsCommitting(true);
     try {
-      const itemsToCommit = chosenEntries.map(({ item, rowKey }) => ({
-        transaction_date: item.transaction_date,
-        raw_payee: item.raw_payee,
-        normalized_payee: item.normalized_payee,
-        amount: item.amount,
-        currency: item.currency,
-        category_id: getEffectiveCategory(rowKey, item, rowCategories) || undefined,
-        notes: item.notes || undefined,
-        import_hash: item.import_hash,
-        source_account_key: item.source_account_key || undefined,
-        account_id: hasDetectedAccounts
-          ? undefined
-          : item.account_id || selectedAccountId || undefined,
-      }));
+      const itemsToCommit = chosenEntries.map(({ item, rowKey }) => {
+        const effectiveCatId = getEffectiveCategory(
+          rowKey,
+          item,
+          rowCategories,
+          categories
+        );
+        const effectiveCatName = effectiveCatId
+          ? categories.find((c) => c.id === effectiveCatId)?.name ||
+            item.suggested_category_name ||
+            undefined
+          : undefined;
+        return {
+          transaction_date: item.transaction_date,
+          raw_payee: item.raw_payee,
+          normalized_payee: item.normalized_payee,
+          amount: item.amount,
+          currency: item.currency,
+          category_id: effectiveCatId || undefined,
+          category_name: effectiveCatName,
+          notes: item.notes || undefined,
+          import_hash: item.import_hash,
+          source_account_key: item.source_account_key || undefined,
+          account_id: hasDetectedAccounts
+            ? undefined
+            : item.account_id || selectedAccountId || undefined,
+        };
+      });
 
       const res = await api.commitIngestionBatch({
         account_id: hasDetectedAccounts
@@ -962,7 +1005,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
             <div className="block lg:hidden divide-y divide-subtle">
               {visibleItems.map(({ item, rowKey }) => {
                 const isChecked = selectedRowKeys.has(rowKey);
-                const assignedCat = getEffectiveCategory(rowKey, item, rowCategories);
+                const assignedCat = getEffectiveCategory(rowKey, item, rowCategories, categories);
 
                 return (
                   <div
@@ -1072,7 +1115,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
               <div className="divide-y divide-subtle">
                 {visibleItems.map(({ item, rowKey }) => {
                   const isChecked = selectedRowKeys.has(rowKey);
-                  const assignedCat = getEffectiveCategory(rowKey, item, rowCategories);
+                  const assignedCat = getEffectiveCategory(rowKey, item, rowCategories, categories);
                   const accountLabel = getResolvedAccountLabel(item);
                   const showDetailLine =
                     item.raw_payee !== item.normalized_payee || Boolean(item.notes);

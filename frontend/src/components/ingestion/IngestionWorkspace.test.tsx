@@ -417,4 +417,88 @@ describe("IngestionWorkspace Auto-Account Creation", () => {
     expect(selects[3].value).toBe("cat-health");
     expect(selects[4].value).toBe("");
   });
+
+  it("resolves category by suggested_category_name when suggested_category_id does not match loaded categories", async () => {
+    vi.mocked(api.uploadStatementPreview).mockResolvedValueOnce({
+      file_id: "file-stale-id",
+      filename: "stale_ids.csv",
+      file_type: "CSV",
+      account_id: "acc-1",
+      is_multi_account: false,
+      total_parsed: 1,
+      duplicates_count: 0,
+      new_count: 1,
+      detected_accounts: [],
+      items: [
+        {
+          transaction_date: "2026-08-01",
+          raw_payee: "METRO #42",
+          normalized_payee: "Metro",
+          amount: -64.15,
+          currency: "CAD",
+          suggested_category_id: "foreign-container-uuid",
+          suggested_category_name: "Groceries",
+          is_duplicate: false,
+          import_hash: "h-stale-cat",
+          confidence_score: 1.0,
+        },
+      ],
+    });
+    vi.mocked(api.commitIngestionBatch).mockResolvedValueOnce({
+      committed_count: 1,
+      account_id: "acc-1",
+      new_account_balance: 935.85,
+      accounts_created_count: 0,
+      accounts: [],
+      transfers_linked_count: 0,
+    });
+
+    const existingAccounts: Account[] = [
+      {
+        id: "acc-1",
+        name: "Checking",
+        type: "CHECKING",
+        currency: "CAD",
+        current_balance: 1000,
+        is_active: true,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ];
+
+    const { container } = render(
+      <IngestionWorkspace
+        accounts={existingAccounts}
+        categories={mockCategories}
+        onCommitSuccess={vi.fn()}
+      />
+    );
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["x"], "stale_ids.csv", { type: "text/csv" })] },
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Metro").length).toBeGreaterThan(0);
+    });
+
+    const desktopReview = container.querySelector(
+      '[data-testid="ingestion-desktop-review"]'
+    ) as HTMLElement;
+    const select = desktopReview.querySelector(
+      'select[aria-label="Category"]'
+    ) as HTMLSelectElement;
+    expect(select.value).toBe("cat-groceries");
+
+    fireEvent.click(screen.getByRole("button", { name: /Import 1/i }));
+
+    await waitFor(() => {
+      expect(api.commitIngestionBatch).toHaveBeenCalledTimes(1);
+    });
+
+    const payload = vi.mocked(api.commitIngestionBatch).mock.calls[0][0];
+    expect(payload.items[0].category_id).toBe("cat-groceries");
+    expect(payload.items[0].category_name).toBe("Groceries");
+  });
 });

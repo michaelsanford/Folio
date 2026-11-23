@@ -3,6 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.s3_sync import sync_db_if_configured
 from app.models.category import Category, CategoryType
 from app.schemas.category import (
     CategoryCreate,
@@ -66,6 +67,14 @@ DEFAULT_CATEGORIES = [
 ]
 
 
+DEFAULT_CATEGORY_NAMESPACE = uuid.UUID("7f3b8c2a-9e1d-4a6b-8c5e-2f4a6b8c9d0e")
+
+
+def default_category_id(slug: str) -> str:
+    """Deterministic UUIDv5 for built-in categories so cold starts share identical IDs."""
+    return str(uuid.uuid5(DEFAULT_CATEGORY_NAMESPACE, slug))
+
+
 def seed_default_categories(db: Session):
     """Populates default categories idempotently, creating missing parents and children."""
     existing = db.query(Category).all()
@@ -75,6 +84,7 @@ def seed_default_categories(db: Session):
         parent = existing_by_slug.get(parent_def["slug"])
         if not parent:
             parent = Category(
+                id=default_category_id(parent_def["slug"]),
                 name=parent_def["name"],
                 slug=parent_def["slug"],
                 icon=parent_def["icon"],
@@ -90,6 +100,7 @@ def seed_default_categories(db: Session):
             child = existing_by_slug.get(child_def["slug"])
             if not child:
                 child = Category(
+                    id=default_category_id(child_def["slug"]),
                     name=child_def["name"],
                     slug=child_def["slug"],
                     icon=child_def["icon"],
@@ -168,6 +179,7 @@ def create_category(cat_in: CategoryCreate, db: Session = Depends(get_db)):
     db.add(cat)
     db.commit()
     db.refresh(cat)
+    sync_db_if_configured()
     return cat
 
 
@@ -183,6 +195,7 @@ def update_category(category_id: str, cat_in: CategoryUpdate, db: Session = Depe
 
     db.commit()
     db.refresh(cat)
+    sync_db_if_configured()
     return cat
 
 
@@ -194,4 +207,5 @@ def delete_category(category_id: str, db: Session = Depends(get_db)):
 
     db.delete(cat)
     db.commit()
+    sync_db_if_configured()
     return None
