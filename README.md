@@ -214,7 +214,8 @@ flowchart LR
     User[Client: Desktop / Mobile PWA] -->|HTTPS| FURL[Lambda Function URL<br/>Free HTTPS & Automated TLS]
     FURL --> LWA[AWS Lambda + Web Adapter<br/>FastAPI + Embedded React 19 PWA<br/>ARM64 Graviton2]
     LWA <-->|Local /tmp SSD| DB[(SQLite WAL Engine)]
-    DB <-->|Cold-Start Restore / Write-Sync| S3[(Amazon S3 Private Vault<br/>ca-central-1)]
+    DB <-->|Cold-Start Restore / ETag Sync / Write-Sync| S3[(Amazon S3 Private Vault<br/>ca-central-1)]
+    LWA -->|Sign-In / JWKS / TOTP MFA| COG[(AWS Cognito<br/>Invite-Only User Pool)]
     LWA -.->|Optional Recourse| BR[(AWS Bedrock<br/>Amazon Nova Micro)]
 ```
 
@@ -313,14 +314,14 @@ Access the application at `http://localhost:8000`.
 Folio implements an enterprise-grade defense-in-depth security model engineered for hosting financial data:
 
 - **Dual-Auth Identity Engine**:
-  - **AWS Cognito User Pool (Production Cloud)**: Zero-Trust OpenID Connect / JWKS cryptographic token validation, Admin-only user provisioning (`AllowAdminCreateUserOnly: true`), robust password policies, and optional **TOTP Software Token MFA** with 50,000 free monthly active users.
-  - **Master Passphrase Vault (Local / Docker)**: Protected by bcrypt hashing, constant-time comparisons (`secrets.compare_digest`), and signed `HttpOnly`, `SameSite=Lax`, `Secure` JWT session cookies.
-- **Fail-Fast Production Validation**: Refuses to start in production if using development signing keys or plaintext passwords.
-- **Login Rate Limiting**: Sliding-window rate limiter bounding online brute-force guessing against the master passphrase.
+  - **AWS Cognito User Pool (Production Cloud)**: RS256-only OpenID Connect / JWKS validation with strict `token_use` + `client_id`/`aud` binding (no HS256 fallback in Cognito mode), invite-only user provisioning (`AllowAdminCreateUserOnly: true`), 20-character passphrases, mandatory **TOTP Software Token MFA** (`MfaConfiguration: ON`), `HttpOnly` / `SameSite=Lax` / `Secure` access and refresh cookies, and unsigned public-client Cognito API calls (requiring zero Cognito IAM permissions on the Lambda role; 50,000 free monthly active users).
+  - **Master Passphrase Vault (Local / Docker / `-DisableCognito`)**: Protected by bcrypt hashing, constant-time comparisons (`secrets.compare_digest`), and signed `HttpOnly`, `SameSite=Lax`, `Secure` HS256 JWT session cookies.
+- **Fail-Fast Production Validation**: Refuses to start in production if using development signing keys (when local signing is enabled) or plaintext passwords.
+- **Login & MFA Rate Limiting**: Sliding-window rate limiter bounding online brute-force attempts across `/api/auth/login`, `/api/auth/cognito/login`, and `/api/auth/cognito/challenge`.
 - **Bounded User-Supplied Regex**: Categorization rules accepting regular expressions are length-limited and screened for nested quantifiers to prevent ReDoS (catastrophic backtracking).
 - **Edge Perimeter Protection**: Lambda Function URL is protected with origin secret verification (`X-Folio-Origin-Verify`) to ensure traffic flows through CloudFront CDN / AWS WAF.
 - **Modern Security Headers**: Full injection of `Content-Security-Policy` (CSP), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and `Permissions-Policy`.
-- **Transactional S3 Vault Encryption**: Private S3 database snapshots are uploaded with Server-Side Encryption (`AES256`). Snapshots are debounced to coalesce edits into single atomic uploads.
+- **Transactional S3 Vault Encryption**: Private S3 database snapshots are uploaded with Server-Side Encryption (`AES256`). Routine mutations are debounced into atomic uploads while statement commits and batch auto-classification flush immediately (`sync_now`), and warm Lambda instances check the S3 ETag before database sessions to pull newer snapshots across concurrent containers.
 - **Container Non-Root Isolation**: Multi-stage Docker execution runs as an unprivileged `appuser` (UID 1000).
 
 ---
@@ -331,7 +332,7 @@ Folio includes a native AWS SAM template (`template.yaml` + `Dockerfile`) utiliz
 
 ### Prerequisites
 
-- **AWS SAM CLI** (`>= 1.159` with `--use-buildkit` support) and **AWS CLI v2** authenticated with permissions to create IAM roles/policies (`iam:CreateRole`, `iam:PutRolePolicy`, `iam:DeleteRole*` — note AWS's built-in `AWSPowerUserAccess` excludes IAM management).
+- **AWS SAM CLI** (`>= 1.159` with `--use-buildkit` support) and **AWS CLI v2** authenticated with permissions to create IAM roles/policies (`iam:CreateRole`, `iam:PutRolePolicy`, `iam:DeleteRole*` — note AWS's built-in `AWSPowerUserAccess` excludes IAM management), plus `cognito-idp:AdminGetUser` / `cognito-idp:AdminCreateUser` when using `-OwnerEmail`, and CloudFormation/S3/ECR/Logs delete permissions when using `teardown.ps1`.
 - **Docker with Buildx** (builds the static frontend on native `$BUILDPLATFORM` and compiles the runtime image for `linux/arm64` with `BUILDX_NO_DEFAULT_ATTESTATIONS=1` so BuildKit emits a single-platform manifest compatible with AWS Lambda).
 
 ### 1-Command SAM Deployment
@@ -364,13 +365,21 @@ sam validate -t template.yaml --lint
 
 `deploy.ps1` fails fast on authentication, `sam build --use-buildkit`, `sam deploy`, or `describe-stacks` errors so a failed container build never provisions orphaned CloudFormation companion stacks.
 
-### First-Time Sign-In (Invite-Only Cognito)
+### First-Time Sign-In & Managing Users (Invite-Only Cognito)
 
 When deploying with `-OwnerEmail you@example.com`, Cognito emails an invitation with a temporary password (`no-reply@verificationemail.com`). On your first sign-in in the Folio web app:
 
 1. Enter your invited **Email address** and the emailed temporary password.
 2. Choose a permanent passphrase (**20+ characters**, at least one lowercase letter).
 3. Scan the rendered **TOTP QR code** (or copy the manual setup key) into your authenticator app and enter the 6-digit verification code to issue `HttpOnly` session and refresh cookies.
+
+To invite additional household members later, re-run `deploy.ps1` with their email (`-OwnerEmail member@example.com`); existing users are skipped idempotently. If an invitation email was missed or expired while a user is in `FORCE_CHANGE_PASSWORD` status, resend it via:
+
+```powershell
+aws cognito-idp admin-create-user --user-pool-id <CognitoUserPoolId> --username you@example.com --message-action RESEND --desired-delivery-mediums EMAIL --region ca-central-1
+```
+
+You can sign out and lock the session at any time using the **Sign out** button in the desktop sidebar footer or mobile menu.
 
 ### Serverless Architecture Highlights
 
@@ -397,8 +406,10 @@ When deploying with `-OwnerEmail you@example.com`, Cognito emails an invitation 
 | `FOLIO_BEDROCK_MODEL_ID` | `BedrockModelId` | `amazon.nova-micro-v1:0` | AWS Bedrock model identifier (e.g. Nova Micro, Claude 3 Haiku) |
 | `FOLIO_BEDROCK_REGION` | — | `ca-central-1` | AWS region for Bedrock Converse API calls |
 | `FOLIO_CLASSIFICATION_THRESHOLD`| — | `0.75` | Minimum confidence score for automatic category assignment |
-| `COGNITO_USER_POOL_ID` | Output from SAM | `""` | AWS Cognito User Pool ID |
+| `COGNITO_USER_POOL_ID` | Output from SAM (`-OwnerEmail` invites users) | `""` | AWS Cognito User Pool ID |
 | `COGNITO_CLIENT_ID` | Output from SAM | `""` | AWS Cognito App Client ID |
+| `COGNITO_REGION` | `AWS::Region` (`-Region`) | `ca-central-1` | AWS region for Cognito IDP / JWKS verification |
+| `AWS_REGION` / `AWS_DEFAULT_REGION` | `AWS::Region` (`-Region`) | `ca-central-1` | AWS region for S3 vault sync and Bedrock calls |
 | `S3_BUCKET_NAME` | `ExistingVaultBucketName` (`-ExistingVaultBucket`) | Auto-created (`folio-vault-<env>-<acct>-<region>`) | Private S3 vault bucket (reuse an existing bucket or let SAM create one) |
 | `FOLIO_ORIGIN_VERIFY_SECRET` | `OriginVerifySecret` | `""` | Shared secret header required when fronted by CloudFront / WAF |
 | `FOLIO_CORS_ORIGINS` | `AllowedOrigin` | `""` | Allowed CORS origins (only needed when using separate domains) |

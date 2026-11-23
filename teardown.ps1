@@ -1,3 +1,22 @@
+<#
+.SYNOPSIS
+    Tear down a Folio AWS SAM CloudFormation stack and optionally delete preserved resources.
+
+.DESCRIPTION
+    Discovers the main CloudFormation stack, retained S3 vault buckets, SAM ECR CompanionStacks
+    and container images, and Lambda CloudWatch Log Groups. By default, prompts individually before
+    deleting preserved resources; use -DeleteAll for a single prompt or -Force to delete all
+    stack-associated resources without prompting.
+
+.EXAMPLE
+    .\teardown.ps1 -Region ca-central-1 -StackName Folio-QA
+
+.EXAMPLE
+    .\teardown.ps1 -Region ca-central-1 -StackName Folio-QA -DeleteAll
+
+.EXAMPLE
+    .\teardown.ps1 -Region ca-central-1 -StackName Folio-QA -Force
+#>
 [CmdletBinding()]
 param (
     [string]$Region = "ca-central-1",
