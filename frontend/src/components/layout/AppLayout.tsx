@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   ReceiptText,
@@ -16,6 +16,8 @@ import {
   Sun,
   Moon,
   BookOpen,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import type { Account, HouseholdMember } from "../../types";
 import { isAssetAccount } from "../../constants/canadianAccountTypes";
@@ -45,13 +47,21 @@ interface AppLayoutProps {
   children: React.ReactNode;
 }
 
-const iconButton =
-  "h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer";
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "folio-sidebar-collapsed";
 
-const Wordmark: React.FC = () => (
-  <div className="flex items-center gap-2">
-    <BookOpen className="w-[18px] h-[18px] text-accent-main" strokeWidth={1.5} />
-    <span className="text-base font-semibold text-main leading-none">Folio</span>
+const iconButton =
+  "h-9 w-9 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer";
+
+const Wordmark: React.FC<{ compact?: boolean }> = ({ compact = false }) => (
+  <div
+    className="flex items-center gap-2.5 shrink-0"
+    title={compact ? "Folio" : undefined}
+    aria-label={compact ? "Folio" : undefined}
+  >
+    <BookOpen className="w-6 h-6 text-accent-main shrink-0" strokeWidth={1.75} />
+    {!compact && (
+      <span className="text-base font-semibold text-main leading-none">Folio</span>
+    )}
   </div>
 );
 
@@ -65,6 +75,21 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(sidebarCollapsed));
+    } catch {
+      /* storage unavailable */
+    }
+  }, [sidebarCollapsed]);
   const { resolvedMode, toggleMode, activeThemeDef } = useTheme();
   // Views call formatMoney directly (chart axes, tooltips); remount them when number formats change.
   const formatPrefs = useFormatPrefs();
@@ -97,44 +122,93 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   return (
     <div className="flex h-screen bg-canvas text-main overflow-hidden">
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 border-r border-subtle bg-sidebar shrink-0 select-none">
-        {/* Brand */}
-        <div className="flex items-center justify-between h-14 px-4">
-          <Wordmark />
-          <button
-            onClick={() => setIsThemeModalOpen(true)}
-            className={iconButton}
-            title="Appearance"
-            aria-label="Appearance"
-          >
-            <Palette className="w-4 h-4" strokeWidth={1.5} />
-          </button>
-        </div>
+      <aside
+        data-testid="desktop-sidebar"
+        data-collapsed={sidebarCollapsed ? "true" : "false"}
+        className={`hidden md:flex flex-col border-r border-subtle bg-sidebar shrink-0 select-none overflow-hidden transition-[width] duration-200 ease-out ${
+          sidebarCollapsed ? "w-[72px]" : "w-64"
+        }`}
+      >
+        {/* Brand & collapse toggle */}
+        {sidebarCollapsed ? (
+          <div className="flex flex-col items-center pt-3 pb-2 px-2 gap-2">
+            <Wordmark compact />
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed(false)}
+              className={iconButton}
+              title="Expand sidebar"
+              aria-label="Expand sidebar"
+              aria-expanded={false}
+            >
+              <PanelLeftOpen className="w-5 h-5" strokeWidth={1.75} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between h-14 px-4 gap-2">
+            <Wordmark />
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setIsThemeModalOpen(true)}
+                className={iconButton}
+                title="Appearance"
+                aria-label="Appearance"
+              >
+                <Palette className="w-5 h-5" strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed(true)}
+                className={iconButton}
+                title="Collapse sidebar"
+                aria-label="Collapse sidebar"
+                aria-expanded={true}
+              >
+                <PanelLeftClose className="w-5 h-5" strokeWidth={1.75} />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Net worth snapshot */}
-        <div className="mx-3 mb-4 p-3 rounded-lg bg-surface border border-subtle">
-          <div className="text-xs text-muted">Net worth</div>
-          <Money
-            value={netWorth}
-            className={`block mt-1 text-lg font-medium ${netWorth < 0 ? "text-negative" : "text-main"}`}
-          />
-          <div className="flex items-center justify-between mt-2 text-xs tabular-nums text-muted">
-            <span>Assets {formatMoney(totalAssets, { cents: false })}</span>
-            <span>Debt {formatMoney(totalLiabilities, { cents: false })}</span>
+        {!sidebarCollapsed && (
+          <div className="mx-3 mb-4 p-3 rounded-lg bg-surface border border-subtle">
+            <div className="text-xs text-muted">Net worth</div>
+            <Money
+              value={netWorth}
+              className={`block mt-1 text-lg font-medium ${netWorth < 0 ? "text-negative" : "text-main"}`}
+            />
+            <div className="flex items-center justify-between mt-2 text-xs tabular-nums text-muted">
+              <span>Assets {formatMoney(totalAssets, { cents: false })}</span>
+              <span>Debt {formatMoney(totalLiabilities, { cents: false })}</span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 flex flex-col gap-0.5 overflow-y-auto" aria-label="Main">
+        <nav
+          className={`flex-1 flex flex-col gap-1 overflow-y-auto overflow-x-hidden ${
+            sidebarCollapsed ? "px-2 items-center" : "px-3"
+          }`}
+          aria-label="Main"
+        >
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
               <button
                 key={item.id}
+                type="button"
                 onClick={() => onTabChange(item.id)}
                 aria-current={isActive ? "page" : undefined}
-                className={`relative w-full h-9 shrink-0 flex items-center gap-2.5 px-3 rounded-lg text-sm transition-colors cursor-pointer ${
+                aria-label={sidebarCollapsed ? item.label : undefined}
+                title={sidebarCollapsed ? item.label : undefined}
+                className={`relative shrink-0 flex items-center rounded-lg transition-colors cursor-pointer ${
+                  sidebarCollapsed
+                    ? "w-12 h-11 justify-center"
+                    : "w-full h-10 gap-3 px-3 text-sm"
+                } ${
                   isActive
                     ? "bg-surface-subtle text-main font-medium"
                     : "text-sub hover:text-main bg-surface-hover"
@@ -144,10 +218,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                   <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-accent-main" />
                 )}
                 <Icon
-                  className={`w-4 h-4 shrink-0 ${isActive ? "text-accent-main" : "text-muted"}`}
-                  strokeWidth={1.5}
+                  className={`${
+                    sidebarCollapsed ? "w-6 h-6" : "w-[22px] h-[22px]"
+                  } shrink-0 ${isActive ? "text-accent-main" : "text-muted"}`}
+                  strokeWidth={1.75}
                 />
-                {item.label}
+                {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
               </button>
             );
           })}
@@ -155,55 +231,100 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
         {/* Household */}
         {householdMembers && (
-          <div className="px-3 pt-3">
-            <button
-              onClick={onManageHousehold}
-              className="w-full h-9 flex items-center justify-between gap-2 px-3 rounded-lg text-sm text-sub hover:text-main bg-surface-hover transition-colors cursor-pointer"
-              title="Manage household"
-            >
-              <span className="flex items-center gap-2.5 min-w-0">
-                <Users className="w-4 h-4 text-muted shrink-0" strokeWidth={1.5} />
-                <span className="truncate">
-                  {householdMembers.length === 0 ? "Add household" : "Household"}
-                </span>
-              </span>
-              <span className="flex -space-x-1 shrink-0">
-                {householdMembers.slice(0, 3).map((m) => (
-                  <span
-                    key={m.id}
-                    className="w-5 h-5 rounded-full ring-2 ring-[var(--bg-sidebar)] text-xs flex items-center justify-center font-medium text-white"
-                    style={{ backgroundColor: m.color || "#6b7280" }}
-                    title={m.name}
-                  >
-                    {m.name.charAt(0)}
+          <div className={sidebarCollapsed ? "px-2 pt-2 flex justify-center" : "px-3 pt-3"}>
+            {sidebarCollapsed ? (
+              <button
+                type="button"
+                onClick={onManageHousehold}
+                className="relative w-12 h-11 flex items-center justify-center rounded-lg text-sub hover:text-main bg-surface-hover transition-colors cursor-pointer"
+                title={householdMembers.length === 0 ? "Add household" : "Manage household"}
+                aria-label={householdMembers.length === 0 ? "Add household" : "Manage household"}
+              >
+                <Users className="w-6 h-6 text-muted shrink-0" strokeWidth={1.75} />
+                {householdMembers.length > 0 && (
+                  <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-accent-main" />
+                )}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onManageHousehold}
+                className="w-full h-10 flex items-center justify-between gap-2 px-3 rounded-lg text-sm text-sub hover:text-main bg-surface-hover transition-colors cursor-pointer"
+                title="Manage household"
+              >
+                <span className="flex items-center gap-3 min-w-0">
+                  <Users className="w-[22px] h-[22px] text-muted shrink-0" strokeWidth={1.75} />
+                  <span className="truncate">
+                    {householdMembers.length === 0 ? "Add household" : "Household"}
                   </span>
-                ))}
-              </span>
-            </button>
+                </span>
+                <span className="flex -space-x-1 shrink-0">
+                  {householdMembers.slice(0, 3).map((m) => (
+                    <span
+                      key={m.id}
+                      className="w-5 h-5 rounded-full ring-2 ring-[var(--bg-sidebar)] text-xs flex items-center justify-center font-medium text-white"
+                      style={{ backgroundColor: m.color || "#6b7280" }}
+                      title={m.name}
+                    >
+                      {m.name.charAt(0)}
+                    </span>
+                  ))}
+                </span>
+              </button>
+            )}
           </div>
         )}
 
         {/* Footer: theme + mode */}
-        <div className="p-3 mt-3 border-t border-subtle flex items-center justify-between gap-2">
-          <button
-            onClick={() => setIsThemeModalOpen(true)}
-            className="flex-1 min-w-0 h-8 flex items-center gap-2 px-2 rounded-lg bg-surface-hover text-left transition-colors cursor-pointer"
-          >
-            <span
-              className="w-2.5 h-2.5 rounded-full shrink-0"
-              style={{ backgroundColor: activeThemeDef.accentHex }}
-            />
-            <span className="text-xs text-sub truncate">{activeThemeDef.name}</span>
-          </button>
-          <button
-            onClick={toggleMode}
-            className={iconButton}
-            title={`Switch to ${resolvedMode === "dark" ? "light" : "dark"} mode`}
-            aria-label="Toggle colour mode"
-          >
-            <ModeIcon className="w-4 h-4" strokeWidth={1.5} />
-          </button>
-        </div>
+        {sidebarCollapsed ? (
+          <div className="p-2 mt-2 border-t border-subtle flex flex-col items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setIsThemeModalOpen(true)}
+              className="w-11 h-10 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer"
+              title={`Appearance (${activeThemeDef.name})`}
+              aria-label="Appearance"
+            >
+              <Palette
+                className="w-5 h-5 shrink-0"
+                style={{ color: activeThemeDef.accentHex }}
+                strokeWidth={1.75}
+              />
+            </button>
+            <button
+              type="button"
+              onClick={toggleMode}
+              className="w-11 h-10 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer"
+              title={`Switch to ${resolvedMode === "dark" ? "light" : "dark"} mode`}
+              aria-label="Toggle colour mode"
+            >
+              <ModeIcon className="w-5 h-5" strokeWidth={1.75} />
+            </button>
+          </div>
+        ) : (
+          <div className="p-3 mt-3 border-t border-subtle flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setIsThemeModalOpen(true)}
+              className="flex-1 min-w-0 h-9 flex items-center gap-2 px-2 rounded-lg bg-surface-hover text-left transition-colors cursor-pointer"
+            >
+              <span
+                className="w-3 h-3 rounded-full shrink-0"
+                style={{ backgroundColor: activeThemeDef.accentHex }}
+              />
+              <span className="text-xs text-sub truncate">{activeThemeDef.name}</span>
+            </button>
+            <button
+              type="button"
+              onClick={toggleMode}
+              className={iconButton}
+              title={`Switch to ${resolvedMode === "dark" ? "light" : "dark"} mode`}
+              aria-label="Toggle colour mode"
+            >
+              <ModeIcon className="w-5 h-5" strokeWidth={1.75} />
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* Main Content Area */}
@@ -213,10 +334,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           <Wordmark />
           <div className="flex items-center gap-1">
             <button onClick={() => setIsThemeModalOpen(true)} className={iconButton} aria-label="Appearance">
-              <Palette className="w-[18px] h-[18px]" strokeWidth={1.5} />
+              <Palette className="w-5 h-5" strokeWidth={1.75} />
             </button>
             <button onClick={toggleMode} className={iconButton} aria-label="Toggle colour mode">
-              <ModeIcon className="w-[18px] h-[18px]" strokeWidth={1.5} />
+              <ModeIcon className="w-5 h-5" strokeWidth={1.75} />
             </button>
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -225,9 +346,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               aria-expanded={mobileMenuOpen}
             >
               {mobileMenuOpen ? (
-                <X className="w-[18px] h-[18px]" strokeWidth={1.5} />
+                <X className="w-5 h-5" strokeWidth={1.75} />
               ) : (
-                <Menu className="w-[18px] h-[18px]" strokeWidth={1.5} />
+                <Menu className="w-5 h-5" strokeWidth={1.75} />
               )}
             </button>
           </div>
@@ -246,13 +367,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                     onTabChange(item.id);
                     setMobileMenuOpen(false);
                   }}
-                  className={`w-full h-10 flex items-center gap-2.5 px-3 rounded-lg text-sm transition-colors ${
+                  className={`w-full h-10 flex items-center gap-3 px-3 rounded-lg text-sm transition-colors ${
                     isActive ? "bg-surface-subtle text-main font-medium" : "text-sub bg-surface-hover"
                   }`}
                 >
                   <Icon
-                    className={`w-4 h-4 ${isActive ? "text-accent-main" : "text-muted"}`}
-                    strokeWidth={1.5}
+                    className={`w-[22px] h-[22px] ${isActive ? "text-accent-main" : "text-muted"}`}
+                    strokeWidth={1.75}
                   />
                   {item.label}
                 </button>
@@ -280,8 +401,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 }`}
               >
                 <Icon
-                  className={`w-[18px] h-[18px] ${isActive ? "text-accent-main" : "text-muted"}`}
-                  strokeWidth={1.5}
+                  className={`w-[22px] h-[22px] ${isActive ? "text-accent-main" : "text-muted"}`}
+                  strokeWidth={1.75}
                 />
                 <span>{item.label}</span>
               </button>
