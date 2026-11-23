@@ -9,7 +9,7 @@ class StatementFile(Base):
     __tablename__ = "statement_files"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    account_id = Column(String(36), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(String(36), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
     filename = Column(String(255), nullable=False)
     file_path = Column(String(500), nullable=False)
     file_hash = Column(String(64), nullable=False)  # SHA-256 of file content

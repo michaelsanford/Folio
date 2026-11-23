@@ -723,13 +723,13 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                 </div>
 
                 <div className="border border-subtle rounded-xl overflow-hidden bg-surface">
-                  <table className="w-full text-left text-sm border-collapse">
+                  <table className="w-full table-fixed text-left text-sm border-collapse">
                     <thead>
                       <tr className="border-b border-subtle text-xs text-muted font-normal">
-                        <th className="h-9 px-3 w-16 text-center font-normal">Include</th>
-                        <th className="h-9 px-3 font-normal">Expense category</th>
-                        <th className="h-9 px-4 text-right font-normal">Avg monthly spend</th>
-                        <th className="h-9 px-3 font-normal">Status</th>
+                        <th className="h-9 px-2 sm:px-3 w-14 text-center font-normal">Include</th>
+                        <th className="h-9 px-2 sm:px-3 font-normal">Expense category</th>
+                        <th className="h-9 px-2 sm:px-3 w-24 sm:w-32 text-right font-normal">Avg monthly spend</th>
+                        <th className="h-9 px-2 sm:px-3 w-24 sm:w-36 font-normal">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-subtle">
@@ -743,7 +743,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                             }`}
                             onClick={() => handleToggleCategoryExclusion(row.category_id)}
                           >
-                            <td className="px-3 text-center">
+                            <td className="px-2 sm:px-3 text-center">
                               <input
                                 type="checkbox"
                                 checked={isIncluded}
@@ -751,17 +751,22 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                                 className="rounded-md border-default text-accent-main focus:ring-accent-main cursor-pointer"
                               />
                             </td>
-                            <td className="px-3 text-main">{row.category_name}</td>
-                            <td className="px-4 text-right">
+                            <td className="px-2 sm:px-3 text-main truncate" title={row.category_name}>
+                              {row.category_name}
+                            </td>
+                            <td className="px-2 sm:px-3 text-right whitespace-nowrap">
                               <Money value={row.monthly_average} className="text-main" />
                             </td>
-                            <td className="px-3">
+                            <td className="px-2 sm:px-3">
                               {isIncluded ? (
-                                <span className="rounded-md px-1.5 py-0.5 text-xs bg-positive-subtle text-positive">
+                                <span className="inline-flex max-w-full truncate rounded-md px-1.5 py-0.5 text-xs bg-positive-subtle text-positive">
                                   Included
                                 </span>
                               ) : (
-                                <span className="rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-muted">
+                                <span
+                                  title="Excluded (discretionary)"
+                                  className="inline-flex max-w-full truncate rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-muted"
+                                >
                                   Excluded (discretionary)
                                 </span>
                               )}

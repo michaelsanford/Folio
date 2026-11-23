@@ -402,8 +402,8 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
 
           {/* Rules Container */}
           <div className={`${card} overflow-hidden`}>
-            {/* Mobile Rules Feed (< md) */}
-            <div className="block md:hidden divide-y divide-[var(--border-subtle)]">
+            {/* Mobile & tablet Rules Feed (< lg) */}
+            <div className="block lg:hidden divide-y divide-[var(--border-subtle)]">
               {isLoading ? (
                 <div className="p-8 text-center text-muted text-sm">Loading rules…</div>
               ) : rules.length === 0 ? (
@@ -451,17 +451,17 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
               )}
             </div>
 
-            {/* Desktop Rules Table (>= md) */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-left text-sm">
+            {/* Desktop Rules Table (>= lg) */}
+            <div className="hidden lg:block">
+              <table className="w-full table-fixed text-left text-sm">
                 <thead className="border-b border-subtle">
                   <tr className="h-10 text-xs text-muted">
-                    <th className="px-4 font-normal w-20">Priority</th>
-                    <th className="px-4 font-normal">Match type</th>
-                    <th className="px-4 font-normal">Pattern</th>
-                    <th className="px-4 font-normal">Category</th>
-                    <th className="px-4 font-normal">Payee override</th>
-                    <th className="px-4 font-normal w-16">
+                    <th className="px-3 font-normal w-16">Priority</th>
+                    <th className="px-3 font-normal w-24">Match type</th>
+                    <th className="px-3 font-normal">Pattern</th>
+                    <th className="px-3 font-normal w-[22%]">Category</th>
+                    <th className="hidden xl:table-cell px-3 font-normal w-[18%]">Payee override</th>
+                    <th className="px-3 font-normal w-14">
                       <span className="sr-only">Actions</span>
                     </th>
                   </tr>
@@ -484,26 +484,42 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                       const cat = categories.find((c) => c.id === rule.category_id);
                       return (
                         <tr key={rule.id} className="h-12 text-main bg-surface-hover transition-colors">
-                          <td className="px-4 tabular-nums text-xs text-muted">#{rule.priority}</td>
-                          <td className="px-4">
-                            <span className="rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-sub">
+                          <td className="px-3 tabular-nums text-xs text-muted">#{rule.priority}</td>
+                          <td className="px-3">
+                            <span className="rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-sub whitespace-nowrap">
                               {PATTERN_TYPE_LABELS[rule.pattern_type] ?? rule.pattern_type}
                             </span>
                           </td>
-                          <td className="px-4 font-mono text-main">{rule.pattern}</td>
-                          <td className="px-4">
-                            <div className="flex items-center gap-2">
+                          <td className="px-3 min-w-0">
+                            <div className="font-mono text-main truncate" title={rule.pattern}>
+                              {rule.pattern}
+                            </div>
+                            {rule.normalized_payee_override && (
+                              <div className="xl:hidden text-xs text-sub truncate">
+                                → {rule.normalized_payee_override}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 min-w-0">
+                            <div className="flex items-center gap-2 min-w-0">
                               <span
                                 className="w-2 h-2 rounded-full shrink-0"
                                 style={{ backgroundColor: cat?.color || "var(--text-muted)" }}
                               ></span>
-                              <span>{cat?.name || "Unknown"}</span>
+                              <span className="truncate" title={cat?.name || "Unknown"}>
+                                {cat?.name || "Unknown"}
+                              </span>
                             </div>
                           </td>
-                          <td className="px-4 text-sub">
-                            {rule.normalized_payee_override || <span className="text-muted">–</span>}
+                          <td className="hidden xl:table-cell px-3 text-sub min-w-0">
+                            <div
+                              className="truncate"
+                              title={rule.normalized_payee_override || undefined}
+                            >
+                              {rule.normalized_payee_override || <span className="text-muted">–</span>}
+                            </div>
                           </td>
-                          <td className="px-4 text-right">
+                          <td className="px-3 text-right">
                             <button
                               onClick={() => handleDeleteRule(rule.id)}
                               aria-label="Delete rule"

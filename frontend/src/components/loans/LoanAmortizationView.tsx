@@ -251,8 +251,8 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
               </span>
             </div>
 
-            {/* Mobile schedule feed (< md) */}
-            <div className="block md:hidden divide-y divide-subtle text-sm max-h-96 overflow-y-auto">
+            {/* Mobile & tablet schedule feed (< lg) */}
+            <div className="block lg:hidden divide-y divide-subtle text-sm max-h-96 overflow-y-auto">
               {scheduleData.schedule.map((row) => (
                 <div key={row.period} className="px-4 py-3 flex flex-col gap-2">
                   <div className="flex items-center justify-between gap-3">
@@ -279,38 +279,38 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
               ))}
             </div>
 
-            {/* Desktop schedule table (>= md) */}
-            <div className="hidden md:block overflow-x-auto max-h-96">
-              <table className="w-full text-sm">
+            {/* Desktop schedule table (>= lg) */}
+            <div className="hidden lg:block max-h-96 overflow-y-auto">
+              <table className="w-full table-fixed text-xs xl:text-sm">
                 <thead className="bg-surface sticky top-0 border-b border-subtle">
                   <tr className="text-xs text-muted">
-                    <th className="h-9 px-5 sm:px-6 text-left font-normal">Period</th>
-                    <th className="h-9 px-4 text-left font-normal">Date</th>
-                    <th className="h-9 px-4 text-right font-normal">Total payment</th>
-                    <th className="h-9 px-4 text-right font-normal">Principal</th>
-                    <th className="h-9 px-4 text-right font-normal">Interest</th>
-                    <th className="h-9 px-4 text-right font-normal">Escrow</th>
-                    <th className="h-9 px-5 sm:px-6 text-right font-normal">Remaining balance</th>
+                    <th className="h-9 px-2.5 xl:px-4 w-16 text-left font-normal">Period</th>
+                    <th className="h-9 px-2.5 xl:px-4 w-24 text-left font-normal">Date</th>
+                    <th className="h-9 px-2.5 xl:px-4 text-right font-normal">Total payment</th>
+                    <th className="h-9 px-2.5 xl:px-4 text-right font-normal">Principal</th>
+                    <th className="h-9 px-2.5 xl:px-4 text-right font-normal">Interest</th>
+                    <th className="h-9 px-2.5 xl:px-4 text-right font-normal">Escrow</th>
+                    <th className="h-9 px-2.5 xl:px-4 text-right font-normal">Remaining balance</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-subtle text-sub">
                   {scheduleData.schedule.map((row) => (
                     <tr key={row.period} className="h-9 bg-surface-hover transition-colors">
-                      <td className="px-5 sm:px-6 tabular-nums text-muted">#{row.period}</td>
-                      <td className="px-4 tabular-nums">{row.payment_date}</td>
-                      <td className="px-4 text-right">
+                      <td className="px-2.5 xl:px-4 tabular-nums text-muted">#{row.period}</td>
+                      <td className="px-2.5 xl:px-4 tabular-nums whitespace-nowrap">{row.payment_date}</td>
+                      <td className="px-2.5 xl:px-4 text-right whitespace-nowrap">
                         <Money value={row.total_payment} className="text-main" />
                       </td>
-                      <td className="px-4 text-right">
+                      <td className="px-2.5 xl:px-4 text-right whitespace-nowrap">
                         <Money value={row.principal} />
                       </td>
-                      <td className="px-4 text-right">
+                      <td className="px-2.5 xl:px-4 text-right whitespace-nowrap">
                         <Money value={row.interest} />
                       </td>
-                      <td className="px-4 text-right">
+                      <td className="px-2.5 xl:px-4 text-right whitespace-nowrap">
                         <Money value={row.escrow} className="text-muted" />
                       </td>
-                      <td className="px-5 sm:px-6 text-right">
+                      <td className="px-2.5 xl:px-4 text-right whitespace-nowrap">
                         <Money value={row.remaining_balance} className="text-main" />
                       </td>
                     </tr>

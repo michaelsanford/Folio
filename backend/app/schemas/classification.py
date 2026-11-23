@@ -4,6 +4,7 @@ from app.services.categorization.engine import ClassificationTier
 
 class ClassificationEvaluateRequest(BaseModel):
     raw_payee: str = Field(..., description="Raw payee string from transaction description")
+    notes: str | None = Field(None, description="Optional transaction memo/notes (e.g. Description 2)")
     amount: float | None = Field(None, description="Transaction amount")
     account_id: str | None = Field(None, description="Optional account ID")
     account_type: str | None = Field(None, description="Optional account type (e.g. CHECKING, CREDIT_CARD, MORTGAGE)")

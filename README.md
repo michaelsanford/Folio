@@ -58,10 +58,11 @@ flowchart TD
 #### The Four Tiers Explained
 
 - **Tier 1 — Deterministic Rules Engine**:
-  - Evaluates user-defined and default rules using `EXACT`, `STARTS_WITH`, `CONTAINS`, and safe bounded `REGEX` pattern matching.
+  - Evaluates user-defined and default rules using `EXACT`, `STARTS_WITH`, `CONTAINS`, and safe bounded `REGEX` pattern matching across both merchant payees and bank memo/notes (`Description 2`).
   - Prioritized by numeric rank (lower number = higher priority).
   - Matches execute in $< 1\text{ ms}$ with **100% confidence**.
-  - Seeded with 250+ North American and Canadian merchant patterns (Costco, Loblaws, Metro, Sobeys, Hydro-Québec, Bell, Rogers, Telus, SAQ, LCBO, Petro-Canada, Tim Hortons, etc.).
+  - Seeded with North American and Canadian merchant & banking patterns (transfers, Interac e-Transfers, mortgages, auto loans, credit card payments, municipal bills, bank rebates/interest, Costco, Loblaws, Metro, Hydro-Québec, Bell, Rogers, SAQ, LCBO, Petro-Canada, Tim Hortons, etc.).
+  - **Generic-Payee Adaptive Learning Guard**: When categorizing a transaction with an uninformative bank label (such as `MISC PAYMENT`, `Payment`, `Transfer`, `Email Trfs`, or `LOAN`), Folio extracts a cleaned rule pattern from its specific memo/`notes` instead of learning an over-broad rule on the generic prefix.
 
 - **Tier 2 — Historical Bayesian Frequency Learner**:
   - Dynamically calculates the empirical probability distribution $P(\text{Category} \mid \text{Payee})$ across your ledger history.
@@ -143,12 +144,15 @@ Folio provides statutory tracking for Canadian tax-advantaged accounts:
 
 ### 5. Multi-Format Statement Ingestion & Deduplication
 
+- **Empty-Workspace & Multi-Account Auto-Detection**:
+  - Upload a bank export directly into an empty workspace (or select **Auto-detect from file**) to automatically detect accounts, infer Canadian account types (`CHECKING`, `SAVINGS`, `HISA`, `CREDIT_CARD`, `LINE_OF_CREDIT`, etc.) and institutions, mask account/card numbers to `*XXXX`, and review or rename accounts before committing.
+  - Supports single-file multi-account exports (such as RBC CSV exports combining Chequing, Savings, Visa, MasterCard, and Royal Credit Line rows), matching existing accounts by `*XXXX` mask on subsequent re-imports, automatically pairing offsetting cross-account transfers, and propagating manual category selections to identical uncategorized rows in the import preview.
 - **CSV Auto-Detection**:
-  - Auto-detects delimiters (comma, semicolon, tab) and column layouts across major Canadian institutions (RBC, TD, BMO, Scotiabank, CIBC, Desjardins, National Bank, Tangerine, EQ Bank, Wealthsimple) and US/Global banks (`Debit`, `Credit`, `Amount`, `Description 1`, `Description 2`).
+  - Auto-detects delimiters (comma, semicolon, tab), `cp1252`/UTF-8 encodings, and column layouts across major Canadian institutions (RBC, TD, BMO, Scotiabank, CIBC, Desjardins, National Bank, Tangerine, EQ Bank, Wealthsimple) and US/Global banks (`Debit`, `Credit`, `Amount`, `Description 1`, `Description 2`, `CAD$`, `USD$`).
 - **PDF Bank Statements**:
   - Tabular transaction and text pattern extraction using `pdfplumber` for credit cards and chequing accounts.
 - **OFX / QFX / QBO Formats**:
-  - Direct ingestion of bank export formats via `ofxtools`.
+  - Direct ingestion of bank export formats via `ofxtools`, including statement currency (`CURDEF`) and account metadata detection.
 - **Zero-Duplicate Import Engine**:
   - Deterministic SHA-256 fingerprinting per transaction:
     $$\text{SHA-256}(\text{account\_id} \mid \text{date} \mid \text{amount\_cents} \mid \text{raw\_payee})$$

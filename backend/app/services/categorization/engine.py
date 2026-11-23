@@ -12,6 +12,11 @@ from app.models.category import Category
 from app.models.rule import CategorizationRule
 from app.models.transaction import Transaction, TransactionSplit
 from app.services.categorization.bedrock_classifier import classify_with_bedrock
+from app.services.categorization.generic_payees import (
+    clean_bank_note_for_matching,
+    is_generic_bank_note,
+    is_generic_bank_payee,
+)
 from app.services.categorization.normalizer import normalize_payee
 from app.services.categorization.rules_engine import evaluate_rules
 from app.services.categorization.semantic_classifier import classify_by_semantic_heuristics
@@ -133,6 +138,186 @@ def _fallback_find_historical(
     return (cat, confidence, total_count)
 
 
+def _resolve_category_by_slug(
+    db: Session,
+    slug: str,
+    categories_by_slug: dict[str, Category] | None = None,
+) -> Category | None:
+    if categories_by_slug is not None:
+        cat = categories_by_slug.get(slug)
+        if cat:
+            return cat
+        mapped = SLUG_SYNONYMS.get(slug)
+        if mapped and mapped in categories_by_slug:
+            return categories_by_slug[mapped]
+        if "-" in slug:
+            for part in slug.split("-"):
+                if part in categories_by_slug:
+                    return categories_by_slug[part]
+        return None
+    return lookup_category_by_slug(db, slug)
+
+
+def _find_historical_by_notes(
+    db: Session,
+    notes: str,
+    account_id: str | None = None,
+    min_confidence: float = 0.70,
+) -> tuple[Category, float, int, str] | None:
+    """Find past categorized transactions whose cleaned notes match ``notes``."""
+    cleaned_note = clean_bank_note_for_matching(notes)
+    if not cleaned_note or is_generic_bank_note(notes):
+        return None
+
+    target_upper = cleaned_note.upper()
+    alpha_tokens = [tok for tok in cleaned_note.split() if sum(ch.isalpha() for ch in tok) >= 3]
+    anchor = max(alpha_tokens, key=len) if alpha_tokens else cleaned_note
+
+    query = (
+        db.query(
+            Transaction.account_id,
+            Transaction.notes,
+            TransactionSplit.category_id,
+        )
+        .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+        .filter(
+            TransactionSplit.category_id.isnot(None),
+            Transaction.notes.isnot(None),
+            func.lower(Transaction.notes).like(f"%{anchor.lower()}%"),
+        )
+    )
+    rows = query.all()
+    matching_rows = [
+        r for r in rows if clean_bank_note_for_matching(r.notes).upper() == target_upper
+    ]
+    if account_id:
+        acc_rows = [r for r in matching_rows if r.account_id == account_id]
+        if acc_rows:
+            matching_rows = acc_rows
+
+    if not matching_rows:
+        return None
+
+    counts: dict[str, int] = {}
+    for r in matching_rows:
+        counts[r.category_id] = counts.get(r.category_id, 0) + 1
+
+    total_count = sum(counts.values())
+    top_cat_id, top_count = max(counts.items(), key=lambda kv: kv[1])
+    ratio = top_count / total_count
+    scale = 0.85 if total_count == 1 else (0.90 if total_count <= 4 else 0.98)
+    confidence = round(scale * ratio, 4)
+    if ratio < min_confidence or confidence < min_confidence:
+        return None
+
+    cat = db.query(Category).filter(Category.id == top_cat_id).first()
+    if not cat:
+        return None
+    return (cat, confidence, total_count, normalize_payee(cleaned_note))
+
+
+def _match_tier1_rule(
+    db: Session,
+    text: str,
+    default_norm: str,
+    amount: float | None,
+    account_id: str | None,
+    rules: list[CategorizationRule] | None = None,
+) -> ClassificationResult | None:
+    if not text or not text.strip():
+        return None
+    rule_match = evaluate_rules(db, text, amount, account_id, rules=rules)
+    if rule_match.matched and rule_match.rule_id is not None:
+        return ClassificationResult(
+            matched=True,
+            category_id=rule_match.category_id,
+            category_name=rule_match.category_name,
+            category_color=rule_match.category_color,
+            normalized_payee=rule_match.normalized_payee or default_norm,
+            confidence=1.0,
+            tier=ClassificationTier.EXPLICIT_RULE,
+            reason=f"Matched explicit rule {rule_match.rule_id}",
+            rule_id=rule_match.rule_id,
+        )
+    return None
+
+
+def _match_tier2_history(
+    db: Session,
+    raw_payee: str,
+    norm: str,
+    account_id: str | None,
+    min_confidence: float,
+) -> ClassificationResult | None:
+    history = None
+    if find_historical_category is not None:
+        try:
+            history = find_historical_category(db, raw_payee, norm, account_id)
+        except Exception as e:
+            logger.debug("Error in find_historical_category: %s", e)
+
+    if history is None:
+        history = _fallback_find_historical(db, raw_payee, norm, account_id)
+
+    if not history:
+        return None
+
+    if hasattr(history, "category_id"):
+        if history.matched and history.confidence >= min_confidence:
+            return ClassificationResult(
+                matched=True,
+                category_id=history.category_id,
+                category_name=history.category_name,
+                category_color=history.category_color,
+                normalized_payee=history.normalized_payee or norm,
+                confidence=history.confidence,
+                tier=ClassificationTier.USER_HISTORY,
+                reason=history.reason,
+            )
+    elif isinstance(history, tuple) and len(history) == 3:
+        cat, conf, count = history
+        if conf >= min_confidence:
+            return ClassificationResult(
+                matched=True,
+                category_id=cat.id,
+                category_name=cat.name,
+                category_color=cat.color,
+                normalized_payee=norm,
+                confidence=conf,
+                tier=ClassificationTier.USER_HISTORY,
+                reason=f"Matched historical user classification ({count} occurrences, {conf:.0%} consistency)",
+            )
+    return None
+
+
+def _match_tier3_heuristic(
+    db: Session,
+    text: str,
+    display_norm: str,
+    amount: float | None,
+    account_type: str | None,
+    min_confidence: float,
+    categories_by_slug: dict[str, Category] | None = None,
+) -> ClassificationResult | None:
+    if not text or not text.strip():
+        return None
+    heur_match = classify_by_semantic_heuristics(text, amount, account_type)
+    if heur_match and heur_match.confidence >= min_confidence:
+        category = _resolve_category_by_slug(db, heur_match.category_slug, categories_by_slug)
+        if category:
+            return ClassificationResult(
+                matched=True,
+                category_id=category.id,
+                category_name=category.name,
+                category_color=category.color,
+                normalized_payee=display_norm,
+                confidence=heur_match.confidence,
+                tier=ClassificationTier.HEURISTIC,
+                reason=f"Semantic heuristic match: {heur_match.matched_keyword}",
+            )
+    return None
+
+
 class ClassificationEngine:
     """
     Master 4-tier cascading classification orchestrator for Folio.
@@ -145,6 +330,120 @@ class ClassificationEngine:
     """
 
     @classmethod
+    def _classify_local(
+        cls,
+        db: Session,
+        raw_payee: str,
+        amount: float | None = None,
+        account_id: str | None = None,
+        account_type: str | None = None,
+        min_confidence: float = 0.70,
+        notes: str | None = None,
+        rules: list[CategorizationRule] | None = None,
+        categories_by_slug: dict[str, Category] | None = None,
+    ) -> ClassificationResult | None:
+        base_norm = normalize_payee(raw_payee)
+        clean_notes = (notes or "").strip()
+
+        if is_generic_bank_payee(raw_payee):
+            if clean_notes:
+                # 1. Explicit rules against specific notes before generic raw_payee fallbacks
+                for candidate in (clean_notes, f"{raw_payee} {clean_notes}"):
+                    res = _match_tier1_rule(db, candidate, base_norm, amount, account_id, rules)
+                    if res:
+                        return res
+
+                # 2. User history on specific cleaned note (never bare generic raw_payee)
+                if not is_generic_bank_note(clean_notes):
+                    cleaned_note_text = clean_bank_note_for_matching(clean_notes)
+                    note_hist = _find_historical_by_notes(
+                        db, clean_notes, account_id=account_id, min_confidence=min_confidence
+                    )
+                    if note_hist:
+                        cat, conf, count, note_norm = note_hist
+                        return ClassificationResult(
+                            matched=True,
+                            category_id=cat.id,
+                            category_name=cat.name,
+                            category_color=cat.color,
+                            normalized_payee=note_norm or base_norm,
+                            confidence=conf,
+                            tier=ClassificationTier.USER_HISTORY,
+                            reason=f"Matched historical note classification ({count} occurrences, {conf:.0%} consistency)",
+                        )
+                    note_norm_text = normalize_payee(cleaned_note_text)
+                    res = _match_tier2_history(
+                        db, cleaned_note_text, note_norm_text, account_id, min_confidence
+                    )
+                    if res:
+                        return res
+
+                # 3. Semantic heuristics on combined text and notes
+                for candidate in (f"{raw_payee} {clean_notes}", clean_notes):
+                    res = _match_tier3_heuristic(
+                        db,
+                        candidate,
+                        base_norm,
+                        amount,
+                        account_type,
+                        min_confidence,
+                        categories_by_slug,
+                    )
+                    if res:
+                        return res
+
+            # Fallback for generic bank labels: exact/prefix rules & heuristics on raw_payee alone
+            res = _match_tier1_rule(db, raw_payee, base_norm, amount, account_id, rules)
+            if res:
+                return res
+
+            return _match_tier3_heuristic(
+                db,
+                raw_payee,
+                base_norm,
+                amount,
+                account_type,
+                min_confidence,
+                categories_by_slug,
+            )
+
+        # Non-generic raw_payee: standard Tiers 1 -> 2 -> 3 on raw_payee
+        res = _match_tier1_rule(db, raw_payee, base_norm, amount, account_id, rules)
+        if res:
+            return res
+
+        res = _match_tier2_history(db, raw_payee, base_norm, account_id, min_confidence)
+        if res:
+            return res
+
+        res = _match_tier3_heuristic(
+            db, raw_payee, base_norm, amount, account_type, min_confidence, categories_by_slug
+        )
+        if res:
+            return res
+
+        # If unmatched and notes are provided, check Tiers 1 and 3 using notes context
+        if clean_notes:
+            for candidate in (f"{raw_payee} {clean_notes}", clean_notes):
+                res = _match_tier1_rule(db, candidate, base_norm, amount, account_id, rules)
+                if res:
+                    return res
+            for candidate in (f"{raw_payee} {clean_notes}", clean_notes):
+                res = _match_tier3_heuristic(
+                    db,
+                    candidate,
+                    base_norm,
+                    amount,
+                    account_type,
+                    min_confidence,
+                    categories_by_slug,
+                )
+                if res:
+                    return res
+
+        return None
+
+    @classmethod
     def classify_transaction(
         cls,
         db: Session,
@@ -154,78 +453,21 @@ class ClassificationEngine:
         account_type: str | None = None,
         enable_bedrock: bool = False,
         min_confidence: float = 0.70,
+        notes: str | None = None,
     ) -> ClassificationResult:
         norm = normalize_payee(raw_payee)
 
-        # Tier 1: Explicit Rules
-        rule_match = evaluate_rules(db, raw_payee, amount, account_id)
-        if rule_match.matched and rule_match.rule_id is not None:
-            return ClassificationResult(
-                matched=True,
-                category_id=rule_match.category_id,
-                category_name=rule_match.category_name,
-                category_color=rule_match.category_color,
-                normalized_payee=rule_match.normalized_payee or norm,
-                confidence=1.0,
-                tier=ClassificationTier.EXPLICIT_RULE,
-                reason=f"Matched explicit rule {rule_match.rule_id}",
-                rule_id=rule_match.rule_id,
-            )
-
-        # Tier 2: User History
-        history = None
-        if find_historical_category is not None:
-            try:
-                history = find_historical_category(db, raw_payee, norm, account_id)
-            except Exception as e:
-                logger.debug("Error in find_historical_category: %s", e)
-
-        if history is None:
-            history = _fallback_find_historical(db, raw_payee, norm, account_id)
-
-        if history:
-            if hasattr(history, "category_id"):
-                # HistoricalMatchResult object from historical_matcher.py
-                if history.matched and history.confidence >= min_confidence:
-                    return ClassificationResult(
-                        matched=True,
-                        category_id=history.category_id,
-                        category_name=history.category_name,
-                        category_color=history.category_color,
-                        normalized_payee=history.normalized_payee or norm,
-                        confidence=history.confidence,
-                        tier=ClassificationTier.USER_HISTORY,
-                        reason=history.reason,
-                    )
-            elif isinstance(history, tuple) and len(history) == 3:
-                cat, conf, count = history
-                if conf >= min_confidence:
-                    return ClassificationResult(
-                        matched=True,
-                        category_id=cat.id,
-                        category_name=cat.name,
-                        category_color=cat.color,
-                        normalized_payee=norm,
-                        confidence=conf,
-                        tier=ClassificationTier.USER_HISTORY,
-                        reason=f"Matched historical user classification ({count} occurrences, {conf:.0%} consistency)",
-                    )
-
-        # Tier 3: Semantic Heuristics
-        heur_match = classify_by_semantic_heuristics(raw_payee, amount, account_type)
-        if heur_match and heur_match.confidence >= min_confidence:
-            category = lookup_category_by_slug(db, heur_match.category_slug)
-            if category:
-                return ClassificationResult(
-                    matched=True,
-                    category_id=category.id,
-                    category_name=category.name,
-                    category_color=category.color,
-                    normalized_payee=norm,
-                    confidence=heur_match.confidence,
-                    tier=ClassificationTier.HEURISTIC,
-                    reason=f"Semantic heuristic match: {heur_match.matched_keyword}",
-                )
+        local_result = cls._classify_local(
+            db=db,
+            raw_payee=raw_payee,
+            amount=amount,
+            account_id=account_id,
+            account_type=account_type,
+            min_confidence=min_confidence,
+            notes=notes,
+        )
+        if local_result:
+            return local_result
 
         # Tier 4: AWS Bedrock AI Recourse
         bedrock_allowed = enable_bedrock or settings.FOLIO_BEDROCK_ENABLED
@@ -243,6 +485,7 @@ class ClassificationEngine:
             tx_data = [
                 {
                     "raw_payee": raw_payee,
+                    "notes": notes,
                     "amount": amount,
                     "currency": settings.DEFAULT_CURRENCY,
                     "account_type": account_type,
@@ -256,7 +499,9 @@ class ClassificationEngine:
                     cat = lookup_category_by_slug(db, b_res.category_slug)
                     if cat:
                         learned_norm = b_res.normalized_payee or norm
-                        learned_rule = auto_learn_rule(db, raw_payee, cat.id, learned_norm)
+                        learned_rule = auto_learn_rule(
+                            db, raw_payee, cat.id, learned_norm, notes=notes
+                        )
                         db.commit()
                         return ClassificationResult(
                             matched=True,
@@ -319,86 +564,23 @@ class ClassificationEngine:
             amount = item.get("amount")
             account_id = item.get("account_id")
             account_type = item.get("account_type")
+            notes = item.get("notes")
             norm = normalize_payee(raw_payee)
 
-            # Tier 1: Explicit Rules
-            rule_match = evaluate_rules(db, raw_payee, amount, account_id, rules=rules)
-            if rule_match.matched and rule_match.rule_id is not None:
-                results[idx] = ClassificationResult(
-                    matched=True,
-                    category_id=rule_match.category_id,
-                    category_name=rule_match.category_name,
-                    category_color=rule_match.category_color,
-                    normalized_payee=rule_match.normalized_payee or norm,
-                    confidence=1.0,
-                    tier=ClassificationTier.EXPLICIT_RULE,
-                    reason=f"Matched explicit rule {rule_match.rule_id}",
-                    rule_id=rule_match.rule_id,
-                )
+            local_result = cls._classify_local(
+                db=db,
+                raw_payee=raw_payee,
+                amount=amount,
+                account_id=account_id,
+                account_type=account_type,
+                min_confidence=min_confidence,
+                notes=notes,
+                rules=rules,
+                categories_by_slug=categories_by_slug,
+            )
+            if local_result:
+                results[idx] = local_result
                 continue
-
-            # Tier 2: User History
-            history = None
-            if find_historical_category is not None:
-                try:
-                    history = find_historical_category(db, raw_payee, norm, account_id)
-                except Exception as e:
-                    logger.debug("Error in find_historical_category: %s", e)
-
-            if history is None:
-                history = _fallback_find_historical(db, raw_payee, norm, account_id)
-
-            if history:
-                if hasattr(history, "category_id"):
-                    if history.matched and history.confidence >= min_confidence:
-                        results[idx] = ClassificationResult(
-                            matched=True,
-                            category_id=history.category_id,
-                            category_name=history.category_name,
-                            category_color=history.category_color,
-                            normalized_payee=history.normalized_payee or norm,
-                            confidence=history.confidence,
-                            tier=ClassificationTier.USER_HISTORY,
-                            reason=history.reason,
-                        )
-                        continue
-                elif isinstance(history, tuple) and len(history) == 3:
-                    cat, conf, count = history
-                    if conf >= min_confidence:
-                        results[idx] = ClassificationResult(
-                            matched=True,
-                            category_id=cat.id,
-                            category_name=cat.name,
-                            category_color=cat.color,
-                            normalized_payee=norm,
-                            confidence=conf,
-                            tier=ClassificationTier.USER_HISTORY,
-                            reason=f"Matched historical user classification ({count} occurrences, {conf:.0%} consistency)",
-                        )
-                        continue
-
-            # Tier 3: Semantic Heuristics
-            heur_match = classify_by_semantic_heuristics(raw_payee, amount, account_type)
-            if heur_match and heur_match.confidence >= min_confidence:
-                cat = categories_by_slug.get(heur_match.category_slug)
-                if not cat and "-" in heur_match.category_slug:
-                    for part in heur_match.category_slug.split("-"):
-                        if part in categories_by_slug:
-                            cat = categories_by_slug[part]
-                            break
-
-                if cat:
-                    results[idx] = ClassificationResult(
-                        matched=True,
-                        category_id=cat.id,
-                        category_name=cat.name,
-                        category_color=cat.color,
-                        normalized_payee=norm,
-                        confidence=heur_match.confidence,
-                        tier=ClassificationTier.HEURISTIC,
-                        reason=f"Semantic heuristic match: {heur_match.matched_keyword}",
-                    )
-                    continue
 
             # Pending recourse or fallback
             pending_bedrock.append((idx, item, norm))
@@ -428,7 +610,13 @@ class ClassificationEngine:
                             cat = lookup_category_by_slug(db, b_res.category_slug)
                         if cat:
                             learned_norm = b_res.normalized_payee or norm
-                            learned_rule = auto_learn_rule(db, item.get("raw_payee", ""), cat.id, learned_norm)
+                            learned_rule = auto_learn_rule(
+                                db,
+                                item.get("raw_payee", ""),
+                                cat.id,
+                                learned_norm,
+                                notes=item.get("notes"),
+                            )
                             rules_to_commit = True
                             results[orig_idx] = ClassificationResult(
                                 matched=True,

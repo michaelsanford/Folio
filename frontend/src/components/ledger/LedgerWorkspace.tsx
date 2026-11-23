@@ -568,8 +568,8 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
       {/* Transactions */}
       <div className="rounded-xl border border-subtle bg-surface overflow-hidden">
-        {/* Mobile feed (< md) */}
-        <div className="block md:hidden divide-y divide-subtle">
+        {/* Mobile & tablet feed (< lg) */}
+        <div className="block lg:hidden divide-y divide-subtle">
           {isLoading ? (
             <div className="p-8 text-center text-sm text-muted">
               {spinner}
@@ -617,15 +617,17 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0 flex-1 leading-snug">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm text-main truncate">
+                          <span className="text-sm text-main whitespace-normal break-words">
                             {txn.normalized_payee || txn.raw_payee}
                           </span>
                           {renderMemberTag(txn)}
                         </div>
                         {txn.normalized_payee && txn.normalized_payee !== txn.raw_payee && (
-                          <div className="text-xs text-muted font-mono truncate">{txn.raw_payee}</div>
+                          <div className="text-xs text-muted font-mono whitespace-normal break-words">
+                            {txn.raw_payee}
+                          </div>
                         )}
                       </div>
                       <Money
@@ -638,7 +640,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                     <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
                       <span className="text-muted tabular-nums">{txn.transaction_date?.split("T")[0]}</span>
                       <span className="text-muted">·</span>
-                      <span className="text-sub truncate max-w-[100px]">
+                      <span className="text-sub whitespace-normal break-words">
                         {matchedAccount?.name || "Account"}
                       </span>
 
@@ -696,12 +698,12 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
           )}
         </div>
 
-        {/* Desktop table (>= md) */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-left text-sm">
+        {/* Desktop table (>= lg) */}
+        <div className="hidden lg:block">
+          <table className="w-full table-fixed text-left text-sm">
             <thead className="text-xs text-muted border-b border-subtle">
               <tr>
-                <th className="px-4 py-3 w-10 text-center font-normal">
+                <th className="px-2.5 py-3 w-10 text-center font-normal">
                   <input
                     type="checkbox"
                     checked={selectedTxnIds.size === transactions.length && transactions.length > 0}
@@ -710,13 +712,13 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                     className={checkboxClass}
                   />
                 </th>
-                <th className="px-4 py-3 font-normal">Date</th>
-                <th className="px-4 py-3 font-normal">Account</th>
-                <th className="px-4 py-3 font-normal">Payee</th>
-                <th className="px-4 py-3 font-normal">Category</th>
-                <th className="px-4 py-3 font-normal">Notes</th>
-                <th className="px-4 py-3 text-right font-normal">Amount</th>
-                <th className="px-4 py-3 text-center font-normal">Splits</th>
+                <th className="px-2 py-3 w-[92px] font-normal">Date</th>
+                <th className="hidden xl:table-cell px-2 py-3 w-[140px] font-normal">Account</th>
+                <th className="px-2 py-3 font-normal">Payee</th>
+                <th className="px-2 py-3 w-[160px] xl:w-[176px] font-normal">Category</th>
+                <th className="hidden xl:table-cell px-2 py-3 w-[132px] font-normal">Notes</th>
+                <th className="px-2 py-3 w-[100px] xl:w-[112px] text-right font-normal">Amount</th>
+                <th className="px-2 py-3 w-[76px] text-center font-normal">Splits</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-subtle">
@@ -756,13 +758,15 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                   const isChecked = selectedTxnIds.has(txn.id);
                   const isSplit = txn.splits && txn.splits.length > 1;
                   const matchedAccount = accounts.find((a) => a.id === txn.account_id);
+                  const accountLabel = matchedAccount?.name || "Account";
+                  const payeeLabel = txn.normalized_payee || txn.raw_payee;
 
                   return (
                     <tr
                       key={txn.id}
                       className={`transition-colors ${isChecked ? "bg-accent-subtle" : "bg-surface-hover"}`}
                     >
-                      <td className="px-4 py-2 text-center">
+                      <td className="px-2.5 py-2 text-center">
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -771,22 +775,30 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                           className={checkboxClass}
                         />
                       </td>
-                      <td className="px-4 py-2 tabular-nums text-xs text-muted whitespace-nowrap">
+                      <td className="px-2 py-2 tabular-nums text-xs text-muted whitespace-nowrap">
                         {txn.transaction_date?.split("T")[0]}
                       </td>
-                      <td className="px-4 py-2 text-sub">{matchedAccount?.name || "Account"}</td>
-                      <td className="px-4 py-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-main">{txn.normalized_payee || txn.raw_payee}</span>
+                      <td className="hidden xl:table-cell px-2 py-2 text-sub leading-snug whitespace-normal break-words">
+                        {accountLabel}
+                      </td>
+                      <td className="px-2 py-2 min-w-0 leading-snug">
+                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                          <span className="text-main whitespace-normal break-words">
+                            {payeeLabel}
+                          </span>
                           {renderMemberTag(txn)}
                         </div>
                         {txn.normalized_payee && txn.normalized_payee !== txn.raw_payee && (
-                          <div className="text-xs text-muted font-mono truncate max-w-xs">
+                          <div className="text-xs text-muted font-mono whitespace-normal break-words">
                             {txn.raw_payee}
                           </div>
                         )}
+                        <div className="xl:hidden text-[11px] text-sub whitespace-normal break-words">
+                          {accountLabel}
+                          {txn.notes ? ` · ${txn.notes}` : ""}
+                        </div>
                       </td>
-                      <td className="px-4 py-2">
+                      <td className="px-2 py-2">
                         {isSplit ? (
                           <button
                             onClick={() => handleOpenSplitModal(txn)}
@@ -796,12 +808,12 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                             splits
                           </button>
                         ) : (
-                          <div className="flex items-center gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5 min-w-0">
                             <select
                               value={txn.splits?.[0]?.category_id || ""}
                               onChange={(e) => handleInlineCategoryChange(txn, e.target.value)}
                               aria-label="Category"
-                              className={compactSelectClass}
+                              className={`min-w-0 flex-1 max-w-full truncate ${compactSelectClass}`}
                             >
                               <option value="">Uncategorized</option>
                               {categories.map((c) => (
@@ -814,17 +826,17 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-2 text-muted text-xs truncate max-w-[150px]">
+                      <td className="hidden xl:table-cell px-2 py-2 text-muted text-xs leading-snug whitespace-normal break-words">
                         {txn.notes || "—"}
                       </td>
-                      <td className="px-4 py-2 text-right">
+                      <td className="px-2 py-2 text-right whitespace-nowrap">
                         <Money
                           value={txn.amount}
                           signed
                           className={txn.amount >= 0 ? "text-positive" : "text-main"}
                         />
                       </td>
-                      <td className="px-4 py-2 text-center">
+                      <td className="px-2 py-2 text-center">
                         <div className="flex items-center justify-center gap-1">
                           <button
                             type="button"
