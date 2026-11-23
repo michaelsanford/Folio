@@ -4,22 +4,22 @@ version = "0.1.0"
 description = "Folio personal finance tracking, statement ingestion, and household budgeting backend"
 requires-python = ">=3.14,<3.15"
 dependencies = [
-    "fastapi>=0.163.1",
+    "fastapi>=0.165.0",
     "uvicorn[standard]>=0.54.0",
-    "sqlalchemy>=2.1.8",
+    "sqlalchemy>=2.1.9",
     "alembic>=1.20.1",
-    "pydantic>=2.14.3",
+    "pydantic>=2.14.4",
     "pydantic-settings>=2.16.3",
-    "python-multipart>=0.0.33",
-    "pdfplumber>=0.11.10",
-    "pypdf>=7.1.0",
+    "python-multipart>=0.0.34",
+    "pdfplumber>=0.11.11",
+    "pypdf>=7.1.1",
     "python-dateutil>=2.9.0.post0",
-    "ofxtools>=1.1.1",
+    "ofxtools>=1.1.2",
     "httpx>=0.28.1",
     "pyjwt>=2.15.1",
     "bcrypt>=5.0.0",
     # S3 database snapshots.
-    "boto3>=1.44.3",
+    "boto3>=1.44.9",
 ]
 
 [dependency-groups]
@@ -32,7 +32,7 @@ dev = [
 package = false
 # Security constraints for transitive dependencies (Snyk / Dependabot)
 constraint-dependencies = [
-    "certifi>=2026.10.23",
+    "certifi>=2026.11.20",
     "mako>=1.4.3",
     "pillow>=13.0.0",
     "urllib3>=2.8.0",
