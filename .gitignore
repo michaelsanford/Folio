@@ -57,3 +57,6 @@ backend/data/uploads/*
 .DS_Store
 Thumbs.db
 *.swp
+
+# AWS SAM
+.aws-sam/

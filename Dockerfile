@@ -1,5 +1,5 @@
-# Stage 1: Build Frontend React 19 PWA
-FROM node:26-alpine AS frontend-builder
+# Stage 1: Build Frontend React 19 PWA (static assets; build natively on host)
+FROM --platform=$BUILDPLATFORM node:26-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci

@@ -185,7 +185,7 @@ Folio provides statutory tracking for Canadian tax-advantaged accounts:
 
 ### 8. Interactive Ledger & Transfer Pairing
 
-- High-density desktop transaction table and mobile-optimized card feed.
+- Responsive desktop views and mobile card feeds designed to fit cleanly on screen with wrapped flex/grid rows and no horizontal overflow, plus a collapsible desktop navigation rail (icons + labels or enlarged icons-only mode, persisted per device).
 - Four type styles (Appearance → Type style, saved per device): **Broadsheet** (default; Source Sans 3 with Newsreader serif headlines), **Modern** (Inter), **Friendly** (Figtree), and **Terminal** (IBM Plex with monospaced figures). Amounts always use tabular figures so they align in columns, and charts follow the chosen style. The default Folio Emerald palette uses warm umber (dark) and cream paper (light) tones, and every text colour meets WCAG AA contrast.
 - Multi-split transactions (e.g. mortgage payment split between principal, interest, and escrow).
 - **Automated Transfer Pairing**: Identifies offsetting transactions between accounts (e.g. Chequing debit and Visa credit), linking them via `transfer_transaction_id` so they do not artificially inflate income or expenses.
@@ -289,7 +289,7 @@ Run the complete 3-phase automated test suite (Backend Pytest + Frontend Vitest 
 
 Folio includes automated GitHub Actions workflows:
 
-- **Continuous Integration ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))**: Runs Pytest (181 tests), Vitest (35 unit tests), `tsc -b`, and Vite production bundle on every commit.
+- **Continuous Integration ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))**: Runs Pytest (193 tests), Vitest (55 unit tests across 14 suites), `tsc -b`, and Vite production bundle on every commit.
 - **CodeQL Security Analysis ([`.github/workflows/codeql.yml`](.github/workflows/codeql.yml))**: Static application security testing (SAST) for Python and TypeScript.
 - **Gitleaks Secret Scanner ([`.github/workflows/secret-scan.yml`](.github/workflows/secret-scan.yml))**: Scans commits for exposed secrets, tokens, or private keys.
 - **Dependabot ([`.github/dependabot.yml`](.github/dependabot.yml))**: Automated weekly grouped updates for `uv`, `npm`, and GitHub Actions.
@@ -329,19 +329,33 @@ Folio implements an enterprise-grade defense-in-depth security model engineered 
 
 Folio includes a native AWS SAM template (`template.yaml` + `Dockerfile`) utilizing the **AWS Lambda Web Adapter** on ARM64 Graviton2 with direct **Lambda Function URLs** and Cognito User Pools:
 
+### Prerequisites
+
+- **AWS SAM CLI** (`>= 1.159` with `--use-buildkit` support) and **AWS CLI v2** authenticated with permissions to create IAM roles/policies (`iam:CreateRole`, `iam:PutRolePolicy`, `iam:DeleteRole*` — note AWS's built-in `AWSPowerUserAccess` excludes IAM management).
+- **Docker with Buildx** (builds the static frontend on native `$BUILDPLATFORM` and compiles the runtime image for `linux/arm64` with `BUILDX_NO_DEFAULT_ATTESTATIONS=1` so BuildKit emits a single-platform manifest compatible with AWS Lambda).
+
 ### 1-Command SAM Deployment
 
 ```powershell
+# Default deploy (unreserved Lambda concurrency; works on new/sandbox AWS accounts with quota 10)
 .\deploy.ps1 -Region ca-central-1 -StackName folio-prod
+
+# Accounts with Lambda concurrency quota > 10 (enforces single-writer SQLite safety)
+.\deploy.ps1 -Region ca-central-1 -StackName folio-prod -ReservedConcurrency 1
+
+# Optional: validate and lint template before deploying
+sam validate -t template.yaml --lint
 ```
+
+`deploy.ps1` fails fast on authentication, `sam build --use-buildkit`, `sam deploy`, or `describe-stacks` errors so a failed container build never provisions orphaned CloudFormation companion stacks.
 
 ### Serverless Architecture Highlights
 
 1. **Lambda Web Adapter**: Runs the standard FastAPI app and compiled React 19 PWA directly inside AWS Lambda without code changes.
-2. **Lambda Function URL**: Direct HTTPS endpoint with automated TLS and free CORS (bypassing API Gateway fees).
+2. **Lambda Function URL**: Direct HTTPS endpoint with automated TLS (`Cors` is conditionally enabled only when `AllowedOrigin` is provided, and omitted via `AWS::NoValue` for same-origin deploys). Custom domains cannot bind directly to `*.lambda-url.*.on.aws`; front the Function URL with CloudFront + a `us-east-1` ACM certificate paired with `OriginVerifySecret`.
 3. **AWS Cognito User Pool**: Manages owner identity, credentials, and TOTP MFA tokens.
-4. **Single-Writer SQLite Locking**: Configured with `ReservedConcurrentExecutions: 1` to guarantee database file integrity.
-5. **Automated S3 Sync**: Restores `folio.db` on cold-start and checkpoints debounced snapshots back to the private S3 vault.
+4. **Optional Single-Writer Concurrency**: `ReservedConcurrency` defaults to `0` (unreserved) so sandbox/new AWS accounts with a concurrency quota of 10 can deploy; pass `-ReservedConcurrency 1` on accounts with quota > 10 to enforce `ReservedConcurrentExecutions: 1`.
+5. **Automated S3 Sync**: Restores `folio.db` on cold-start and checkpoints debounced snapshots back to the private S3 vault (`DeletionPolicy: Retain` + `UpdateReplacePolicy: Retain`).
 6. **Optional AWS Bedrock Recourse**: Scoped IAM permissions allowing Amazon Nova Micro invocation when `EnableBedrock` is set to `'true'`.
 7. **Cost**: **$0.00/month** baseline within the AWS Lambda Always-Free Tier (1M requests/month) + Cognito (50,000 free MAUs) + S3 standard storage.
 
@@ -351,9 +365,9 @@ Folio includes a native AWS SAM template (`template.yaml` + `Dockerfile`) utiliz
 
 | Environment Variable | SAM Parameter | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `ENVIRONMENT` | — | `development` | Runtime mode: `development` or `production` |
+| `FOLIO_ENV` | `EnvironmentName` | `development` (`prod` in SAM) | Runtime mode: `development` or `prod`/`production` |
 | `FOLIO_DEFAULT_CURRENCY` | — | `CAD` | Default currency for new accounts and transactions |
-| `FOLIO_MASTER_PASSWORD_HASH` | — | `""` | Bcrypt hash of the master passphrase |
+| `FOLIO_MASTER_PASSWORD_HASH` | `MasterPasswordHash` (`-MasterPassword`) | `""` | Bcrypt hash of the master passphrase (hashed locally before deploy) |
 | `FOLIO_BEDROCK_ENABLED` | `EnableBedrock` | `false` | Enable Tier 4 AWS Bedrock AI auto-classification |
 | `FOLIO_BEDROCK_MODEL_ID` | `BedrockModelId` | `amazon.nova-micro-v1:0` | AWS Bedrock model identifier (e.g. Nova Micro, Claude 3 Haiku) |
 | `FOLIO_BEDROCK_REGION` | — | `ca-central-1` | AWS region for Bedrock Converse API calls |
@@ -363,6 +377,7 @@ Folio includes a native AWS SAM template (`template.yaml` + `Dockerfile`) utiliz
 | `S3_BUCKET_NAME` | Generated by SAM| `""` | Private S3 vault bucket for database backups |
 | `FOLIO_ORIGIN_VERIFY_SECRET` | `OriginVerifySecret` | `""` | Shared secret header required when fronted by CloudFront / WAF |
 | `FOLIO_CORS_ORIGINS` | `AllowedOrigin` | `""` | Allowed CORS origins (only needed when using separate domains) |
+| — | `ReservedConcurrency` | `0` | Optional Lambda `ReservedConcurrentExecutions` (`1` requires account quota > 10) |
 
 ---
 
