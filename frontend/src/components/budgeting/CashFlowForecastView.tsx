@@ -343,15 +343,54 @@ export const CashFlowForecastView: React.FC = () => {
             <span className="text-xs text-muted">Loan payments and paydays</span>
           </div>
 
-          <div className="overflow-x-auto border-t border-subtle">
-            <table className="w-full text-left text-sm border-collapse">
+          {/* Mobile cards (< md) */}
+          <div className="block md:hidden divide-y divide-subtle border-t border-subtle">
+            {forecast.scheduled_events.map((ev, idx) => {
+              const isIncome = ev.event_type === "INCOME";
+              return (
+                <div key={idx} className="p-4 flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="text-sm text-main truncate" title={ev.description}>
+                      {ev.description}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                      <span className="tabular-nums">{ev.date}</span>
+                      <span>·</span>
+                      <span
+                        className={`rounded-md px-1.5 py-0.5 text-xs ${
+                          isIncome ? "bg-positive-subtle text-positive" : "bg-surface-subtle text-sub"
+                        }`}
+                      >
+                        {EVENT_LABELS[ev.event_type] ?? ev.event_type}
+                      </span>
+                      {ev.account_name && (
+                        <>
+                          <span>·</span>
+                          <span className="truncate">{ev.account_name}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <Money
+                    value={isIncome ? ev.amount : -ev.amount}
+                    signed
+                    className={`text-sm shrink-0 ${isIncome ? "text-positive" : "text-main"}`}
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop table (>= md) */}
+          <div className="hidden md:block border-t border-subtle">
+            <table className="w-full table-fixed text-left text-sm border-collapse">
               <thead>
                 <tr className="border-b border-subtle text-xs text-muted">
-                  <th className="h-10 px-5 font-normal">Date</th>
-                  <th className="h-10 px-4 font-normal">Type</th>
-                  <th className="h-10 px-4 font-normal">Description</th>
-                  <th className="h-10 px-4 font-normal">Account</th>
-                  <th className="h-10 px-5 font-normal text-right">Cash impact</th>
+                  <th className="h-10 px-4 w-24 font-normal">Date</th>
+                  <th className="h-10 px-3 w-24 font-normal">Type</th>
+                  <th className="h-10 px-3 font-normal">Description</th>
+                  <th className="hidden lg:table-cell h-10 px-3 w-[22%] font-normal">Account</th>
+                  <th className="h-10 px-4 w-28 font-normal text-right">Cash impact</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-subtle">
@@ -359,19 +398,32 @@ export const CashFlowForecastView: React.FC = () => {
                   const isIncome = ev.event_type === "INCOME";
                   return (
                     <tr key={idx} className="h-12 bg-surface-hover transition-colors">
-                      <td className="px-5 tabular-nums text-sub whitespace-nowrap">{ev.date}</td>
-                      <td className="px-4">
+                      <td className="px-4 tabular-nums text-sub whitespace-nowrap">{ev.date}</td>
+                      <td className="px-3">
                         <span
-                          className={`rounded-md px-1.5 py-0.5 text-xs ${
+                          className={`rounded-md px-1.5 py-0.5 text-xs whitespace-nowrap ${
                             isIncome ? "bg-positive-subtle text-positive" : "bg-surface-subtle text-sub"
                           }`}
                         >
                           {EVENT_LABELS[ev.event_type] ?? ev.event_type}
                         </span>
                       </td>
-                      <td className="px-4 text-main">{ev.description}</td>
-                      <td className="px-4 text-muted">{ev.account_name || "—"}</td>
-                      <td className="px-5 text-right">
+                      <td className="px-3 text-main min-w-0">
+                        <div className="truncate" title={ev.description}>
+                          {ev.description}
+                        </div>
+                        {ev.account_name && (
+                          <div className="lg:hidden text-xs text-muted truncate">
+                            {ev.account_name}
+                          </div>
+                        )}
+                      </td>
+                      <td className="hidden lg:table-cell px-3 text-muted">
+                        <div className="truncate" title={ev.account_name || undefined}>
+                          {ev.account_name || "—"}
+                        </div>
+                      </td>
+                      <td className="px-4 text-right whitespace-nowrap">
                         <Money
                           value={isIncome ? ev.amount : -ev.amount}
                           signed

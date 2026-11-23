@@ -190,6 +190,21 @@ export interface Budget {
   items: BudgetItem[];
 }
 
+export interface DetectedAccountPreview {
+  source_account_key: string;
+  suggested_name: string;
+  suggested_type: AccountType;
+  institution?: string | null;
+  account_number_mask?: string | null;
+  currency: string;
+  raw_account_type?: string | null;
+  matched_account_id?: string | null;
+  matched_account_name?: string | null;
+  transaction_count: number;
+  new_count: number;
+  duplicates_count: number;
+}
+
 export interface ParsedTransactionItem {
   transaction_date: string;
   raw_payee: string;
@@ -201,6 +216,10 @@ export interface ParsedTransactionItem {
   suggested_category_color?: string | null;
   is_duplicate: boolean;
   import_hash: string;
+  notes?: string | null;
+  source_account_key?: string | null;
+  account_id?: string | null;
+  account_label?: string | null;
   potential_transfer_account_id?: string | null;
   potential_transfer_account_name?: string | null;
   confidence_score: number;
@@ -212,11 +231,41 @@ export interface IngestionPreviewResponse {
   file_id?: string | null;
   filename: string;
   file_type: string;
-  account_id: string;
+  account_id?: string | null;
+  is_multi_account?: boolean;
+  detected_accounts?: DetectedAccountPreview[];
   total_parsed: number;
   duplicates_count: number;
   new_count: number;
   items: ParsedTransactionItem[];
+}
+
+export interface IngestionAccountResolution {
+  source_account_key: string;
+  existing_account_id?: string | null;
+  name?: string;
+  type: AccountType;
+  institution?: string | null;
+  account_number_mask?: string | null;
+  currency: string;
+}
+
+export interface CommittedAccountSummary {
+  account_id: string;
+  account_name: string;
+  account_type: AccountType;
+  created: boolean;
+  committed_count: number;
+  new_account_balance: number;
+}
+
+export interface IngestionCommitResponse {
+  committed_count: number;
+  account_id?: string | null;
+  new_account_balance: number;
+  accounts_created_count: number;
+  accounts: CommittedAccountSummary[];
+  transfers_linked_count: number;
 }
 
 export interface AmortizationScheduleRow {

@@ -59,10 +59,13 @@ from app.schemas.budget import (
 )
 from app.schemas.ingestion import (
     CsvColumnMapping,
+    DetectedAccountPreview,
     ParsedTransactionItem,
     IngestionPreviewResponse,
+    IngestionAccountResolution,
     IngestionCommitItem,
     IngestionCommitRequest,
+    CommittedAccountSummary,
     IngestionCommitResponse,
     StatementFileResponse,
 )
@@ -116,10 +119,13 @@ __all__ = [
     "BudgetItemUpdate",
     "BudgetItemResponse",
     "CsvColumnMapping",
+    "DetectedAccountPreview",
     "ParsedTransactionItem",
     "IngestionPreviewResponse",
+    "IngestionAccountResolution",
     "IngestionCommitItem",
     "IngestionCommitRequest",
+    "CommittedAccountSummary",
     "IngestionCommitResponse",
     "StatementFileResponse",
     "AmortizationScheduleRow",

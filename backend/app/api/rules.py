@@ -11,6 +11,7 @@ from app.schemas.rule import (
     TestRuleMatchRequest,
     TestRuleMatchResponse,
 )
+from app.services.categorization.generic_payees import extract_learnable_pattern
 from app.services.categorization.normalizer import normalize_payee
 from app.services.categorization.rules_engine import evaluate_rules
 
@@ -261,11 +262,66 @@ DEFAULT_RULES = [
     {"pattern": "T-MOBILE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "telecom", "normalized_payee": "T-Mobile", "priority": 4},
     {"pattern": "WATER", "pattern_type": RulePatternType.CONTAINS, "category_slug": "utilities", "normalized_payee": "Water Utility", "priority": 8},
 
-    # --- Transfers & Payments (slug: "cc-payment") ---
+    # --- Transfers & Payments (slug: "cc-payment" / "internal-transfer") ---
     {"pattern": "AUTOPAY PAYMENT", "pattern_type": RulePatternType.CONTAINS, "category_slug": "cc-payment", "normalized_payee": "Credit Card AutoPay", "priority": 3},
+    {"pattern": "AUTOMATIC PAYMENT -THANK YOU", "pattern_type": RulePatternType.CONTAINS, "category_slug": "cc-payment", "normalized_payee": "Credit Card AutoPay", "priority": 3},
+    {"pattern": "AUTOMATIC PAYMENT - THANK YOU", "pattern_type": RulePatternType.CONTAINS, "category_slug": "cc-payment", "normalized_payee": "Credit Card AutoPay", "priority": 3},
     {"pattern": "PAYMENT - THANK YOU", "pattern_type": RulePatternType.CONTAINS, "category_slug": "cc-payment", "normalized_payee": "Credit Card Payment", "priority": 3},
+    {"pattern": "PAYMENT THANK YOU", "pattern_type": RulePatternType.CONTAINS, "category_slug": "cc-payment", "normalized_payee": "Credit Card Payment", "priority": 3},
+    {"pattern": "PAIEMENT - MERCI", "pattern_type": RulePatternType.CONTAINS, "category_slug": "cc-payment", "normalized_payee": "Credit Card Payment", "priority": 3},
+    {"pattern": "PAIEMENT AUTOMATIQUE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "cc-payment", "normalized_payee": "Credit Card AutoPay", "priority": 3},
+    {"pattern": "RBC CREDIT CARD", "pattern_type": RulePatternType.CONTAINS, "category_slug": "cc-payment", "normalized_payee": "RBC Credit Card Payment", "priority": 3},
+    {"pattern": "VISA PAYMENT", "pattern_type": RulePatternType.CONTAINS, "category_slug": "cc-payment", "normalized_payee": "Visa Payment", "priority": 3},
+    {"pattern": "MASTERCARD PAYMENT", "pattern_type": RulePatternType.CONTAINS, "category_slug": "cc-payment", "normalized_payee": "Mastercard Payment", "priority": 3},
+    {"pattern": "PAIEMENT CARTE DE CREDIT", "pattern_type": RulePatternType.CONTAINS, "category_slug": "cc-payment", "normalized_payee": "Credit Card Payment", "priority": 3},
     {"pattern": "ONLINE PAYMENT", "pattern_type": RulePatternType.CONTAINS, "category_slug": "cc-payment", "normalized_payee": "Online Payment", "priority": 4},
     {"pattern": "CREDIT CARD PAYMENT", "pattern_type": RulePatternType.CONTAINS, "category_slug": "cc-payment", "normalized_payee": "Credit Card Payment", "priority": 3},
+
+    {"pattern": "WWW TRF", "pattern_type": RulePatternType.CONTAINS, "category_slug": "internal-transfer", "normalized_payee": "Online Account Transfer", "priority": 4},
+    {"pattern": "WWW TFR", "pattern_type": RulePatternType.CONTAINS, "category_slug": "internal-transfer", "normalized_payee": "Online Account Transfer", "priority": 4},
+    {"pattern": "WWW TRANSFER", "pattern_type": RulePatternType.CONTAINS, "category_slug": "internal-transfer", "normalized_payee": "Online Account Transfer", "priority": 4},
+    {"pattern": "ONLINE TRANSFER", "pattern_type": RulePatternType.CONTAINS, "category_slug": "internal-transfer", "normalized_payee": "Online Account Transfer", "priority": 4},
+    {"pattern": "ONLINE BANKING TRANSFER", "pattern_type": RulePatternType.CONTAINS, "category_slug": "internal-transfer", "normalized_payee": "Online Account Transfer", "priority": 4},
+    {"pattern": "BR TO BR", "pattern_type": RulePatternType.CONTAINS, "category_slug": "internal-transfer", "normalized_payee": "Branch Transfer", "priority": 4},
+    {"pattern": "E-TRANSFER", "pattern_type": RulePatternType.CONTAINS, "category_slug": "internal-transfer", "normalized_payee": "Interac e-Transfer", "priority": 5},
+    {"pattern": "EMAIL TRFS", "pattern_type": RulePatternType.EXACT, "category_slug": "internal-transfer", "normalized_payee": "Interac e-Transfer", "priority": 6},
+    {"pattern": "TRANSFER", "pattern_type": RulePatternType.EXACT, "category_slug": "internal-transfer", "normalized_payee": "Account Transfer", "priority": 6},
+    {"pattern": "WWW PMT", "pattern_type": RulePatternType.STARTS_WITH, "category_slug": "internal-transfer", "normalized_payee": "Online Banking Payment", "priority": 7},
+
+    # --- Mortgages, Auto Loans & Municipal Bills ---
+    {"pattern": "MORTGAGE PAYMENT", "pattern_type": RulePatternType.CONTAINS, "category_slug": "mortgage-principal", "normalized_payee": "Mortgage Payment", "priority": 4},
+    {"pattern": "MORTGAGE", "pattern_type": RulePatternType.EXACT, "category_slug": "mortgage-principal", "normalized_payee": "Mortgage Payment", "priority": 5},
+    {"pattern": "HYPOTHEQUE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "mortgage-principal", "normalized_payee": "Mortgage Payment", "priority": 4},
+    {"pattern": "HYPOTHÈQUE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "mortgage-principal", "normalized_payee": "Mortgage Payment", "priority": 4},
+    {"pattern": "VW CREDIT", "pattern_type": RulePatternType.CONTAINS, "category_slug": "vehicle-loan-principal", "normalized_payee": "VW Credit Canada", "priority": 3},
+    {"pattern": "TOYOTA FINANCIAL", "pattern_type": RulePatternType.CONTAINS, "category_slug": "vehicle-loan-principal", "normalized_payee": "Toyota Financial Services", "priority": 3},
+    {"pattern": "HONDA FINANCIAL", "pattern_type": RulePatternType.CONTAINS, "category_slug": "vehicle-loan-principal", "normalized_payee": "Honda Financial Services", "priority": 3},
+    {"pattern": "FORD CREDIT", "pattern_type": RulePatternType.CONTAINS, "category_slug": "vehicle-loan-principal", "normalized_payee": "Ford Credit", "priority": 3},
+    {"pattern": "SCOTIA DEALER", "pattern_type": RulePatternType.CONTAINS, "category_slug": "vehicle-loan-principal", "normalized_payee": "Scotia Dealer Advantage", "priority": 3},
+    {"pattern": "TD AUTO FINANCE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "vehicle-loan-principal", "normalized_payee": "TD Auto Finance", "priority": 3},
+    {"pattern": "LOAN INTEREST", "pattern_type": RulePatternType.CONTAINS, "category_slug": "vehicle-loan-interest", "normalized_payee": "Loan Interest", "priority": 4},
+    {"pattern": "LOAN PMT", "pattern_type": RulePatternType.EXACT, "category_slug": "vehicle-loan-principal", "normalized_payee": "Loan Payment", "priority": 6},
+    {"pattern": "LOAN", "pattern_type": RulePatternType.EXACT, "category_slug": "vehicle-loan-principal", "normalized_payee": "Loan Payment", "priority": 7},
+    {"pattern": r"(?:WWW\s+PAYMENT|BILL\s+P(?:AY)?M(?:EN)?T|PAIEMENT).*\b(?:VILLE|CITY\s+OF|MUNICIPALIT)", "pattern_type": RulePatternType.REGEX, "category_slug": "utilities", "normalized_payee": "Municipal Bill", "priority": 5},
+    {"pattern": "VILLE DE ", "pattern_type": RulePatternType.STARTS_WITH, "category_slug": "utilities", "normalized_payee": "Municipal Bill", "priority": 5},
+    {"pattern": "CITY OF ", "pattern_type": RulePatternType.STARTS_WITH, "category_slug": "utilities", "normalized_payee": "Municipal Bill", "priority": 5},
+
+    # --- Bank Fees, Rebates & Deposit Interest ---
+    {"pattern": "MULTIPRODUCT REBATE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "bank-fees", "normalized_payee": "RBC Multiproduct Rebate", "priority": 3},
+    {"pattern": "MONTHLY FEE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "bank-fees", "normalized_payee": "Monthly Bank Fee", "priority": 4},
+    {"pattern": "INTEREST PAYMENT", "pattern_type": RulePatternType.EXACT, "category_slug": "bank-fees", "normalized_payee": "Interest Charge", "priority": 6},
+    {"pattern": "DEPOSIT INTEREST", "pattern_type": RulePatternType.CONTAINS, "category_slug": "other-income", "normalized_payee": "Deposit Interest", "priority": 4},
+    {"pattern": "BONUS DEP INT", "pattern_type": RulePatternType.CONTAINS, "category_slug": "other-income", "normalized_payee": "Bonus Deposit Interest", "priority": 4},
+    {"pattern": "RBC OFFER", "pattern_type": RulePatternType.CONTAINS, "category_slug": "other-income", "normalized_payee": "RBC Cashback Offer", "priority": 4},
+    {"pattern": "CASH BACK", "pattern_type": RulePatternType.CONTAINS, "category_slug": "other-income", "normalized_payee": "Cash Back Reward", "priority": 5},
+
+    # --- Additional Digital Subscriptions & App Stores ---
+    {"pattern": "SIRIUSXM", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "SiriusXM", "priority": 4},
+    {"pattern": "SIRIUS XM", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "SiriusXM", "priority": 4},
+    {"pattern": "KINDLE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Amazon Kindle", "priority": 4},
+    {"pattern": "AUDIBLE", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Audible", "priority": 4},
+    {"pattern": "APPLE.COM/CA", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": "Apple Services", "priority": 4},
+    {"pattern": "GOOGLE *", "pattern_type": RulePatternType.CONTAINS, "category_slug": "subscriptions", "normalized_payee": None, "priority": 8},
 
     # --- Income & Salary (slug: "salary") ---
     {"pattern": "DIRECT DEP", "pattern_type": RulePatternType.CONTAINS, "category_slug": "salary", "normalized_payee": "Payroll Direct Deposit", "priority": 3},
@@ -329,11 +385,15 @@ def auto_learn_rule(
     raw_payee: str,
     category_id: str,
     normalized_payee: str | None = None,
+    notes: str | None = None,
 ) -> CategorizationRule | None:
     """
     Adaptive Learning: When a user assigns a category to a transaction,
     Folio extracts a clean merchant pattern and automatically creates/updates
     a persistent CategorizationRule so future occurrences match seamlessly.
+
+    Generic bank labels (e.g. ``MISC PAYMENT``, ``Transfer``) learn from
+    ``notes`` when available, or skip creating an over-broad rule.
 
     Flush-only: the caller owns the transaction boundary. This used to commit,
     which meant a failure part-way through an import left the earlier rows
@@ -346,12 +406,15 @@ def auto_learn_rule(
     if not cat:
         return None
 
-    cleaned_name = normalize_payee(raw_payee)
-    norm = (normalized_payee or cleaned_name).strip()
-    if not norm or len(norm) < 2:
+    extracted = extract_learnable_pattern(
+        raw_payee,
+        normalized_payee=normalized_payee,
+        notes=notes,
+    )
+    if not extracted:
         return None
 
-    pattern = norm.upper()
+    pattern, norm = extracted
 
     existing_rule = db.query(CategorizationRule).filter(
         CategorizationRule.pattern == pattern,
@@ -377,19 +440,29 @@ def auto_learn_rule(
     return new_rule
 
 
-def auto_learn_rules_bulk(db: Session, learned: dict[str, tuple[str, str | None]]) -> int:
+def auto_learn_rules_bulk(
+    db: Session,
+    learned: dict,
+) -> int:
     """Apply a batch of learned merchant->category associations in one pass.
 
-    ``learned`` maps raw payee to ``(category_id, normalized_payee)``. Collecting
-    during a loop and applying once afterwards avoids the two queries per
-    transaction that the per-row path incurred on every import.
+    Accepts ``{raw_payee: (category_id, normalized_payee)}`` as well as
+    ``{(raw_payee, note_key): (category_id, normalized_payee, notes)}``.
+    Collecting during a loop and applying once afterwards avoids the two queries
+    per transaction that the per-row path incurred on every import.
     """
     if not learned:
         return 0
 
     applied = 0
-    for raw_payee, (category_id, normalized_payee) in learned.items():
-        if auto_learn_rule(db, raw_payee, category_id, normalized_payee) is not None:
+    for key, val in learned.items():
+        raw_payee = key[0] if isinstance(key, tuple) else key
+        if len(val) == 3:
+            category_id, normalized_payee, notes = val
+        else:
+            category_id, normalized_payee = val
+            notes = key[1] if isinstance(key, tuple) and len(key) > 1 else None
+        if auto_learn_rule(db, raw_payee, category_id, normalized_payee, notes=notes) is not None:
             applied += 1
     return applied
 
@@ -465,33 +538,57 @@ def test_rule_match(req: TestRuleMatchRequest, db: Session = Depends(get_db)):
 @router.post("/apply-batch", status_code=status.HTTP_200_OK)
 def apply_rules_batch(db: Session = Depends(get_db)):
     """
-    Applies active categorization rules and semantic classifier to all uncategorized transactions.
+    Applies active categorization rules, user history, and semantic heuristics
+    (including transaction notes) to all uncategorized transactions.
     """
+    from app.services.categorization.engine import ClassificationEngine
+
     seed_default_rules(db)
-    uncategorized_txns = (
+    all_txns = (
         db.query(Transaction)
-        .options(joinedload(Transaction.splits))
+        .options(joinedload(Transaction.splits), joinedload(Transaction.account))
         .all()
     )
 
+    uncategorized_txns = [
+        txn
+        for txn in all_txns
+        if not txn.splits or all(s.category_id is None for s in txn.splits)
+    ]
+
+    if not uncategorized_txns:
+        return {"applied_count": 0}
+
+    items = [
+        {
+            "raw_payee": txn.raw_payee,
+            "notes": txn.notes,
+            "amount": txn.amount,
+            "account_id": txn.account_id,
+            "account_type": (
+                txn.account.type.value
+                if txn.account and hasattr(txn.account.type, "value")
+                else (str(txn.account.type) if txn.account else None)
+            ),
+        }
+        for txn in uncategorized_txns
+    ]
+
+    results = ClassificationEngine.classify_batch(db, items, enable_bedrock=False)
+
     applied_count = 0
-    for txn in uncategorized_txns:
-        # Check if uncategorized
-        is_uncategorized = not txn.splits or all(s.category_id is None for s in txn.splits)
-        if not is_uncategorized:
+    for txn, match in zip(uncategorized_txns, results):
+        if not match.matched or not match.category_id:
             continue
+        if match.normalized_payee:
+            txn.normalized_payee = match.normalized_payee
 
-        match = evaluate_rules(db, txn.raw_payee, txn.amount, txn.account_id)
-        if match.matched:
-            if match.normalized_payee:
-                txn.normalized_payee = match.normalized_payee
+        if txn.splits:
+            txn.splits[0].category_id = match.category_id
+        else:
+            txn.splits.append(TransactionSplit(category_id=match.category_id, amount=txn.amount))
 
-            if txn.splits:
-                txn.splits[0].category_id = match.category_id
-            else:
-                txn.splits.append(TransactionSplit(category_id=match.category_id, amount=txn.amount))
-
-            applied_count += 1
+        applied_count += 1
 
     if applied_count > 0:
         db.commit()

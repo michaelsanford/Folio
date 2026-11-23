@@ -100,7 +100,7 @@ class Account(Base):
     # Relationships
     owner_member = relationship("HouseholdMember", back_populates="accounts")
     transactions = relationship("Transaction", back_populates="account", cascade="all, delete-orphan")
-    statement_files = relationship("StatementFile", back_populates="account", cascade="all, delete-orphan")
+    statement_files = relationship("StatementFile", back_populates="account", passive_deletes=True)
     balance_snapshots = relationship("AccountBalanceSnapshot", back_populates="account", cascade="all, delete-orphan")
     holdings = relationship("Holding", back_populates="account", cascade="all, delete-orphan")
     investment_activities = relationship("InvestmentActivity", back_populates="account", cascade="all, delete-orphan")

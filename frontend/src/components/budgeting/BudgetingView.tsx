@@ -560,7 +560,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
     extra = ""
   ) => (
     <th
-      className={`h-10 px-4 font-normal cursor-pointer hover:text-main ${
+      className={`h-10 px-2 sm:px-3 font-normal cursor-pointer hover:text-main ${
         align === "right" ? "text-right" : ""
       } ${extra}`}
       onClick={() => {
@@ -846,17 +846,17 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
           </div>
         ) : viewMode === "table" ? (
           /* Tabular ledger for desktop */
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm border-collapse">
+          <div>
+            <table className="w-full table-fixed text-left text-sm border-collapse">
               <thead>
                 <tr className="border-b border-subtle text-xs text-muted">
                   {sortHeader("NAME", "Category", "ASC")}
-                  <th className="h-10 px-4 font-normal">Status</th>
-                  {sortHeader("PLANNED", "Target", "DESC", "right")}
-                  {sortHeader("ACTUAL", "Spent", "DESC", "right")}
-                  {sortHeader("REMAINING", "Remaining", "ASC", "right")}
-                  {sortHeader("PERCENT", "Used", "DESC", "left", "w-48")}
-                  <th className="h-10 px-4 font-normal">
+                  <th className="hidden md:table-cell h-10 px-2 sm:px-3 w-24 font-normal">Status</th>
+                  {sortHeader("PLANNED", "Target", "DESC", "right", "w-24 sm:w-28")}
+                  {sortHeader("ACTUAL", "Spent", "DESC", "right", "w-20 sm:w-24")}
+                  {sortHeader("REMAINING", "Remaining", "ASC", "right", "hidden sm:table-cell w-24")}
+                  {sortHeader("PERCENT", "Used", "DESC", "left", "hidden xl:table-cell w-32")}
+                  <th className="h-10 px-2 sm:px-3 w-[120px] font-normal">
                     <span className="sr-only">Actions</span>
                   </th>
                 </tr>
@@ -872,18 +872,20 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   return (
                     <tr key={item.category_id} className="bg-surface-hover transition-colors group">
                       {/* Category name and parent group */}
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
+                      <td className="py-3 px-2 sm:px-3 min-w-0">
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <span
                             className="w-2 h-2 rounded-full shrink-0"
                             style={{ backgroundColor: cat.color || chartTheme.accentColor }}
                           ></span>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-main">{cat.name}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-main truncate" title={cat.name}>
+                                {cat.name}
+                              </span>
                               {cat.is_rollover && (
                                 <span
-                                  className="rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-sub"
+                                  className="rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-sub shrink-0"
                                   title="Envelope rollover enabled"
                                 >
                                   Rollover
@@ -891,14 +893,14 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                               )}
                             </div>
                             {parentCat && (
-                              <div className="text-xs text-muted">{parentCat.name}</div>
+                              <div className="text-xs text-muted truncate">{parentCat.name}</div>
                             )}
                           </div>
                         </div>
                       </td>
 
                       {/* Status chip */}
-                      <td className="py-3 px-4">
+                      <td className="hidden md:table-cell py-3 px-2 sm:px-3">
                         <span
                           className={`rounded-md px-1.5 py-0.5 text-xs whitespace-nowrap ${
                             !item.isOver && item.percentUsed < 80 && item.actual_amount === 0
@@ -917,7 +919,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       </td>
 
                       {/* Target (inline editable) */}
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3 px-2 sm:px-3 text-right">
                         {isEditing ? (
                           <div className="flex items-center justify-end gap-1">
                             <span className="text-muted tabular-nums">$</span>
@@ -931,18 +933,18 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                                 if (e.key === "Escape") setEditingTargetId(null);
                               }}
                               autoFocus
-                              className="w-24 h-8 px-2 rounded-lg border border-[var(--accent-primary)] bg-input text-sm text-main tabular-nums text-right focus:outline-none"
+                              className="w-20 h-8 px-2 rounded-lg border border-[var(--accent-primary)] bg-input text-sm text-main tabular-nums text-right focus:outline-none"
                             />
                             <button
                               onClick={() => handleSavePlannedAmount(item.category_id, targetInput)}
-                              className="h-8 w-8 flex items-center justify-center rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast transition-colors cursor-pointer"
+                              className="h-8 w-8 flex items-center justify-center rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast transition-colors cursor-pointer shrink-0"
                               title="Save target"
                             >
                               <Save className="w-4 h-4" strokeWidth={1.5} />
                             </button>
                             <button
                               onClick={() => setEditingTargetId(null)}
-                              className={iconButton}
+                              className={`${iconButton} shrink-0`}
                               title="Cancel"
                             >
                               <X className="w-4 h-4" strokeWidth={1.5} />
@@ -959,13 +961,13 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                               title="Click to edit target"
                             >
                               <Edit2
-                                className="w-4 h-4 text-muted opacity-0 group-hover/edit:opacity-100 transition-opacity"
+                                className="w-4 h-4 text-muted opacity-0 group-hover/edit:opacity-100 transition-opacity shrink-0"
                                 strokeWidth={1.5}
                               />
                               <Money value={item.planned_amount} className="text-main" />
                             </div>
                             {item.rollover_amount !== undefined && item.rollover_amount !== 0 && (
-                              <div className="text-xs text-muted mt-0.5">
+                              <div className="text-xs text-muted mt-0.5 truncate">
                                 <Money
                                   value={item.rollover_amount}
                                   signed
@@ -975,7 +977,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                               </div>
                             )}
                             {item.available_amount !== undefined && item.available_amount !== item.planned_amount && (
-                              <div className="text-xs text-muted mt-0.5">
+                              <div className="text-xs text-muted mt-0.5 truncate">
                                 Available <Money value={item.available_amount} />
                               </div>
                             )}
@@ -984,13 +986,13 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       </td>
 
                       {/* Spent */}
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3 px-2 sm:px-3 text-right whitespace-nowrap">
                         <Money value={item.actual_amount} className="text-main" />
                         <div className="text-xs text-muted tabular-nums">{item.percentUsed}%</div>
                       </td>
 
                       {/* Remaining */}
-                      <td className="py-3 px-4 text-right">
+                      <td className="hidden sm:table-cell py-3 px-2 sm:px-3 text-right whitespace-nowrap">
                         <Money
                           value={item.remaining_amount}
                           className={item.remaining_amount >= 0 ? "text-main" : "text-negative"}
@@ -998,7 +1000,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       </td>
 
                       {/* Progress meter */}
-                      <td className="py-3 px-4">
+                      <td className="hidden xl:table-cell py-3 px-2 sm:px-3">
                         <div className="w-full h-1.5 rounded-full bg-surface-subtle overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-[width] duration-300 ${meterClass[tone]}`}
@@ -1008,7 +1010,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-2 sm:px-3">
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => handleToggleCategoryRollover(cat)}
