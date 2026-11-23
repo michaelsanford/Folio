@@ -1,6 +1,9 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 from app.core.database import get_db
+from app.core.s3_sync import sync_db_if_configured, sync_now
 from app.models.rule import CategorizationRule, RulePatternType
 from app.models.category import Category
 from app.models.transaction import Transaction, TransactionSplit
@@ -348,6 +351,14 @@ DEFAULT_RULES = [
 ]
 
 
+DEFAULT_RULE_NAMESPACE = uuid.UUID("3a9c4e1b-7d2f-4b8e-9a1c-5e7f9b1d3c5a")
+
+
+def default_rule_id(pattern_type: RulePatternType, pattern: str) -> str:
+    """Deterministic UUIDv5 for built-in rules so cold starts share identical IDs."""
+    return str(uuid.uuid5(DEFAULT_RULE_NAMESPACE, f"{pattern_type.value}:{pattern.upper()}"))
+
+
 def seed_default_rules(db: Session):
     """Populates default categorization rules, adding any missing rules incrementally."""
     categories = db.query(Category).all()
@@ -366,6 +377,7 @@ def seed_default_rules(db: Session):
 
         new_rules.append(
             CategorizationRule(
+                id=default_rule_id(rule_def["pattern_type"], rule_def["pattern"]),
                 category_id=cat_id,
                 priority=rule_def["priority"],
                 pattern_type=rule_def["pattern_type"],
@@ -488,6 +500,7 @@ def create_rule(rule_in: CategorizationRuleCreate, db: Session = Depends(get_db)
     db.add(rule)
     db.commit()
     db.refresh(rule)
+    sync_db_if_configured()
     return rule
 
 
@@ -503,6 +516,7 @@ def update_rule(rule_id: str, rule_in: CategorizationRuleUpdate, db: Session = D
 
     db.commit()
     db.refresh(rule)
+    sync_db_if_configured()
     return rule
 
 
@@ -514,6 +528,7 @@ def delete_rule(rule_id: str, db: Session = Depends(get_db)):
 
     db.delete(rule)
     db.commit()
+    sync_db_if_configured()
     return None
 
 
@@ -592,5 +607,6 @@ def apply_rules_batch(db: Session = Depends(get_db)):
 
     if applied_count > 0:
         db.commit()
+        sync_now()
 
     return {"applied_count": applied_count}

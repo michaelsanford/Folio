@@ -514,3 +514,76 @@ def test_alembic_0004_migration_allows_nullable_statement_file(tmp_path: Path, m
 
     command.downgrade(cfg, "0003")
     command.upgrade(cfg, "head")
+
+
+
+def test_deterministic_seeded_category_and_rule_ids_across_fresh_dbs():
+    from sqlalchemy.orm import sessionmaker
+    from app.api.categories import seed_default_categories
+    from app.api.rules import seed_default_rules
+    from app.core.database import Base
+    from app.models.category import Category
+    from app.models.rule import CategorizationRule
+
+    snapshots = []
+    for _ in range(2):
+        eng = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(bind=eng)
+        SessionMaker = sessionmaker(bind=eng)
+        sess = SessionMaker()
+        try:
+            seed_default_categories(sess)
+            seed_default_rules(sess)
+            cat_map = {c.slug: c.id for c in sess.query(Category).all()}
+            rule_map = {(r.pattern_type.value, r.pattern): r.id for r in sess.query(CategorizationRule).all()}
+            snapshots.append((cat_map, rule_map))
+        finally:
+            sess.close()
+            eng.dispose()
+
+    assert len(snapshots[0][0]) > 0
+    assert len(snapshots[0][1]) > 0
+    assert snapshots[0][0] == snapshots[1][0]
+    assert snapshots[0][1] == snapshots[1][1]
+
+
+def test_commit_resolves_category_name_fallback_when_category_id_is_stale(client, db_session, sample_checking_account):
+    from app.models.category import Category
+
+    groceries = db_session.query(Category).filter(Category.slug == "groceries").first()
+    assert groceries is not None
+
+    commit_resp = client.post(
+        "/api/ingestion/commit",
+        json={
+            "account_id": sample_checking_account.id,
+            "auto_detect_transfers": False,
+            "items": [
+                {
+                    "transaction_date": "2026-08-01",
+                    "raw_payee": "MAXI GROCERY",
+                    "normalized_payee": "Maxi",
+                    "amount": -52.40,
+                    "currency": "CAD",
+                    "category_id": "00000000-0000-0000-0000-00000000dead",
+                    "category_name": "groceries",
+                    "import_hash": "hash-stale-cat-1",
+                },
+                {
+                    "transaction_date": "2026-08-02",
+                    "raw_payee": "UNKNOWN SHOP",
+                    "normalized_payee": "Unknown Shop",
+                    "amount": -12.00,
+                    "currency": "CAD",
+                    "import_hash": "hash-uncat-2",
+                },
+            ],
+        },
+    )
+    assert commit_resp.status_code == 200
+    assert commit_resp.json()["committed_count"] == 2
+
+    tx1 = db_session.query(Transaction).filter(Transaction.import_hash == "hash-stale-cat-1").first()
+    tx2 = db_session.query(Transaction).filter(Transaction.import_hash == "hash-uncat-2").first()
+    assert tx1 is not None and tx1.splits[0].category_id == groceries.id
+    assert tx2 is not None and tx2.splits[0].category_id is None

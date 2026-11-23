@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.rules import auto_learn_rule
 from app.core.config import settings
+from app.core.s3_sync import sync_db_if_configured
 from app.models.category import Category
 from app.models.rule import CategorizationRule
 from app.models.transaction import Transaction, TransactionSplit
@@ -503,6 +504,7 @@ class ClassificationEngine:
                             db, raw_payee, cat.id, learned_norm, notes=notes
                         )
                         db.commit()
+                        sync_db_if_configured()
                         return ClassificationResult(
                             matched=True,
                             category_id=cat.id,
@@ -631,6 +633,7 @@ class ClassificationEngine:
                             )
             if rules_to_commit:
                 db.commit()
+                sync_db_if_configured()
 
         # Tier 5: Fill any remaining slots with UNCLASSIFIED
         for idx in range(len(items)):

@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     
     # AWS S3 Backup & Persistence configs
     S3_BUCKET_NAME: str = os.getenv("S3_BUCKET_NAME", "")
-    AWS_REGION: str = os.getenv("AWS_DEFAULT_REGION", "ca-central-1")
+    AWS_REGION: str = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "ca-central-1"))
     
     # Security & Local Vault Authentication
     SECRET_KEY: str = os.getenv("FOLIO_SECRET_KEY") or development_secret_key()

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.s3_sync import sync_now
 from app.models.rule import CategorizationRule
 from app.models.transaction import Transaction, TransactionSplit
 from app.schemas.classification import (
@@ -176,6 +177,7 @@ def auto_classify_uncategorized(
 
         if not req.dry_run and classified_count > 0:
             db.commit()
+            sync_now()
 
     return AutoClassifyUncategorizedResponse(
         total_uncategorized=len(uncategorized_txns),

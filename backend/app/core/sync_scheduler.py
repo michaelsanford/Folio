@@ -61,6 +61,11 @@ class DebouncedSync:
             self._timer.daemon = True
             self._timer.start()
 
+    def has_pending_changes(self) -> bool:
+        """Return whether local mutations are queued for S3 upload."""
+        with self._lock:
+            return self._dirty
+
     def flush(self) -> bool:
         """Upload now. Used at shutdown and after operations worth not losing."""
         if not settings.S3_BUCKET_NAME:
