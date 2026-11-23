@@ -18,6 +18,7 @@ import {
   BookOpen,
   PanelLeftClose,
   PanelLeftOpen,
+  LogOut,
 } from "lucide-react";
 import type { Account, HouseholdMember } from "../../types";
 import { isAssetAccount } from "../../constants/canadianAccountTypes";
@@ -44,6 +45,7 @@ interface AppLayoutProps {
   accounts: Account[];
   householdMembers?: HouseholdMember[];
   onManageHousehold?: () => void;
+  onSignOut?: () => void;
   children: React.ReactNode;
 }
 
@@ -71,6 +73,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   accounts,
   householdMembers,
   onManageHousehold,
+  onSignOut,
   children,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -300,9 +303,20 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             >
               <ModeIcon className="w-5 h-5" strokeWidth={1.75} />
             </button>
+            {onSignOut && (
+              <button
+                type="button"
+                onClick={onSignOut}
+                className="w-11 h-10 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer"
+                title="Sign out"
+                aria-label="Sign out"
+              >
+                <LogOut className="w-5 h-5" strokeWidth={1.75} />
+              </button>
+            )}
           </div>
         ) : (
-          <div className="p-3 mt-3 border-t border-subtle flex items-center justify-between gap-2">
+          <div className="p-3 mt-3 border-t border-subtle flex items-center justify-between gap-1.5">
             <button
               type="button"
               onClick={() => setIsThemeModalOpen(true)}
@@ -323,6 +337,17 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             >
               <ModeIcon className="w-5 h-5" strokeWidth={1.75} />
             </button>
+            {onSignOut && (
+              <button
+                type="button"
+                onClick={onSignOut}
+                className={iconButton}
+                title="Sign out"
+                aria-label="Sign out"
+              >
+                <LogOut className="w-5 h-5" strokeWidth={1.75} />
+              </button>
+            )}
           </div>
         )}
       </aside>
@@ -379,6 +404,19 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 </button>
               );
             })}
+            {onSignOut && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onSignOut();
+                }}
+                className="w-full h-10 mt-1 pt-1 border-t border-subtle flex items-center gap-3 px-3 rounded-lg text-sm text-sub bg-surface-hover transition-colors"
+              >
+                <LogOut className="w-[22px] h-[22px] text-muted" strokeWidth={1.75} />
+                Sign out
+              </button>
+            )}
           </div>
         )}
 

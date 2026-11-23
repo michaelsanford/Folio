@@ -9,10 +9,34 @@ param (
     [string]$AllowedOrigin = "",
     # 0 = unreserved (required on sandbox/new AWS accounts with concurrency quota 10);
     # set to 1 on accounts with quota > 10 to enforce single-writer SQLite safety.
-    [int]$ReservedConcurrency = 0
+    [int]$ReservedConcurrency = 0,
+    # Optional name of a retained S3 vault bucket to reuse instead of creating a new one.
+    [string]$ExistingVaultBucket = "",
+    # Optional email address to invite/bootstrap in the Cognito User Pool (idempotent).
+    [string]$OwnerEmail = "",
+    # Disable AWS Cognito provisioning and deploy in single Master Passphrase mode instead.
+    [switch]$DisableCognito,
+    # Optional HMAC signing secret for local cookies in -DisableCognito mode (auto-generated if omitted).
+    [securestring]$SessionSecretKey
 )
 
 $ErrorActionPreference = "Stop"
+
+$Environment = $Environment.Trim().ToLowerInvariant()
+if ($Environment -notmatch '^[a-z0-9][a-z0-9-]{0,20}$') {
+    throw "Environment must be lowercase alphanumeric/hyphens (1-21 chars) for valid S3 bucket naming."
+}
+
+$NormalizedOwnerEmail = $OwnerEmail.Trim().ToLowerInvariant()
+if ($DisableCognito -and $NormalizedOwnerEmail) {
+    throw "-OwnerEmail cannot be used with -DisableCognito (Cognito User Pool is disabled)."
+}
+if ($DisableCognito -and -not $MasterPassword) {
+    throw "-DisableCognito requires -MasterPassword so production authentication never falls back to an unconfigured state."
+}
+if ($NormalizedOwnerEmail -and $NormalizedOwnerEmail -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') {
+    throw "OwnerEmail '$OwnerEmail' does not look like a valid email address."
+}
 
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "Folio - AWS SAM Serverless Deployment" -ForegroundColor Cyan
@@ -51,6 +75,26 @@ try {
     Write-Host "`n[3/4] Deploying SAM Stack ($StackName)..." -ForegroundColor Yellow
     $ParamOverrides = @("EnvironmentName=$Environment")
 
+    if ($DisableCognito) {
+        $ParamOverrides += "EnableCognito=false"
+        if ($SessionSecretKey) {
+            $SessionSecret = ([System.Net.NetworkCredential]::new("", $SessionSecretKey).Password).Trim()
+        } else {
+            $secretBytes = New-Object byte[] 32
+            $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+            try {
+                $rng.GetBytes($secretBytes)
+            } finally {
+                $rng.Dispose()
+            }
+            $SessionSecret = [System.BitConverter]::ToString($secretBytes).Replace("-", "").ToLowerInvariant()
+        }
+        $ParamOverrides += "SessionSecretKey=$SessionSecret"
+        $SessionSecret = $null
+    } else {
+        $ParamOverrides += "EnableCognito=true"
+    }
+
     if ($MasterPassword) {
         # Hash locally so the passphrase itself never reaches CloudFormation or the
         # Lambda environment, both of which are readable with modest IAM access.
@@ -78,6 +122,10 @@ try {
 
     if ($ReservedConcurrency -gt 0) {
         $ParamOverrides += "ReservedConcurrency=$ReservedConcurrency"
+    }
+
+    if ($ExistingVaultBucket.Trim()) {
+        $ParamOverrides += "ExistingVaultBucketName=$($ExistingVaultBucket.Trim())"
     }
 
     sam deploy `
@@ -124,6 +172,52 @@ try {
     if ($UserPoolId -and $UserPoolId -ne "None") {
         Write-Host "Cognito User Pool ID:       $UserPoolId" -ForegroundColor Yellow
         Write-Host "Cognito App Client ID:      $ClientId" -ForegroundColor Yellow
+
+        if ($NormalizedOwnerEmail) {
+            Write-Host "`nInviting/verifying Cognito user '$NormalizedOwnerEmail'..." -ForegroundColor Yellow
+            $prevEap = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            try {
+                $probeRaw = & aws cognito-idp admin-get-user `
+                    --user-pool-id "$UserPoolId" `
+                    --username "$NormalizedOwnerEmail" `
+                    --region "$Region" `
+                    --output json 2>&1
+                $probeCode = $LASTEXITCODE
+            } finally {
+                $ErrorActionPreference = $prevEap
+            }
+            $probeText = ($probeRaw | ForEach-Object { $_.ToString() }) -join "`n"
+
+            if ($probeCode -eq 0) {
+                $userObj = $probeText | ConvertFrom-Json
+                $userStatus = $userObj.UserStatus
+                Write-Host "Cognito user '$NormalizedOwnerEmail' already exists (status: $userStatus) -- skipping invite." -ForegroundColor Gray
+                if ($userStatus -eq "FORCE_CHANGE_PASSWORD") {
+                    Write-Host "To resend the temporary password email: aws cognito-idp admin-create-user --user-pool-id $UserPoolId --username $NormalizedOwnerEmail --message-action RESEND --desired-delivery-mediums EMAIL --region $Region" -ForegroundColor DarkGray
+                }
+            } elseif ($probeText -match "UserNotFoundException") {
+                aws cognito-idp admin-create-user `
+                    --user-pool-id "$UserPoolId" `
+                    --region "$Region" `
+                    --username "$NormalizedOwnerEmail" `
+                    --user-attributes "Name=email,Value=$NormalizedOwnerEmail" "Name=email_verified,Value=true" `
+                    --desired-delivery-mediums EMAIL `
+                    --output json | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Failed to invite Cognito user '$NormalizedOwnerEmail' in pool '$UserPoolId'."
+                }
+                Write-Host "Invited '$NormalizedOwnerEmail' to Cognito User Pool '$UserPoolId'." -ForegroundColor Green
+                Write-Host "Check email (including spam) for the temporary password from no-reply@verificationemail.com," -ForegroundColor Cyan
+                Write-Host "then visit $AppUrl to choose your permanent passphrase (20+ chars) and scan the TOTP QR code." -ForegroundColor Cyan
+            } else {
+                throw "Failed to inspect Cognito user '$NormalizedOwnerEmail' in pool '$UserPoolId':`n$probeText"
+            }
+        } else {
+            Write-Host "To invite a user (idempotent): .\deploy.ps1 -Region $Region -StackName $StackName -Environment $Environment -OwnerEmail you@example.com" -ForegroundColor DarkGray
+        }
+    } else {
+        Write-Host "Authentication Mode:        Master Passphrase (Cognito disabled)" -ForegroundColor Yellow
     }
     Write-Host "========================================================" -ForegroundColor Green
 } finally {

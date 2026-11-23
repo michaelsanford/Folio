@@ -365,6 +365,22 @@ export interface CognitoConfigResponse {
   region: string;
 }
 
+export type CognitoChallengeType =
+  | "NEW_PASSWORD_REQUIRED"
+  | "MFA_SETUP"
+  | "SOFTWARE_TOKEN_MFA";
+
+export interface CognitoAuthResponse {
+  status: "authenticated" | "challenge";
+  challenge?: CognitoChallengeType | null;
+  session?: string | null;
+  username?: string | null;
+  message?: string | null;
+  totp_secret?: string | null;
+  otpauth_uri?: string | null;
+  qr_data_uri?: string | null;
+}
+
 
 // ---------------------------------------------------------------- Investments
 

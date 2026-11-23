@@ -45,6 +45,7 @@ frontend/.vite/
 # Deployment tooling that does not belong inside the runtime image
 .aws-sam/
 deploy.ps1
+teardown.ps1
 dev.ps1
 test.ps1
 docker-compose.yml

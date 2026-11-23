@@ -129,7 +129,11 @@ def validate_production_settings(current: Settings = settings) -> list[str]:
 
     problems: list[str] = []
 
-    if current.SECRET_KEY == development_secret_key():
+    if (
+        not current.is_cognito_enabled
+        or current.FOLIO_MASTER_PASSWORD
+        or current.FOLIO_MASTER_PASSWORD_HASH
+    ) and current.SECRET_KEY == development_secret_key():
         problems.append(
             "FOLIO_SECRET_KEY is unset, so sessions are signed with the derived "
             "development key. Set it to a random secret."

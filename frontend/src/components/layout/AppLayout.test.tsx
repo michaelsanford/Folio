@@ -135,4 +135,27 @@ describe("AppLayout Collapsible Sidebar", () => {
     fireEvent.click(appearanceBtn);
     expect(screen.getByText("Appearance")).toBeDefined();
   });
+
+  it("renders a Sign out button when onSignOut is provided and invokes it on click", () => {
+    const onSignOut = vi.fn();
+    render(
+      <ThemeProvider>
+        <AppLayout
+          activeTab="dashboard"
+          onTabChange={vi.fn()}
+          accounts={mockAccounts}
+          householdMembers={mockMembers}
+          onManageHousehold={vi.fn()}
+          onSignOut={onSignOut}
+        >
+          <div>Main View</div>
+        </AppLayout>
+      </ThemeProvider>
+    );
+
+    const sidebar = screen.getByTestId("desktop-sidebar");
+    const signOutBtn = within(sidebar).getByRole("button", { name: "Sign out" });
+    fireEvent.click(signOutBtn);
+    expect(onSignOut).toHaveBeenCalledTimes(1);
+  });
 });
