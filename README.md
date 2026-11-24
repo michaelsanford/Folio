@@ -368,7 +368,15 @@ Folio implements a defense-in-depth security model for hosting financial data:
 - **Login & MFA Rate Limiting**: Sliding-window rate limiter (8 failed attempts per 5 minutes per client) across `/api/auth/login`, `/api/auth/cognito/login`, and `/api/auth/cognito/challenge`. Behind CloudFront the client is identified by the `CloudFront-Viewer-Address` header; `X-Forwarded-For` is never trusted. The counters are held per instance, so with several Lambda instances the effective ceiling is multiplied by the instance count. This is an accepted limitation: Cognito has its own throttling and threat protection, and the budget alarm bounds cost.
 - **Bounded User-Supplied Regex**: Categorization rules accepting regular expressions are length-limited and screened for nested quantifiers to prevent ReDoS (catastrophic backtracking).
 - **Edge Origin Verification**: CloudFront adds an `X-Folio-Origin-Verify` header whose value comes from a template-generated Secrets Manager secret. The app rejects every request without it with `403`, so the raw Lambda Function URL cannot be used directly. The only exception is the local health probe from the Lambda Web Adapter or Docker. The value is visible to anyone who can call `cloudfront:GetDistributionConfig` on the distribution, so treat that permission as sensitive.
-- **Modern Security Headers**: `Content-Security-Policy` (CSP), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, and `Permissions-Policy` on every response.
+- **Security Headers**: Defined once in [`backend/app/core/security_headers.py`](backend/app/core/security_headers.py) and sent by the app on every response, including errors:
+  - `Content-Security-Policy`: same-origin scripts, styles and fonts (plus Google Fonts), images only from the app or `data:`/`blob:`, API calls only to the app and the region's Cognito endpoints, no plugins, no frames, `frame-ancestors 'none'`. In production it also adds `upgrade-insecure-requests`.
+  - `Strict-Transport-Security: max-age=63072000; includeSubDomains`, in production only, so local Docker over `http://localhost` is unaffected.
+  - `Permissions-Policy` denying camera, microphone, geolocation, payment, USB, Bluetooth, sensors, fullscreen and the other powerful features; only `clipboard-write` is allowed, for copying the TOTP secret.
+  - `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `X-Permitted-Cross-Domain-Policies: none`, and `X-XSS-Protection: 0` (the legacy filter is disabled, as current guidance recommends).
+  - `Cache-Control: no-store` on every `/api` response, so financial data is never kept in browser or proxy caches.
+  - No `Server` header. `Cross-Origin-Embedder-Policy` is deliberately not sent because it would block the Google Fonts stylesheet.
+  - On AWS, a CloudFront response headers policy mirrors these values. It always adds HSTS, and fills in the other headers only where the app did not answer (for example a CloudFront error page). The CSP comes from the app only.
+- **Structured Logs**: Every request writes one JSON access line (`folio.access`: method, path without the query string, status, duration, request ID, client IP). Uvicorn's startup and error lines are JSON too, and `GET`/`HEAD` both work on `/` and `/api/health`.
 - **S3 Vault Protection**: The vault bucket blocks all public access, enforces bucket-owner object ownership (`BucketOwnerEnforced`, ACLs disabled), encrypts objects with SSE-S3 (`AES256`), keeps versions, and has a bucket policy that denies any request not made over TLS.
 - **Least-Privilege IAM**: The Lambda role can read and write only `database/*` and `backups/*` in the vault bucket, list only those prefixes, and read only the stack's two secrets. `bedrock:InvokeModel` is granted only when `EnableBedrock` is `true`, and only for the configured model or inference profile.
 - **Container Non-Root Isolation**: Multi-stage Docker execution runs as an unprivileged `appuser` (UID 1000), and the Docker build context excludes `backend/data/`, databases, `.env` files and `samconfig.toml` so no vault data or secrets are baked into the image.
@@ -426,8 +434,11 @@ Folio includes a native AWS SAM template (`template.yaml` + `Dockerfile`) that r
 # Raise the monthly budget alert from the default $5
 .\deploy.ps1 -Environment prod -MonthlyBudgetUsd 10
 
-# Preview what would be deployed without building or deploying
+# Show the parameters a deploy would use, without building or deploying
 .\deploy.ps1 -Environment prod -WhatIf
+
+# Show the CloudFormation changes a deploy would make, then discard them
+.\deploy.ps1 -Environment prod -Preview
 
 # Optional: validate and lint the template before deploying
 sam validate -t template.yaml --lint
@@ -451,7 +462,8 @@ sam validate -t template.yaml --lint
 | `-AllowedOrigin` | | Extra origin allowed to call the API cross-origin. Leave empty for the default same-origin deployment. |
 | `-ReservedConcurrency` | `0` | Optional Lambda reserved concurrency, as a spend cap only. See below. |
 | `-RollbackToVersion` | | Point the `live` alias at an earlier version and exit. See [Rolling Back a Deploy](#rolling-back-a-deploy). |
-| `-WhatIf` / `-Confirm` | | Standard PowerShell preview and confirmation. |
+| `-Preview` | | Build and create a CloudFormation change set with the saved settings, print every resource it would add, modify or remove, flag any replacement or removal of the user pool, vault bucket, CloudFront distribution, secrets or log group, then delete the change set without deploying. `samconfig.toml` and the stack stay unchanged, but the image is pushed to ECR. Run it before deploying a template change. |
+| `-WhatIf` / `-Confirm` | | Standard PowerShell confirmation. `-WhatIf` only prints the parameters and stops before building; it does not contact CloudFormation. |
 
 What a deploy does:
 
