@@ -7,6 +7,11 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+    ignore:
+      # botocore requires python-dateutil < 3; a major bump makes the grouped
+      # update unresolvable and fails the whole group.
+      - dependency-name: "python-dateutil"
+        update-types: ["version-update:semver-major"]
     groups:
       python-dependencies:
         patterns:
@@ -38,3 +43,8 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 3
+    ignore:
+      # Python minor upgrades need requires-python in backend/pyproject.toml
+      # raised first; take them deliberately rather than via Dependabot.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-minor"]
