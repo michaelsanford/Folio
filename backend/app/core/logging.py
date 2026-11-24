@@ -10,12 +10,19 @@ that alarms depend on carry a stable ``event`` field:
 - ``http_5xx``          a request ended in a server error
 
 Emit them with ``log_event(logger, logging.ERROR, "s3_sync_failed", "...")``.
+
+Access log: ``RequestContextMiddleware`` writes one INFO record per request on
+the ``folio.access`` logger with ``method``, ``path`` (never the query string,
+which can carry search terms), ``status``, ``duration_ms``, ``request_id`` and
+``client_ip``. Uvicorn's own access log is switched off (``--no-access-log`` and
+here), and its startup/error loggers go through the same JSON handler.
 """
 from __future__ import annotations
 
 import json
 import logging
 import sys
+import time
 import traceback
 import uuid
 from contextvars import ContextVar
@@ -30,6 +37,9 @@ request_id_var: ContextVar[str | None] = ContextVar("folio_request_id", default=
 
 # Attributes every LogRecord has; anything else was passed through `extra=`.
 _RESERVED = set(vars(logging.LogRecord("", 0, "", 0, "", None, None))) | {"message", "asctime", "taskName"}
+# Uvicorn passes a copy of each startup message with ANSI colour codes; the
+# plain "message" already carries it.
+_RESERVED.add("color_message")
 
 
 _LAMBDA_LEVEL_NAMES = {"WARNING": "WARN", "CRITICAL": "FATAL"}
@@ -70,6 +80,19 @@ def configure_logging(level: int = logging.INFO) -> None:
         handler.setFormatter(JsonFormatter())
         root.addHandler(handler)
     root.setLevel(level)
+    # Uvicorn configures its loggers (plain-text handlers, propagate off) before
+    # it imports the app, so this runs afterwards (at app import and again in the
+    # lifespan) and takes them over: startup and error lines become JSON, and
+    # uvicorn's access log is silenced because folio.access replaces it.
+    for name in ("uvicorn", "uvicorn.error"):
+        server_logger = logging.getLogger(name)
+        server_logger.handlers.clear()
+        server_logger.propagate = True
+        server_logger.disabled = False
+    access_logger = logging.getLogger("uvicorn.access")
+    access_logger.handlers.clear()
+    access_logger.propagate = False
+    access_logger.disabled = True
     # Per-plugin setup chatter on every Alembic invocation.
     logging.getLogger("alembic.runtime.plugins").setLevel(logging.WARNING)
     # Loggers created before this point (or disabled by an earlier fileConfig)
@@ -108,8 +131,22 @@ def request_id_from_headers(headers) -> str:
     return uuid.uuid4().hex
 
 
+def _client_ip(scope) -> str:
+    """The viewer address, resolved the same way as the rate limiter's key."""
+    from starlette.requests import HTTPConnection
+
+    from app.core.rate_limit import client_key
+
+    return client_key(HTTPConnection(scope))
+
+
 class RequestContextMiddleware:
-    """Pure ASGI middleware: binds the request id and logs 5xx responses.
+    """Pure ASGI middleware: binds the request id, logs 5xx responses and
+    writes one ``folio.access`` record per request.
+
+    Every request is logged, health checks included: on Lambda the readiness
+    probe runs once per cold start, and in Docker the 30-second HEALTHCHECK line
+    shows the container is alive, so filtering them would hide more than it saves.
 
     Pure ASGI (not BaseHTTPMiddleware) so the context variable is set in the
     request's own task and remains visible to the outer exception handler.
@@ -118,6 +155,7 @@ class RequestContextMiddleware:
     def __init__(self, app):
         self.app = app
         self.logger = logging.getLogger("folio.http")
+        self.access_logger = logging.getLogger("folio.access")
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -127,10 +165,15 @@ class RequestContextMiddleware:
         headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
         request_id = request_id_from_headers(headers)
         request_id_var.set(request_id)
+        started = time.perf_counter()
+        # An exception that escapes the app is answered with a 500 by Starlette's
+        # outermost middleware, which this wrapper never sees.
+        status = {"code": 500}
 
         async def send_wrapper(message):
             if message["type"] == "http.response.start":
                 status_code = message["status"]
+                status["code"] = status_code
                 if status_code >= 500:
                     log_event(
                         self.logger,
@@ -145,4 +188,22 @@ class RequestContextMiddleware:
                 message["headers"] = list(message["headers"]) + [(b"x-request-id", request_id.encode("latin-1"))]
             await send(message)
 
-        await self.app(scope, receive, send_wrapper)
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            self._log_access(scope, status["code"], started, request_id)
+
+    def _log_access(self, scope, status_code: int, started: float, request_id: str) -> None:
+        method = scope.get("method")
+        path = scope.get("path")
+        self.access_logger.info(
+            f"{method} {path} {status_code}",
+            extra={
+                "method": method,
+                "path": path,
+                "status": status_code,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 1),
+                "request_id": request_id,
+                "client_ip": _client_ip(scope),
+            },
+        )
