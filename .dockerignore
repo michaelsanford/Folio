@@ -49,3 +49,7 @@ teardown.ps1
 dev.ps1
 test.ps1
 docker-compose.yml
+samconfig.toml
+.aws-sam/
+*.bak
+folio-vault-backup-*.db

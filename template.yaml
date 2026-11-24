@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Folio - Hardened Serverless Application (FastAPI + React 19 PWA + SQLite + Cognito) in ca-central-1
+Description: Folio - Hardened Serverless Application (FastAPI + React 19 PWA + SQLite + Cognito) behind CloudFront in ca-central-1
 
 Parameters:
   EnvironmentName:
@@ -19,19 +19,14 @@ Parameters:
       authentication. A hash, not the passphrase: Lambda environment variables
       are readable by anyone holding lambda:GetFunctionConfiguration.
 
-  OriginVerifySecret:
-    Type: String
-    NoEcho: true
-    Default: ''
-    Description: Optional secret verification header token injected by CloudFront/WAF to protect direct Lambda Function URL access
-
   AllowedOrigin:
     Type: String
     Default: ''
     Description: >-
-      Optional exact origin permitted to call the API cross-origin, e.g.
-      https://folio.example.com. Leave empty when the PWA is served from the
-      function itself, which is the default and needs no CORS at all.
+      Optional extra origin permitted to call the API cross-origin, e.g.
+      https://folio.example.com. Leave empty for the default deployment: the
+      PWA and the API are both served from the CloudFront URL (AppUrl output),
+      which is same-origin and needs no CORS at all.
 
   EnableBedrock:
     Type: String
@@ -42,16 +37,22 @@ Parameters:
   BedrockModelId:
     Type: String
     Default: 'amazon.nova-micro-v1:0'
-    Description: Model ID for AWS Bedrock auto-classification (e.g. amazon.nova-micro-v1:0 or anthropic.claude-3-haiku-20240307-v1:0)
+    Description: >-
+      Bedrock model ID or inference profile ID for auto-classification (e.g.
+      amazon.nova-micro-v1:0, or a cross-region profile such as
+      us.amazon.nova-micro-v1:0). IAM access is granted to this ID only.
 
   ReservedConcurrency:
     Type: Number
     Default: 0
     MinValue: 0
     Description: >-
-      Optional Lambda ReservedConcurrentExecutions (set to 1 on accounts with
-      Lambda concurrency quota > 10 to enforce single-writer SQLite safety;
-      leave 0 on new/sandbox accounts whose account quota is 10).
+      Optional Lambda ReservedConcurrentExecutions. 0 (default) leaves the
+      function unreserved. Any positive value is purely a spend/abuse cap: the
+      app is safe with several concurrent instances because vault uploads use
+      S3 conditional writes (a stale writer gets HTTP 409 and reloads). New or
+      sandbox accounts whose account concurrency quota is 10 cannot reserve
+      any concurrency, so keep 0 there.
 
   ExistingVaultBucketName:
     Type: String
@@ -59,28 +60,44 @@ Parameters:
     Description: >-
       Optional name of an existing S3 vault bucket to reuse (for example, a
       bucket retained from an earlier stack). When set, CloudFormation skips
-      creating FolioStorageVault and connects Lambda to this bucket instead.
+      creating FolioStorageVault (and its bucket policy) and connects Lambda to
+      this bucket instead.
 
   EnableCognito:
     Type: String
     Default: 'true'
     AllowedValues: ['true', 'false']
     Description: >-
-      Provision an invite-only AWS Cognito User Pool + TOTP MFA for authentication
-      (true), or disable Cognito to use single Master Passphrase mode (false).
+      Provision an invite-only AWS Cognito User Pool (Plus tier, threat
+      protection enforced) + TOTP MFA for authentication (true), or disable
+      Cognito to use single Master Passphrase mode (false).
 
-  SessionSecretKey:
+  AlarmEmail:
     Type: String
-    NoEcho: true
     Default: ''
+    AllowedPattern: '^$|^[^@\s]+@[^@\s]+\.[^@\s]+$'
+    ConstraintDescription: Must be empty or a valid email address.
     Description: >-
-      HMAC signing secret for local HS256 session cookies when EnableCognito is false.
+      Optional email address for CloudWatch alarm and AWS Budgets
+      notifications. The SNS subscription must be confirmed from the email
+      AWS sends after the first deploy. Leave empty to create alarms without
+      notifications and skip the budget.
+
+  MonthlyBudgetUsd:
+    Type: Number
+    Default: 5
+    MinValue: 1
+    Description: >-
+      Monthly AWS cost budget in USD (account-wide). Requires AlarmEmail;
+      notifies at 80% of actual spend and when forecast spend exceeds 100%.
 
 Conditions:
   HasAllowedOrigin: !Not [!Equals [!Ref AllowedOrigin, '']]
   HasReservedConcurrency: !Not [!Equals [!Ref ReservedConcurrency, 0]]
   CreateVaultBucket: !Equals [!Ref ExistingVaultBucketName, '']
   UseCognito: !Equals [!Ref EnableCognito, 'true']
+  UseBedrock: !Equals [!Ref EnableBedrock, 'true']
+  HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, '']]
 
 Globals:
   Function:
@@ -88,20 +105,33 @@ Globals:
     MemorySize: 1024
     Architectures:
       - arm64
+    Tracing: Active
+    PropagateTags: true
+    Tags:
+      app: folio
+      env: !Ref EnvironmentName
 
 Resources:
-  # 1. Private S3 Vault for Database Snapshots and Statement Archives
+  # 1. Private S3 Vault for the SQLite database and short-lived pre-migration backups
   FolioStorageVault:
     Type: AWS::S3::Bucket
     Condition: CreateVaultBucket
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_18
+            comment: Server access logging is not needed for a single-tenant vault; CloudTrail covers management events.
     Properties:
       BucketName: !Sub 'folio-vault-${EnvironmentName}-${AWS::AccountId}-${AWS::Region}'
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -111,18 +141,105 @@ Resources:
         Status: Enabled
       LifecycleConfiguration:
         Rules:
+          # Point-in-time recovery for the vault: previous versions of
+          # database/folio.db are kept for 30 days.
           - Id: ExpireOldSnapshots
             Status: Enabled
             Prefix: database/
             NoncurrentVersionExpiration:
               NoncurrentDays: 30
+          # Pre-migration snapshots written by the app.
+          - Id: ExpirePreMigrationBackups
+            Status: Enabled
+            Prefix: backups/
+            ExpirationInDays: 30
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: CleanUpIncompleteUploadsAndDeleteMarkers
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+            ExpiredObjectDeleteMarker: true
+      Tags:
+        - Key: app
+          Value: folio
+        - Key: env
+          Value: !Ref EnvironmentName
 
-  # 2. AWS Cognito User Pool for Zero-Trust Identity
+  FolioStorageVaultPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: CreateVaultBucket
+    Properties:
+      Bucket: !Ref FolioStorageVault
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt FolioStorageVault.Arn
+              - !Sub '${FolioStorageVault.Arn}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': 'false'
+
+  # 2. Generated secrets. Values are created once and stay stable across
+  #    deploys; Lambda receives only the ARNs and reads them at startup.
+  #    No Name property, so a redeploy after teardown never collides with a
+  #    secret that is still in its deletion recovery window.
+  FolioSessionSecret:
+    Type: AWS::SecretsManager::Secret
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_149
+            comment: The AWS-managed Secrets Manager key is sufficient for this single-tenant app.
+    Properties:
+      Description: !Sub 'Folio ${EnvironmentName} HS256 session signing key'
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+      Tags:
+        - Key: app
+          Value: folio
+        - Key: env
+          Value: !Ref EnvironmentName
+
+  FolioOriginSecret:
+    Type: AWS::SecretsManager::Secret
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_149
+            comment: The AWS-managed Secrets Manager key is sufficient for this single-tenant app.
+    Properties:
+      Description: !Sub 'Folio ${EnvironmentName} CloudFront origin-verify header value'
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+      Tags:
+        - Key: app
+          Value: folio
+        - Key: env
+          Value: !Ref EnvironmentName
+
+  # 3. AWS Cognito User Pool for Zero-Trust Identity
   FolioUserPool:
     Type: AWS::Cognito::UserPool
     Condition: UseCognito
+    # Users and their MFA enrolments cannot be recreated from the template, so
+    # the pool survives stack deletion and replacement. teardown.ps1 offers to
+    # delete it explicitly.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       UserPoolName: !Sub 'folio-userpool-${EnvironmentName}'
+      UserPoolTier: PLUS
+      DeletionProtection: ACTIVE
+      UserPoolAddOns:
+        AdvancedSecurityMode: ENFORCED
       UsernameAttributes:
         - email
       UsernameConfiguration:
@@ -148,8 +265,42 @@ Resources:
         RecoveryMechanisms:
           - Name: verified_email
             Priority: 1
+      UserPoolTags:
+        app: folio
+        env: !Ref EnvironmentName
 
-  # 3. Cognito User Pool App Client for SPA PWA
+  # Threat protection actions. TOTP MFA is already mandatory for every
+  # sign-in, so account-takeover risk escalates to MFA rather than blocking
+  # (sign-ins are proxied through Lambda, so Cognito sees AWS IP addresses and
+  # a BLOCK action could lock the owner out). Known-compromised passwords are
+  # always blocked.
+  FolioUserPoolRiskConfiguration:
+    Type: AWS::Cognito::UserPoolRiskConfigurationAttachment
+    Condition: UseCognito
+    Properties:
+      UserPoolId: !Ref FolioUserPool
+      ClientId: ALL
+      CompromisedCredentialsRiskConfiguration:
+        EventFilter:
+          - SIGN_IN
+          - PASSWORD_CHANGE
+          - SIGN_UP
+        Actions:
+          EventAction: BLOCK
+      AccountTakeoverRiskConfiguration:
+        Actions:
+          LowAction:
+            EventAction: NO_ACTION
+            Notify: false
+          MediumAction:
+            EventAction: MFA_IF_CONFIGURED
+            Notify: false
+          HighAction:
+            EventAction: MFA_IF_CONFIGURED
+            Notify: false
+
+  # 4. Cognito User Pool App Client for SPA PWA (the backend calls
+  #    InitiateAuth with USER_PASSWORD_AUTH and REFRESH_TOKEN_AUTH only)
   FolioUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Condition: UseCognito
@@ -158,52 +309,293 @@ Resources:
       UserPoolId: !Ref FolioUserPool
       GenerateSecret: false
       ExplicitAuthFlows:
-        - ALLOW_USER_SRP_AUTH
-        - ALLOW_REFRESH_TOKEN_AUTH
         - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
       PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
       TokenValidityUnits:
-        AccessToken: days
-        IdToken: days
+        AccessToken: minutes
+        IdToken: minutes
         RefreshToken: days
-      AccessTokenValidity: 1
-      IdTokenValidity: 1
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
       RefreshTokenValidity: 30
 
-  # 4. Serverless Function (FastAPI + Embedded PWA via AWS Lambda Web Adapter)
+  # 5. Observability: stack-owned log group, metric filters, alarms, budget
+  FolioAppLogGroup:
+    Type: AWS::Logs::LogGroup
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_158
+            comment: CloudWatch Logs default encryption is sufficient; the app does not log vault contents.
+          - id: CKV_AWS_66
+            comment: Retention is set to 90 days by design.
+    Properties:
+      LogGroupName: !Sub '/folio/${EnvironmentName}/app'
+      RetentionInDays: 90
+      Tags:
+        - Key: app
+          Value: folio
+        - Key: env
+          Value: !Ref EnvironmentName
+
+  FolioAlarmTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasAlarmEmail
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_26
+            comment: CloudWatch alarms cannot publish to a topic encrypted with the AWS-managed SNS key; alarm text holds no sensitive data.
+    Properties:
+      DisplayName: !Sub 'Folio ${EnvironmentName} alarms'
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlarmEmail
+      Tags:
+        - Key: app
+          Value: folio
+        - Key: env
+          Value: !Ref EnvironmentName
+
+  # The JSON filter matches the "event" field whether Lambda forwards the
+  # app's JSON line as-is ($.event) or nests it under "message".
+  S3SyncFailedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref FolioAppLogGroup
+      FilterName: s3_sync_failed
+      FilterPattern: '{ ($.event = "s3_sync_failed") || ($.message.event = "s3_sync_failed") }'
+      MetricTransformations:
+        - MetricNamespace: !Sub 'Folio/${EnvironmentName}'
+          MetricName: S3SyncFailed
+          MetricValue: '1'
+          Unit: Count
+
+  S3SyncConflictMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref FolioAppLogGroup
+      FilterName: s3_sync_conflict
+      FilterPattern: '{ ($.event = "s3_sync_conflict") || ($.message.event = "s3_sync_conflict") }'
+      MetricTransformations:
+        - MetricNamespace: !Sub 'Folio/${EnvironmentName}'
+          MetricName: S3SyncConflict
+          MetricValue: '1'
+          Unit: Count
+
+  S3RestoreFailedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref FolioAppLogGroup
+      FilterName: s3_restore_failed
+      FilterPattern: '{ ($.event = "s3_restore_failed") || ($.message.event = "s3_restore_failed") }'
+      MetricTransformations:
+        - MetricNamespace: !Sub 'Folio/${EnvironmentName}'
+          MetricName: S3RestoreFailed
+          MetricValue: '1'
+          Unit: Count
+
+  Http5xxMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref FolioAppLogGroup
+      FilterName: http_5xx
+      FilterPattern: '{ ($.event = "http_5xx") || ($.message.event = "http_5xx") }'
+      MetricTransformations:
+        - MetricNamespace: !Sub 'Folio/${EnvironmentName}'
+          MetricName: Http5xx
+          MetricValue: '1'
+          Unit: Count
+
+  S3SyncFailedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: !Sub 'Folio ${EnvironmentName}: vault upload to S3 failed (edits may not be durable yet).'
+      Namespace: !Sub 'Folio/${EnvironmentName}'
+      MetricName: S3SyncFailed
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmEmail, [!Ref FolioAlarmTopic], !Ref AWS::NoValue]
+
+  S3SyncConflictAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: !Sub 'Folio ${EnvironmentName}: repeated vault write conflicts (concurrent editors or a stale instance).'
+      Namespace: !Sub 'Folio/${EnvironmentName}'
+      MetricName: S3SyncConflict
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmEmail, [!Ref FolioAlarmTopic], !Ref AWS::NoValue]
+
+  S3RestoreFailedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: !Sub 'Folio ${EnvironmentName}: vault restore from S3 failed at startup.'
+      Namespace: !Sub 'Folio/${EnvironmentName}'
+      MetricName: S3RestoreFailed
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmEmail, [!Ref FolioAlarmTopic], !Ref AWS::NoValue]
+
+  Http5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: !Sub 'Folio ${EnvironmentName}: API returned 5 or more HTTP 5xx responses in 5 minutes.'
+      Namespace: !Sub 'Folio/${EnvironmentName}'
+      MetricName: Http5xx
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmEmail, [!Ref FolioAlarmTopic], !Ref AWS::NoValue]
+
+  LambdaErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: !Sub 'Folio ${EnvironmentName}: Lambda invocation errors (crashes, timeouts or failed init).'
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref FolioServerlessFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmEmail, [!Ref FolioAlarmTopic], !Ref AWS::NoValue]
+
+  LambdaThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: !Sub 'Folio ${EnvironmentName}: Lambda throttled requests (concurrency limit reached).'
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref FolioServerlessFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmEmail, [!Ref FolioAlarmTopic], !Ref AWS::NoValue]
+
+  # Account-wide cost budget (filtering by the app tag requires activating it
+  # as a cost allocation tag in Billing first).
+  FolioMonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Condition: HasAlarmEmail
+    Properties:
+      Budget:
+        BudgetName: !Sub 'folio-${EnvironmentName}-monthly-${AWS::Region}'
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref MonthlyBudgetUsd
+          Unit: USD
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlarmEmail
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlarmEmail
+
+  # 6. Serverless Function (FastAPI + Embedded PWA via AWS Lambda Web Adapter)
   FolioServerlessFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      DockerTag: latest  # SAM prefixes this with the logical ID and image digest, so every build gets a unique tag.
+      DockerContext: .
+      Dockerfile: Dockerfile
+      checkov:
+        skip:
+          - id: CKV_AWS_115
+            comment: Reserved concurrency is optional (ReservedConcurrency parameter); sandbox accounts cannot reserve any.
+          - id: CKV_AWS_116
+            comment: Invocations are synchronous HTTP requests through the Function URL; a DLQ does not apply.
+          - id: CKV_AWS_117
+            comment: The function only calls public AWS endpoints (S3, Secrets Manager, Cognito, Bedrock); a VPC adds NAT cost without benefit.
+          - id: CKV_AWS_173
+            comment: Secrets live in Secrets Manager; remaining environment variables are non-secret or a bcrypt hash.
     Properties:
       PackageType: Image
+      # Publishes a new version on every image/config change and points the
+      # "live" alias at it. The Function URL is attached to the alias, so
+      # deploy.ps1 -RollbackToVersion can move traffic back instantly.
+      AutoPublishAlias: live
+      EphemeralStorage:
+        Size: 1024
       ReservedConcurrentExecutions: !If
         - HasReservedConcurrency
         - !Ref ReservedConcurrency
         - !Ref AWS::NoValue
+      LoggingConfig:
+        LogFormat: JSON
+        ApplicationLogLevel: INFO
+        SystemLogLevel: WARN
+        LogGroup: !Ref FolioAppLogGroup
       Environment:
         Variables:
           AWS_LWA_PORT: "8000"
           AWS_LWA_ASYNC_INIT: "true"
+          AWS_LWA_READINESS_CHECK_PATH: "/api/health"
           FOLIO_ENV: !Ref EnvironmentName
           SQLITE_DB_PATH: "/tmp/folio.db"
           # Lambda's filesystem is read-only outside /tmp; statement uploads must land there.
           FOLIO_UPLOAD_DIR: "/tmp/uploads"
+          # Function URLs cap request payloads at 6 MB (including multipart overhead).
+          FOLIO_MAX_UPLOAD_MB: "5"
           S3_BUCKET_NAME: !If [CreateVaultBucket, !Ref FolioStorageVault, !Ref ExistingVaultBucketName]
-          FOLIO_SECRET_KEY: !Ref SessionSecretKey
+          FOLIO_SESSION_SECRET_ARN: !Ref FolioSessionSecret
+          FOLIO_ORIGIN_SECRET_ARN: !Ref FolioOriginSecret
           FOLIO_MASTER_PASSWORD_HASH: !Ref MasterPasswordHash
           COGNITO_USER_POOL_ID: !If [UseCognito, !Ref FolioUserPool, '']
           COGNITO_CLIENT_ID: !If [UseCognito, !Ref FolioUserPoolClient, '']
           COGNITO_REGION: !Ref AWS::Region
-          FOLIO_ORIGIN_VERIFY_SECRET: !Ref OriginVerifySecret
+          # Only AllowedOrigin, never the CloudFront domain: the distribution
+          # depends on this function's URL, so referencing it here would be a
+          # circular dependency. The SPA and API share the CloudFront host, so
+          # no CORS is needed by default.
           FOLIO_CORS_ORIGINS: !Ref AllowedOrigin
           FOLIO_BEDROCK_ENABLED: !Ref EnableBedrock
           FOLIO_BEDROCK_MODEL_ID: !Ref BedrockModelId
       FunctionUrlConfig:
         AuthType: NONE
-        # The app and its API are served from the same origin, so cross-origin
-        # access is not needed at all. A wildcard origin combined with
-        # AllowCredentials is invalid per the CORS specification and browsers
-        # reject it -- set AllowedOrigin to a real origin only if you front the
-        # function with a custom domain.
+        # The app and its API are served from the same CloudFront origin, so
+        # cross-origin access is not needed at all. A wildcard origin combined
+        # with AllowCredentials is invalid per the CORS specification and
+        # browsers reject it -- set AllowedOrigin to a real origin only if a
+        # different host must call the API.
         Cors: !If
           - HasAllowedOrigin
           - AllowOrigins:
@@ -218,47 +610,210 @@ Resources:
             AllowHeaders:
               - 'Content-Type'
               - 'Authorization'
-              - 'X-Folio-Origin-Verify'
             AllowCredentials: true
           - !Ref AWS::NoValue
       Policies:
         - Statement:
-            - Effect: Allow
+            - Sid: VaultObjectReadWrite
+              Effect: Allow
               Action:
                 - 's3:GetObject'
                 - 's3:PutObject'
-                - 's3:DeleteObject'
                 - 's3:AbortMultipartUpload'
-                - 's3:ListMultipartUploadParts'
-                - 's3:ListBucket'
-                - 's3:GetBucketLocation'
               Resource:
-                - !If
-                  - CreateVaultBucket
-                  - !GetAtt FolioStorageVault.Arn
-                  - !Sub 'arn:${AWS::Partition}:s3:::${ExistingVaultBucketName}'
-                - !If
-                  - CreateVaultBucket
-                  - !Sub '${FolioStorageVault.Arn}/*'
-                  - !Sub 'arn:${AWS::Partition}:s3:::${ExistingVaultBucketName}/*'
-            - Effect: Allow
-              Action:
-                - 'bedrock:InvokeModel'
-                - 'bedrock:InvokeModelWithResponseStream'
-              Resource: '*'
+                - !Sub
+                  - 'arn:${AWS::Partition}:s3:::${Bucket}/database/*'
+                  - Bucket: !If [CreateVaultBucket, !Ref FolioStorageVault, !Ref ExistingVaultBucketName]
+                - !Sub
+                  - 'arn:${AWS::Partition}:s3:::${Bucket}/backups/*'
+                  - Bucket: !If [CreateVaultBucket, !Ref FolioStorageVault, !Ref ExistingVaultBucketName]
+            # ListBucket lets HeadObject/GetObject return 404 (not 403) for a
+            # missing vault on first start. IfExists: that implicit check
+            # carries no s3:prefix, while explicit listings are limited to the
+            # two vault prefixes.
+            - Sid: VaultListPrefixes
+              Effect: Allow
+              Action: 's3:ListBucket'
+              Resource: !Sub
+                - 'arn:${AWS::Partition}:s3:::${Bucket}'
+                - Bucket: !If [CreateVaultBucket, !Ref FolioStorageVault, !Ref ExistingVaultBucketName]
+              Condition:
+                StringLikeIfExists:
+                  's3:prefix':
+                    - ''
+                    - 'database/*'
+                    - 'backups/*'
+            - Sid: ReadAppSecrets
+              Effect: Allow
+              Action: 'secretsmanager:GetSecretValue'
+              Resource:
+                - !Ref FolioSessionSecret
+                - !Ref FolioOriginSecret
+        - !If
+          - UseBedrock
+          - Statement:
+              - Sid: InvokeConfiguredModel
+                Effect: Allow
+                Action: 'bedrock:InvokeModel'
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:bedrock:*::foundation-model/${BedrockModelId}'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockModelId}'
+              # A cross-region inference profile routes to the underlying
+              # foundation model in several regions; allow that only when the
+              # call goes through the configured profile.
+              - Sid: InvokeModelViaConfiguredProfile
+                Effect: Allow
+                Action: 'bedrock:InvokeModel'
+                Resource: !Sub 'arn:${AWS::Partition}:bedrock:*::foundation-model/*'
+                Condition:
+                  StringEquals:
+                    'bedrock:InferenceProfileArn': !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockModelId}'
+          - !Ref AWS::NoValue
+
+  # 7. CloudFront edge in front of the Function URL. The origin-verify header
+  #    is injected here; the app rejects any request that lacks it, so the raw
+  #    Function URL is unusable directly.
+  #    API requests: no caching (Max TTL 1 s only so the Authorization header
+  #    can be keyed and therefore forwarded on GET/HEAD -- an origin request
+  #    policy cannot forward Authorization).
+  FolioNoCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub '${AWS::StackName}-no-cache-auth'
+        Comment: Folio dynamic responses - per-user key, effectively uncached
+        DefaultTTL: 0
+        MinTTL: 0
+        MaxTTL: 1
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+          HeadersConfig:
+            HeaderBehavior: whitelist
+            Headers:
+              - Authorization
+          CookiesConfig:
+            CookieBehavior: all
+          QueryStringsConfig:
+            QueryStringBehavior: all
+
+  # Host is deliberately not forwarded: a Function URL only accepts its own
+  # hostname. CloudFront-Viewer-Address carries the client IP for rate limiting.
+  FolioOriginRequestPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub '${AWS::StackName}-origin-request'
+        Comment: Folio API - viewer headers the app needs (no Host)
+        HeadersConfig:
+          HeaderBehavior: whitelist
+          Headers:  # Quota: 10 headers per origin request policy.
+            - CloudFront-Viewer-Address
+            - Accept
+            - Accept-Language
+            - Content-Type
+            - Origin
+            - Referer
+            - User-Agent
+            - X-Requested-With
+            - If-None-Match
+            - If-Modified-Since
+        CookiesConfig:
+          CookieBehavior: all
+        QueryStringsConfig:
+          QueryStringBehavior: all
+
+  FolioDistribution:
+    Type: AWS::CloudFront::Distribution
     Metadata:
-      DockerTag: latest
-      DockerContext: .
-      Dockerfile: Dockerfile
+      checkov:
+        skip:
+          - id: CKV_AWS_68
+            comment: No WAF by decision; the origin-verify secret, app rate limiting and the cost budget bound exposure.
+          - id: CKV_AWS_86
+            comment: CloudFront access logging is not enabled to keep the deployment free-tier friendly.
+          - id: CKV_AWS_174
+            comment: The default *.cloudfront.net certificate does not allow choosing a minimum TLS version; a custom domain would.
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub 'Folio ${EnvironmentName} (${AWS::StackName})'
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+        Origins:
+          - Id: FolioFunctionUrl
+            DomainName: !Select [2, !Split ['/', !GetAtt FolioServerlessFunctionUrl.FunctionUrl]]
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols:
+                - TLSv1.2
+            OriginCustomHeaders:
+              - HeaderName: X-Folio-Origin-Verify
+                HeaderValue: !Sub '{{resolve:secretsmanager:${FolioOriginSecret}}}'
+        DefaultCacheBehavior:
+          TargetOriginId: FolioFunctionUrl
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+          CachedMethods: [GET, HEAD]
+          CachePolicyId: !Ref FolioNoCachePolicy
+          OriginRequestPolicyId: !Ref FolioOriginRequestPolicy
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: FolioFunctionUrl
+            ViewerProtocolPolicy: redirect-to-https
+            Compress: true
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachedMethods: [GET, HEAD]
+            CachePolicyId: !Ref FolioNoCachePolicy
+            OriginRequestPolicyId: !Ref FolioOriginRequestPolicy
+          # Vite emits content-hashed file names under /assets, so they are
+          # safe to cache at the edge (managed CachingOptimized policy).
+          - PathPattern: /assets/*
+            TargetOriginId: FolioFunctionUrl
+            ViewerProtocolPolicy: redirect-to-https
+            Compress: true
+            AllowedMethods: [GET, HEAD]
+            CachedMethods: [GET, HEAD]
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+      Tags:
+        - Key: app
+          Value: folio
+        - Key: env
+          Value: !Ref EnvironmentName
 
 Outputs:
-  FolioAppUrl:
-    Description: Live Serverless HTTPS Endpoint for Folio App
+  AppUrl:
+    Description: Folio application URL (CloudFront). Open this in the browser.
+    Value: !Sub 'https://${FolioDistribution.DomainName}'
+
+  CloudFrontDistributionId:
+    Description: CloudFront distribution ID (for cache invalidations)
+    Value: !Ref FolioDistribution
+
+  FunctionUrlOrigin:
+    Description: Direct Lambda Function URL of the live alias (CloudFront origin only; rejects requests without the origin-verify header)
     Value: !GetAtt FolioServerlessFunctionUrl.FunctionUrl
+
+  FunctionName:
+    Description: Lambda function name (alias "live" serves traffic; used by deploy.ps1 -RollbackToVersion)
+    Value: !Ref FolioServerlessFunction
+
+  AppLogGroup:
+    Description: CloudWatch Logs group for application and platform logs (90-day retention)
+    Value: !Ref FolioAppLogGroup
+
+  AlarmTopicArn:
+    Condition: HasAlarmEmail
+    Description: SNS topic for alarm notifications (confirm the email subscription)
+    Value: !Ref FolioAlarmTopic
 
   CognitoUserPoolId:
     Condition: UseCognito
-    Description: AWS Cognito User Pool ID
+    Description: AWS Cognito User Pool ID (retained on stack deletion)
     Value: !Ref FolioUserPool
 
   CognitoClientId:
@@ -269,3 +824,7 @@ Outputs:
   S3VaultBucket:
     Description: S3 Storage Vault Bucket Name
     Value: !If [CreateVaultBucket, !Ref FolioStorageVault, !Ref ExistingVaultBucketName]
+
+  VaultBucketReused:
+    Description: '"true" when the stack reuses an existing vault bucket (ExistingVaultBucketName); teardown.ps1 never bulk-deletes it'
+    Value: !If [CreateVaultBucket, 'false', 'true']

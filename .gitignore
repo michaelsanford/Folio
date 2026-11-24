@@ -62,3 +62,10 @@ Thumbs.db
 
 # AWS SAM
 .aws-sam/
+
+# Per-environment deploy settings written by deploy.ps1 (holds the passphrase hash and alarm email)
+samconfig.toml
+
+# Vault backups (pre-migration copies and teardown downloads) contain financial data
+*.pre-migrate-*.bak
+folio-vault-backup-*.db

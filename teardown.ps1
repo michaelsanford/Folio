@@ -3,10 +3,59 @@
     Tear down a Folio AWS SAM CloudFormation stack and optionally delete preserved resources.
 
 .DESCRIPTION
-    Discovers the main CloudFormation stack, retained S3 vault buckets, SAM ECR CompanionStacks
-    and container images, and Lambda CloudWatch Log Groups. By default, prompts individually before
-    deleting preserved resources; use -DeleteAll for a single prompt or -Force to delete all
-    stack-associated resources without prompting.
+    Discovers the main CloudFormation stack and the resources it leaves behind: retained S3 vault
+    buckets, the retained Cognito User Pool, the stack's Secrets Manager secrets, SAM ECR
+    CompanionStacks and container images, and CloudWatch Log Groups (the legacy
+    /aws/lambda/<function> groups, and /folio/<env>/app if it outlived its stack). Resources the
+    stack owns outright (CloudFront distribution, alarms, SNS topic, budget, the
+    /folio/<env>/app log group) are deleted with the stack itself.
+
+    By default, prompts individually before deleting preserved resources; use -DeleteAll for a
+    single prompt or -Force to delete all stack-associated resources without prompting.
+
+    Vault safety rules:
+    - Before a vault bucket is emptied, database/folio.db is downloaded to
+      .\folio-vault-backup-<bucket>-<yyyyMMdd-HHmmss>.db in the current directory. If that
+      download fails the bucket is preserved, even with -Force. Use -SkipVaultBackup to skip
+      the download deliberately.
+    - Deleting a vault bucket requires typing its exact name, including with -DeleteAll. Only
+      -Force skips the typed confirmation.
+    - A bucket the stack reused through ExistingVaultBucketName is never selected by -DeleteAll
+      or -Force; it can only be deleted interactively.
+
+    The Cognito User Pool is retained by the stack with deletion protection on. When it is
+    selected, deletion protection is turned off with update-user-pool (sending the pool's
+    current settings back, because UpdateUserPool resets any setting it is not given) and the
+    pool is deleted with all of its users. If that update fails, the pool is preserved.
+
+    CloudFormation may leave the stack's secrets scheduled for deletion with a recovery window.
+    When selected, they are force-deleted without recovery. The template does not name its
+    secrets, so a redeploy never collides with them either way.
+
+.PARAMETER Region
+    AWS region of the stack.
+
+.PARAMETER StackName
+    Main CloudFormation stack name.
+
+.PARAMETER Environment
+    Environment name used for resource naming conventions. Defaults to the stack's
+    EnvironmentName parameter.
+
+.PARAMETER Profile
+    Optional AWS CLI profile.
+
+.PARAMETER DeleteAll
+    Ask once to delete the stack and all stack-associated retained resources (vault buckets
+    still require typing their name; a reused vault bucket is never included).
+
+.PARAMETER Force
+    Skip all confirmation prompts and delete the stack and all stack-associated retained
+    resources (a reused vault bucket is still never included, and a failed vault backup still
+    preserves the bucket).
+
+.PARAMETER SkipVaultBackup
+    Do not download database/folio.db before deleting a vault bucket.
 
 .EXAMPLE
     .\teardown.ps1 -Region ca-central-1 -StackName Folio-QA
@@ -26,7 +75,9 @@ param (
     # Ask once to delete the stack and all stack-associated retained resources.
     [switch]$DeleteAll,
     # Skip all confirmation prompts and delete the stack and all stack-associated retained resources.
-    [switch]$Force
+    [switch]$Force,
+    # Do not download database/folio.db before deleting a vault bucket.
+    [switch]$SkipVaultBackup
 )
 
 $ErrorActionPreference = "Stop"
@@ -83,6 +134,89 @@ function Confirm-Action {
         return $DefaultYes
     }
     return ($reply -match '^(y|yes)$')
+}
+
+function Confirm-TypedName {
+    param (
+        [string]$Prompt,
+        [string]$Expected
+    )
+
+    if ($Force) {
+        return $true
+    }
+
+    $reply = Read-Host $Prompt
+    if ($null -eq $reply) { return $false }
+    return ($reply.Trim() -ceq $Expected)
+}
+
+function Backup-VaultDatabase {
+    # Downloads database/folio.db. Returns Ok=$false (bucket must be preserved) on any failure.
+    param ([string]$BucketName)
+
+    $key = "database/folio.db"
+    $head = Invoke-Aws -Arguments @("s3api", "head-object", "--bucket", $BucketName, "--key", $key, "--output", "json") -AllowFailure
+    if ($head.ExitCode -ne 0) {
+        if ($head.Output -match '\(404\)|Not Found|NoSuchKey') {
+            return [pscustomobject]@{ Ok = $true; Path = $null; Note = "no current '$key' object to back up" }
+        }
+        return [pscustomobject]@{ Ok = $false; Path = $null; Note = "head-object failed: $($head.Output)" }
+    }
+    $expectedLength = [long](($head.Output | ConvertFrom-Json).ContentLength)
+
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $path = Join-Path (Get-Location).Path "folio-vault-backup-$BucketName-$stamp.db"
+    $get = Invoke-Aws -Arguments @("s3api", "get-object", "--bucket", $BucketName, "--key", $key, $path, "--output", "json") -AllowFailure
+    if ($get.ExitCode -ne 0 -or -not (Test-Path $path) -or (Get-Item $path).Length -ne $expectedLength) {
+        Remove-Item $path -Force -ErrorAction SilentlyContinue
+        return [pscustomobject]@{ Ok = $false; Path = $null; Note = "download failed or size mismatch: $($get.Output)" }
+    }
+    return [pscustomobject]@{ Ok = $true; Path = $path; Note = "$expectedLength bytes" }
+}
+
+function Remove-CognitoUserPool {
+    # Turns off deletion protection, then deletes the pool. UpdateUserPool resets every setting
+    # it is not given, so the pool's current settings are sent back with the change. If the
+    # update fails nothing has changed and the pool is preserved.
+    param ([string]$PoolId)
+
+    $desc = Invoke-Aws -Arguments @("cognito-idp", "describe-user-pool", "--user-pool-id", $PoolId, "--output", "json")
+    $pool = ($desc.Output | ConvertFrom-Json).UserPool
+
+    if ($pool.DeletionProtection -eq "ACTIVE") {
+        $request = [ordered]@{ UserPoolId = $PoolId; DeletionProtection = "INACTIVE" }
+        $preserve = @(
+            "Policies", "LambdaConfig", "AutoVerifiedAttributes", "VerificationMessageTemplate",
+            "SmsAuthenticationMessage", "UserAttributeUpdateSettings", "MfaConfiguration",
+            "DeviceConfiguration", "EmailConfiguration", "SmsConfiguration", "UserPoolTags",
+            "AdminCreateUserConfig", "UserPoolAddOns", "AccountRecoverySetting", "PoolName", "UserPoolTier"
+        )
+        foreach ($field in $preserve) {
+            if ($null -ne $pool.$field) { $request[$field] = $pool.$field }
+        }
+        # Deprecated field echoed by DescribeUserPool; UpdateUserPool rejects it alongside
+        # Policies.PasswordPolicy.TemporaryPasswordValidityDays.
+        if ($request.Contains("AdminCreateUserConfig") -and $request["AdminCreateUserConfig"].PSObject.Properties["UnusedAccountValidityDays"]) {
+            $request["AdminCreateUserConfig"].PSObject.Properties.Remove("UnusedAccountValidityDays")
+        }
+
+        $tmp = [System.IO.Path]::GetTempFileName()
+        try {
+            [System.IO.File]::WriteAllText($tmp, ($request | ConvertTo-Json -Depth 20), (New-Object System.Text.UTF8Encoding($false)))
+            $upd = Invoke-Aws -Arguments @("cognito-idp", "update-user-pool", "--cli-input-json", "file://$tmp") -AllowFailure
+        } finally {
+            Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+        }
+        if ($upd.ExitCode -ne 0) {
+            throw "Could not turn off deletion protection on '$PoolId' (pool unchanged and preserved):`n$($upd.Output)`nIn the console: Cognito > User pools > $PoolId > Settings > Deletion protection."
+        }
+    }
+
+    $del = Invoke-Aws -Arguments @("cognito-idp", "delete-user-pool", "--user-pool-id", $PoolId) -AllowFailure
+    if ($del.ExitCode -ne 0) {
+        throw "Deletion protection on '$PoolId' was turned off but delete-user-pool failed. Review the pool's settings before reusing it:`n$($del.Output)"
+    }
 }
 
 function Get-BucketVersionCounts {
@@ -295,6 +429,9 @@ $stackEnvParam = $null
 $stackVaultOutput = $null
 $stackBucketPhysicalId = $null
 $stackLambdaName = $null
+$stackReusedBucket = $null
+$stackUserPoolId = $null
+$stackSecretArns = @()
 
 $stackProbe = Invoke-Aws -Arguments @("cloudformation", "describe-stacks", "--stack-name", $StackName, "--output", "json") -AllowFailure
 if ($stackProbe.ExitCode -eq 0 -and $stackProbe.Output.Trim()) {
@@ -305,6 +442,10 @@ if ($stackProbe.ExitCode -eq 0 -and $stackProbe.Output.Trim()) {
         if ($stackObj.Parameters) {
             $envParam = $stackObj.Parameters | Where-Object { $_.ParameterKey -eq "EnvironmentName" } | Select-Object -First 1
             if ($envParam) { $stackEnvParam = $envParam.ParameterValue }
+            $reuseParam = $stackObj.Parameters | Where-Object { $_.ParameterKey -eq "ExistingVaultBucketName" } | Select-Object -First 1
+            if ($reuseParam -and -not [string]::IsNullOrWhiteSpace($reuseParam.ParameterValue)) {
+                $stackReusedBucket = $reuseParam.ParameterValue.Trim()
+            }
         }
         if ($stackObj.Outputs) {
             $vaultOut = $stackObj.Outputs | Where-Object { $_.OutputKey -eq "S3VaultBucket" } | Select-Object -First 1
@@ -318,6 +459,9 @@ if ($stackProbe.ExitCode -eq 0 -and $stackProbe.Output.Trim()) {
             if ($vaultRes -and $vaultRes.PhysicalResourceId) { $stackBucketPhysicalId = $vaultRes.PhysicalResourceId }
             $fnRes = $resources | Where-Object { $_.LogicalResourceId -eq "FolioServerlessFunction" } | Select-Object -First 1
             if ($fnRes -and $fnRes.PhysicalResourceId) { $stackLambdaName = $fnRes.PhysicalResourceId }
+            $poolRes = $resources | Where-Object { $_.ResourceType -eq "AWS::Cognito::UserPool" } | Select-Object -First 1
+            if ($poolRes -and $poolRes.PhysicalResourceId) { $stackUserPoolId = $poolRes.PhysicalResourceId }
+            $stackSecretArns = @($resources | Where-Object { $_.ResourceType -eq "AWS::SecretsManager::Secret" -and $_.PhysicalResourceId } | ForEach-Object { $_.PhysicalResourceId })
         }
     }
 }
@@ -350,6 +494,12 @@ foreach ($pair in @(
     }
 }
 
+# A bucket the stack merely reused (ExistingVaultBucketName) predates the stack: never bulk-delete it.
+if ($stackReusedBucket -and $bucketCandidateMap.Contains($stackReusedBucket)) {
+    $bucketCandidateMap[$stackReusedBucket].IncludeInDeleteAll = $false
+    $bucketCandidateMap[$stackReusedBucket].Source = "Reused by stack (ExistingVaultBucketName)"
+}
+
 $discoveredBuckets = @()
 foreach ($bName in $bucketCandidateMap.Keys) {
     $head = Invoke-Aws -Arguments @("s3api", "head-bucket", "--bucket", $bName) -AllowFailure
@@ -359,11 +509,55 @@ foreach ($bName in $bucketCandidateMap.Keys) {
             Name               = $bName
             Source             = $bucketCandidateMap[$bName].Source
             IncludeInDeleteAll = $bucketCandidateMap[$bName].IncludeInDeleteAll
+            Reused             = ($bName -eq $stackReusedBucket)
             Versions           = $counts.Versions
             DeleteMarkers      = $counts.DeleteMarkers
         }
     }
 }
+
+# 3b. Discover the retained Cognito User Pool (stack resource, or name convention once the stack is gone)
+$userPoolCandidates = [ordered]@{}
+if ($stackUserPoolId) {
+    $userPoolCandidates[$stackUserPoolId] = @{ Source = "Stack resource (FolioUserPool)"; IncludeInDeleteAll = $true }
+}
+if ($effectiveEnv) {
+    $poolName = "folio-userpool-$effectiveEnv"
+    $poolToken = $null
+    do {
+        $cmd = @("cognito-idp", "list-user-pools", "--max-results", "60", "--output", "json")
+        if ($poolToken) { $cmd += @("--next-token", $poolToken) }
+        $poolRes = Invoke-Aws -Arguments $cmd -AllowFailure
+        if ($poolRes.ExitCode -ne 0 -or -not $poolRes.Output.Trim()) { break }
+        $poolPage = $poolRes.Output | ConvertFrom-Json
+        foreach ($p in @($poolPage.UserPools)) {
+            if ($p.Name -eq $poolName -and -not $userPoolCandidates.Contains($p.Id)) {
+                # Not provably this stack's pool: interactive deletion only.
+                $userPoolCandidates[$p.Id] = @{ Source = "Name convention ($poolName)"; IncludeInDeleteAll = $false }
+            }
+        }
+        $poolToken = $poolPage.NextToken
+    } while ($poolToken)
+}
+
+$discoveredUserPools = @()
+foreach ($poolId in $userPoolCandidates.Keys) {
+    $poolDesc = Invoke-Aws -Arguments @("cognito-idp", "describe-user-pool", "--user-pool-id", $poolId, "--output", "json") -AllowFailure
+    if ($poolDesc.ExitCode -eq 0 -and $poolDesc.Output.Trim()) {
+        $up = ($poolDesc.Output | ConvertFrom-Json).UserPool
+        $discoveredUserPools += [pscustomobject]@{
+            Id                 = $poolId
+            Name               = $up.Name
+            Users              = $up.EstimatedNumberOfUsers
+            DeletionProtection = $up.DeletionProtection
+            Source             = $userPoolCandidates[$poolId].Source
+            IncludeInDeleteAll = $userPoolCandidates[$poolId].IncludeInDeleteAll
+        }
+    }
+}
+
+# 3c. Stack secrets (deleted by CloudFormation, possibly with a recovery window)
+$discoveredSecrets = @($stackSecretArns)
 
 # 4. Discover SAM ECR CompanionStacks
 $companionPattern = "^$([regex]::Escape($StackName))-[0-9a-f]{8}-CompanionStack$"
@@ -408,11 +602,16 @@ do {
     $nextToken = $page.NextToken
 } while ($nextToken)
 
-# 5. Discover Lambda CloudWatch Log Groups
+# 5. Discover CloudWatch Log Groups. Legacy: /aws/lambda/<function> (written before the app
+# log group existed). /folio/<env>/app is stack-owned and deleted with the stack, so it is
+# only listed here when no stack exists (an orphan from an earlier stack).
 $logGroupSet = New-Object System.Collections.Generic.HashSet[string]
 $logPrefixes = @("/aws/lambda/$StackName-FolioServerlessFunction-")
 if ($stackLambdaName) {
     $logPrefixes += "/aws/lambda/$stackLambdaName"
+}
+if (-not $stackExists -and $effectiveEnv) {
+    $logPrefixes += "/folio/$effectiveEnv/"
 }
 foreach ($prefix in $logPrefixes) {
     $logRes = Invoke-Aws -Arguments @("logs", "describe-log-groups", "--log-group-name-prefix", $prefix, "--output", "json") -AllowFailure
@@ -443,6 +642,16 @@ if ($discoveredBuckets.Count -gt 0) {
 } else {
     Write-Host "  - S3 Vault Buckets: (none found)" -ForegroundColor DarkGray
 }
+if ($discoveredUserPools.Count -gt 0) {
+    foreach ($p in $discoveredUserPools) {
+        Write-Host "  - Cognito Pool:     $($p.Id) '$($p.Name)' [~$($p.Users) users, deletion protection $($p.DeletionProtection)] - $($p.Source)" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "  - Cognito Pools:    (none found)" -ForegroundColor DarkGray
+}
+foreach ($s in $discoveredSecrets) {
+    Write-Host "  - Stack Secret:     $s (deleted with the stack; recovery window optional)" -ForegroundColor Yellow
+}
 if ($discoveredCompanions.Count -gt 0) {
     foreach ($c in $discoveredCompanions) {
         $repoSummary = ($c.Repositories | ForEach-Object { "$($_.Name) ($($_.ImageCount) images)" }) -join ", "
@@ -460,7 +669,7 @@ if ($discoveredLogGroups.Count -gt 0) {
     Write-Host "  - CloudWatch Logs:  (none found)" -ForegroundColor DarkGray
 }
 
-if (-not $stackExists -and $discoveredBuckets.Count -eq 0 -and $discoveredCompanions.Count -eq 0 -and $discoveredLogGroups.Count -eq 0) {
+if (-not $stackExists -and $discoveredBuckets.Count -eq 0 -and $discoveredUserPools.Count -eq 0 -and $discoveredCompanions.Count -eq 0 -and $discoveredLogGroups.Count -eq 0) {
     Write-Host "`nNothing to tear down for stack '$StackName' in $Region." -ForegroundColor Green
     exit 0
 }
@@ -469,6 +678,8 @@ if (-not $stackExists -and $discoveredBuckets.Count -eq 0 -and $discoveredCompan
 Write-Host "`n[2/4] Confirming Teardown Actions..." -ForegroundColor Yellow
 $deleteMainStack = $false
 $bucketsToDelete = @()
+$userPoolsToDelete = @()
+$secretsToPurge = @()
 $companionsToDelete = @()
 $logGroupsToDelete = @()
 
@@ -481,12 +692,24 @@ if ($Force -or $DeleteAll) {
     }
     $deleteMainStack = $stackExists
     foreach ($b in $discoveredBuckets) {
-        if ($b.IncludeInDeleteAll) {
+        if ($b.Reused) {
+            Write-Host "  Skipping reused vault bucket '$($b.Name)' (ExistingVaultBucketName; it predates this stack). Run interactively without -Force/-DeleteAll to delete it." -ForegroundColor DarkYellow
+        } elseif (-not $b.IncludeInDeleteAll) {
+            Write-Host "  Skipping legacy bucket '$($b.Name)' (not bound to '$StackName'; run interactively without -Force/-DeleteAll if you intend to delete it)." -ForegroundColor DarkYellow
+        } elseif (Confirm-TypedName -Prompt "Type the bucket name '$($b.Name)' to permanently delete the vault (anything else keeps it)" -Expected $b.Name) {
             $bucketsToDelete += $b
         } else {
-            Write-Host "  Skipping legacy bucket '$($b.Name)' (not bound to '$StackName'; run interactively without -Force/-DeleteAll if you intend to delete it)." -ForegroundColor DarkYellow
+            Write-Host "  Name did not match: keeping vault bucket '$($b.Name)'." -ForegroundColor DarkYellow
         }
     }
+    foreach ($p in $discoveredUserPools) {
+        if ($p.IncludeInDeleteAll) {
+            $userPoolsToDelete += $p
+        } else {
+            Write-Host "  Skipping Cognito pool '$($p.Id)' (matched by name only; run interactively to delete it)." -ForegroundColor DarkYellow
+        }
+    }
+    $secretsToPurge = @($discoveredSecrets)
     $companionsToDelete = @($discoveredCompanions)
     $logGroupsToDelete = @($discoveredLogGroups)
 } else {
@@ -499,9 +722,22 @@ if ($Force -or $DeleteAll) {
     }
 
     foreach ($b in $discoveredBuckets) {
-        $warn = "[PRESERVED BY DEFAULT] Permanently empty & delete S3 vault '$($b.Name)' ($($b.Versions) versions, $($b.DeleteMarkers) delete markers)? This erases backups irreversibly"
-        if (Confirm-Action -Prompt $warn -DefaultYes:$false) {
+        $reusedNote = if ($b.Reused) { " It was reused via ExistingVaultBucketName." } else { "" }
+        $prompt = "[PRESERVED BY DEFAULT] S3 vault '$($b.Name)' ($($b.Versions) versions, $($b.DeleteMarkers) delete markers).$reusedNote Type the bucket name to permanently empty and delete it, or press Enter to keep it"
+        if (Confirm-TypedName -Prompt $prompt -Expected $b.Name) {
             $bucketsToDelete += $b
+        }
+    }
+
+    foreach ($p in $discoveredUserPools) {
+        if (Confirm-Action -Prompt "[PRESERVED BY DEFAULT] Delete Cognito user pool '$($p.Id)' ('$($p.Name)', ~$($p.Users) users)? Users must be re-invited and re-enrol MFA" -DefaultYes:$false) {
+            $userPoolsToDelete += $p
+        }
+    }
+
+    if ($discoveredSecrets.Count -gt 0 -and $deleteMainStack) {
+        if (Confirm-Action -Prompt "[OPTIONAL] Force-delete the stack's $($discoveredSecrets.Count) secret(s) without a recovery window once the stack is gone?" -DefaultYes:$false) {
+            $secretsToPurge = @($discoveredSecrets)
         }
     }
 
@@ -520,7 +756,7 @@ if ($Force -or $DeleteAll) {
     }
 }
 
-if (-not $deleteMainStack -and $bucketsToDelete.Count -eq 0 -and $companionsToDelete.Count -eq 0 -and $logGroupsToDelete.Count -eq 0) {
+if (-not $deleteMainStack -and $bucketsToDelete.Count -eq 0 -and $userPoolsToDelete.Count -eq 0 -and $companionsToDelete.Count -eq 0 -and $logGroupsToDelete.Count -eq 0) {
     Write-Host "Nothing selected for deletion. Exiting cleanly." -ForegroundColor Yellow
     exit 0
 }
@@ -528,20 +764,69 @@ if (-not $deleteMainStack -and $bucketsToDelete.Count -eq 0 -and $companionsToDe
 # 7. Execute deletions in dependency order
 Write-Host "`n[3/4] Executing Teardown..." -ForegroundColor Yellow
 $deletedItems = @()
+$failedItems = @()
+$backupFiles = @()
 
 if ($deleteMainStack) {
-    Write-Host "Deleting CloudFormation stack '$StackName'..." -ForegroundColor Gray
+    Write-Host "Deleting CloudFormation stack '$StackName' (the CloudFront distribution can take several minutes)..." -ForegroundColor Gray
     Invoke-Aws -Arguments @("cloudformation", "delete-stack", "--stack-name", $StackName) | Out-Null
     Write-Host "Waiting for stack deletion to complete..." -ForegroundColor Gray
     Invoke-Aws -Arguments @("cloudformation", "wait", "stack-delete-complete", "--stack-name", $StackName) | Out-Null
     $deletedItems += "CloudFormation stack: $StackName"
 }
 
+foreach ($s in $secretsToPurge) {
+    $sd = Invoke-Aws -Arguments @("secretsmanager", "describe-secret", "--secret-id", $s, "--output", "json") -AllowFailure
+    if ($sd.ExitCode -ne 0) {
+        # ResourceNotFound: CloudFormation already removed it outright.
+        continue
+    }
+    Write-Host "Force-deleting secret '$s' without recovery..." -ForegroundColor Gray
+    $sdel = Invoke-Aws -Arguments @("secretsmanager", "delete-secret", "--secret-id", $s, "--force-delete-without-recovery", "--output", "json") -AllowFailure
+    if ($sdel.ExitCode -eq 0) {
+        $deletedItems += "Secret (no recovery window): $s"
+    } else {
+        $failedItems += "Secret $s : $($sdel.Output)"
+    }
+}
+
+$skippedBuckets = @()
 foreach ($b in $bucketsToDelete) {
+    if (-not $SkipVaultBackup) {
+        Write-Host "Backing up database/folio.db from '$($b.Name)'..." -ForegroundColor Gray
+        $backup = Backup-VaultDatabase -BucketName $b.Name
+        if (-not $backup.Ok) {
+            Write-Host "  Backup FAILED ($($backup.Note)). Preserving vault bucket '$($b.Name)'." -ForegroundColor Red
+            $failedItems += "S3 vault bucket $($b.Name) preserved: backup failed"
+            $skippedBuckets += $b.Name
+            continue
+        }
+        if ($backup.Path) {
+            Write-Host "  Saved $($backup.Path) ($($backup.Note))." -ForegroundColor Green
+            $backupFiles += $backup.Path
+        } else {
+            Write-Host "  Nothing to back up: $($backup.Note)." -ForegroundColor DarkYellow
+        }
+    }
     Write-Host "Emptying all versions and deleting S3 vault '$($b.Name)'..." -ForegroundColor Gray
     Remove-VersionedS3Bucket -BucketName $b.Name
     $deletedItems += "S3 vault bucket: $($b.Name)"
 }
+$bucketsToDelete = @($bucketsToDelete | Where-Object { $skippedBuckets -notcontains $_.Name })
+
+$skippedPools = @()
+foreach ($p in $userPoolsToDelete) {
+    Write-Host "Disabling deletion protection and deleting Cognito user pool '$($p.Id)'..." -ForegroundColor Gray
+    try {
+        Remove-CognitoUserPool -PoolId $p.Id
+        $deletedItems += "Cognito user pool: $($p.Id) ($($p.Name))"
+    } catch {
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
+        $failedItems += "Cognito user pool $($p.Id) preserved"
+        $skippedPools += $p.Id
+    }
+}
+$userPoolsToDelete = @($userPoolsToDelete | Where-Object { $skippedPools -notcontains $_.Id })
 
 foreach ($c in $companionsToDelete) {
     foreach ($r in $c.Repositories) {
@@ -568,10 +853,24 @@ Write-Host "Deleted:" -ForegroundColor Green
 foreach ($d in $deletedItems) {
     Write-Host "  - $d" -ForegroundColor White
 }
+if ($backupFiles.Count -gt 0) {
+    Write-Host "Vault backups saved:" -ForegroundColor Green
+    foreach ($f in $backupFiles) {
+        Write-Host "  - $f" -ForegroundColor White
+    }
+}
+if ($failedItems.Count -gt 0) {
+    Write-Host "Not deleted (see messages above):" -ForegroundColor Red
+    foreach ($f in $failedItems) {
+        Write-Host "  - $f" -ForegroundColor White
+    }
+}
 
 $deletedBucketNames = @($bucketsToDelete | ForEach-Object { $_.Name })
+$deletedPoolIds = @($userPoolsToDelete | ForEach-Object { $_.Id })
 $deletedCompanionNames = @($companionsToDelete | ForEach-Object { $_.StackName })
 $preservedBuckets = @($discoveredBuckets | Where-Object { $deletedBucketNames -notcontains $_.Name })
+$preservedPools = @($discoveredUserPools | Where-Object { $deletedPoolIds -notcontains $_.Id })
 $preservedCompanions = @($discoveredCompanions | Where-Object { $deletedCompanionNames -notcontains $_.StackName })
 $preservedLogs = @($discoveredLogGroups | Where-Object { $logGroupsToDelete -notcontains $_ })
 
@@ -583,6 +882,10 @@ foreach ($b in $preservedBuckets) {
     $envFlag = if ($effectiveEnv) { "-Environment $effectiveEnv " } else { "" }
     Write-Host "  - S3 vault bucket: $($b.Name)" -ForegroundColor White
     Write-Host "    Reattach on next deploy: .\deploy.ps1 -Region $Region -StackName $StackName $envFlag-ExistingVaultBucket $($b.Name)" -ForegroundColor DarkGray
+}
+foreach ($p in $preservedPools) {
+    Write-Host "  - Cognito user pool: $($p.Id) ($($p.Name), deletion protection $($p.DeletionProtection))" -ForegroundColor White
+    Write-Host "    A new deploy creates a new, empty pool; users in this one are not migrated." -ForegroundColor DarkGray
 }
 foreach ($c in $preservedCompanions) {
     Write-Host "  - SAM CompanionStack: $($c.StackName)" -ForegroundColor White
