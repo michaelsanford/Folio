@@ -19,6 +19,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   LogOut,
+  RefreshCw,
 } from "lucide-react";
 import type { Account, HouseholdMember } from "../../types";
 import { isAssetAccount } from "../../constants/canadianAccountTypes";
@@ -46,6 +47,9 @@ interface AppLayoutProps {
   householdMembers?: HouseholdMember[];
   onManageHousehold?: () => void;
   onSignOut?: () => void;
+  /** A new build is waiting (see usePwaUpdate); shows the "Update available" item. */
+  updateReady?: boolean;
+  onApplyUpdate?: () => void;
   children: React.ReactNode;
 }
 
@@ -67,6 +71,21 @@ const Wordmark: React.FC<{ compact?: boolean }> = ({ compact = false }) => (
   </div>
 );
 
+/** Full-width "Update available" item for the expanded sidebar and the mobile menu. */
+const UpdateItem: React.FC<{ onClick?: () => void }> = ({ onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-accent-main text-accent-contrast text-left transition-[filter,transform] hover:brightness-110 active:scale-[0.98] cursor-pointer"
+  >
+    <RefreshCw className="w-[22px] h-[22px] shrink-0" strokeWidth={2} aria-hidden="true" />
+    <span className="flex flex-col min-w-0 leading-tight">
+      <span className="text-sm font-semibold">Update available</span>
+      <span className="text-xs opacity-80">Reload to update</span>
+    </span>
+  </button>
+);
+
 export const AppLayout: React.FC<AppLayoutProps> = ({
   activeTab,
   onTabChange,
@@ -74,6 +93,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   householdMembers,
   onManageHousehold,
   onSignOut,
+  updateReady = false,
+  onApplyUpdate,
   children,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -146,6 +167,19 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             >
               <PanelLeftOpen className="w-5 h-5" strokeWidth={1.75} />
             </button>
+            <div aria-live="polite" className="contents">
+              {updateReady && (
+                <button
+                  type="button"
+                  onClick={onApplyUpdate}
+                  className="w-12 h-11 flex items-center justify-center rounded-lg bg-accent-main text-accent-contrast transition-[filter,transform] hover:brightness-110 active:scale-[0.98] cursor-pointer"
+                  title="Update available. Reload"
+                  aria-label="Update available. Reload"
+                >
+                  <RefreshCw className="w-6 h-6" strokeWidth={2} />
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="flex items-center justify-between h-14 px-4 gap-2">
@@ -171,6 +205,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 <PanelLeftClose className="w-5 h-5" strokeWidth={1.75} />
               </button>
             </div>
+          </div>
+        )}
+
+        {/* New build waiting */}
+        {!sidebarCollapsed && (
+          <div aria-live="polite" className={updateReady ? "mx-3 mb-3" : undefined}>
+            {updateReady && <UpdateItem onClick={onApplyUpdate} />}
           </div>
         )}
 
@@ -355,9 +396,20 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile Header */}
-        <header className="md:hidden flex items-center justify-between h-14 px-4 border-b border-subtle bg-sidebar">
+        <header className="md:hidden flex items-center justify-between h-[calc(3.5rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] px-4 border-b border-subtle bg-sidebar">
           <Wordmark />
           <div className="flex items-center gap-1">
+            {updateReady && (
+              <button
+                type="button"
+                onClick={onApplyUpdate}
+                className="h-9 w-9 flex items-center justify-center rounded-lg bg-accent-main text-accent-contrast cursor-pointer"
+                title="Update available. Reload"
+                aria-label="Update available. Reload"
+              >
+                <RefreshCw className="w-5 h-5" strokeWidth={2} />
+              </button>
+            )}
             <button onClick={() => setIsThemeModalOpen(true)} className={iconButton} aria-label="Appearance">
               <Palette className="w-5 h-5" strokeWidth={1.75} />
             </button>
@@ -382,6 +434,16 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         {/* Mobile menu */}
         {mobileMenuOpen && (
           <div className="md:hidden p-3 border-b border-subtle bg-sidebar flex flex-col gap-0.5 animate-in fade-in">
+            {updateReady && (
+              <div className="mb-2">
+                <UpdateItem
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onApplyUpdate?.();
+                  }}
+                />
+              </div>
+            )}
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -421,12 +483,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         )}
 
         {/* Main Body */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 pt-4 pb-24 sm:px-6 md:p-8 max-w-full">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 pt-4 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 md:p-8 max-w-full">
           <React.Fragment key={formatKey}>{children}</React.Fragment>
         </main>
 
         {/* Mobile Bottom Navigation */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around h-16 px-1 border-t border-subtle bg-sidebar">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around h-[calc(4rem+env(safe-area-inset-bottom))] pb-[env(safe-area-inset-bottom)] px-1 border-t border-subtle bg-sidebar">
           {navItems.slice(0, 5).map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
