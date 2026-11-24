@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Search, Plus, Split, Trash2, Layers, Sparkles, Edit2, CheckCircle2, X } from "lucide-react";
 import type {
   Account,
@@ -9,6 +9,8 @@ import type {
   TransactionStatus,
 } from "../../types";
 import { api } from "../../services/api";
+import { onVaultConflict } from "../../services/notifications";
+import { DESKTOP_MEDIA_QUERY, useMediaQuery } from "../../hooks/useMediaQuery";
 import { Money } from "../common/Money";
 import { formatMoney, formatNumber } from "../../utils/format";
 
@@ -27,11 +29,18 @@ const modalOverlay = "fixed inset-0 z-50 flex items-center justify-center p-4 bg
 const modalPanel = "w-full rounded-xl bg-surface border border-default shadow-xl p-6";
 const fieldLabel = "block text-xs text-sub mb-1";
 
+/**
+ * What a ledger change touched. "transactions" (the default) means balances and
+ * analytics may have moved but categories and members did not; "all" (sample
+ * data load) means everything should be reloaded.
+ */
+export type LedgerRefreshScope = "transactions" | "all";
+
 interface LedgerWorkspaceProps {
   accounts: Account[];
   categories: Category[];
   householdMembers?: HouseholdMember[];
-  onDataModified: () => void;
+  onDataModified: (scope?: LedgerRefreshScope) => void;
 }
 
 const PAGE_SIZE = 50;
@@ -52,13 +61,15 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
   const [totalCount, setTotalCount] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSeedingDemo, setIsSeedingDemo] = useState(false);
+  // Only one layout is mounted; the breakpoint matches the `lg:` classes.
+  const isDesktop = useMediaQuery(DESKTOP_MEDIA_QUERY);
 
   const handleSeedLedger = async () => {
     try {
       setIsSeedingDemo(true);
       await api.seedDemoData(false);
       await loadTransactions();
-      if (onDataModified) onDataModified();
+      onDataModified("all");
     } catch (err) {
       console.error("Failed to seed demo transactions:", err);
     } finally {
@@ -197,7 +208,14 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
     setIsTxnModalOpen(true);
   };
 
+  // The in-flight list request. A newer load aborts it, so a slow response for an
+  // old search or filter can never overwrite the results of a newer one.
+  const loadControllerRef = useRef<AbortController | null>(null);
+
   const loadTransactions = async () => {
+    loadControllerRef.current?.abort();
+    const controller = new AbortController();
+    loadControllerRef.current = controller;
     setIsLoading(true);
     try {
       const resp = await api.getTransactions({
@@ -207,22 +225,44 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
         search: searchQuery || undefined,
         page,
         page_size: PAGE_SIZE,
+        signal: controller.signal,
       });
+      if (controller.signal.aborted) return;
       setTransactions(resp.items);
       setTotalCount(resp.total);
       setLoadError(null);
     } catch (err: any) {
+      if (controller.signal.aborted) return;
       console.error(err);
       setLoadError(err?.message || "Could not load transactions.");
     } finally {
-      setIsLoading(false);
+      if (loadControllerRef.current === controller) {
+        loadControllerRef.current = null;
+        setIsLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     const handle = window.setTimeout(loadTransactions, searchQuery ? 300 : 0);
-    return () => window.clearTimeout(handle);
+    return () => {
+      window.clearTimeout(handle);
+      // The filters changed: the in-flight response is already stale.
+      loadControllerRef.current?.abort();
+    };
   }, [selectedAccountId, selectedCategoryId, selectedMemberId, searchQuery, page]);
+
+  // Reload after a vault conflict (the server has the newer data) and abort any
+  // in-flight request on unmount. The ref keeps the handler on the latest filters.
+  const loadTransactionsRef = useRef(loadTransactions);
+  loadTransactionsRef.current = loadTransactions;
+  useEffect(() => {
+    const unsubscribe = onVaultConflict(() => void loadTransactionsRef.current());
+    return () => {
+      unsubscribe();
+      loadControllerRef.current?.abort();
+    };
+  }, []);
 
   const handleToggleSelectRow = (id: string) => {
     const next = new Set(selectedTxnIds);
@@ -569,7 +609,8 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       {/* Transactions */}
       <div className="rounded-xl border border-subtle bg-surface overflow-hidden">
         {/* Mobile & tablet feed (< lg) */}
-        <div className="block lg:hidden divide-y divide-subtle">
+        {!isDesktop && (
+        <div className="divide-y divide-subtle">
           {isLoading ? (
             <div className="p-8 text-center text-sm text-muted">
               {spinner}
@@ -697,9 +738,11 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
             })
           )}
         </div>
+        )}
 
         {/* Desktop table (>= lg) */}
-        <div className="hidden lg:block">
+        {isDesktop && (
+        <div>
           <table className="w-full table-fixed text-left text-sm">
             <thead className="text-xs text-muted border-b border-subtle">
               <tr>
@@ -865,6 +908,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
             </tbody>
           </table>
         </div>
+        )}
 
         {/* Pagination */}
         <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-subtle">

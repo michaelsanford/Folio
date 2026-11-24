@@ -27,7 +27,9 @@ import type {
   ClassificationResult,
   ClassificationStatus,
   AutoClassifyResult,
+  BootstrapResponse,
 } from "../types";
+import { emitVaultConflict, notify } from "./notifications";
 
 const API_BASE = "/api";
 
@@ -46,21 +48,134 @@ export function setStoredToken(token: string | null) {
   inMemoryToken = token;
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = getStoredToken();
-  const authHeader: Record<string, string> = token
-    ? { Authorization: `Bearer ${token}` }
-    : {};
+/** An HTTP error from the API, with the status and (when the server sent one) a machine-readable code. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    credentials: "same-origin",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeader,
-      ...options?.headers,
-    },
-    ...options,
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+export const VAULT_CONFLICT_MESSAGE =
+  "Your change wasn't saved because the vault was changed elsewhere. The latest data has been loaded — please retry.";
+
+/**
+ * Retry policy for transient responses. 429 means the request was rejected
+ * before it ran, so any method may be retried. 503 may arrive after a mutating
+ * request partly ran, so only idempotent methods retry on it.
+ * Exported so tests can shrink the delays.
+ */
+export const retryPolicy = {
+  maxAttempts: 3,
+  baseDelayMs: 400,
+  maxDelayMs: 8000,
+};
+
+const IDEMPOTENT_METHODS = new Set(["GET", "HEAD"]);
+
+function isRetryable(status: number, method: string): boolean {
+  if (status === 429) return true;
+  if (status === 503) return IDEMPOTENT_METHODS.has(method);
+  return false;
+}
+
+/** Retry-After is either delta-seconds or an HTTP date. */
+function parseRetryAfter(header: string | null): number | null {
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const date = Date.parse(header);
+  if (!Number.isNaN(date)) return Math.max(0, date - Date.now());
+  return null;
+}
+
+function retryDelayMs(attempt: number, retryAfter: string | null): number {
+  const serverDelay = parseRetryAfter(retryAfter);
+  if (serverDelay !== null) return Math.min(serverDelay, retryPolicy.maxDelayMs);
+  // Full jitter: a random point in [0, base * 2^(attempt-1)], so clients that
+  // were throttled together do not retry together.
+  const ceiling = Math.min(retryPolicy.maxDelayMs, retryPolicy.baseDelayMs * 2 ** (attempt - 1));
+  return Math.random() * ceiling;
+}
+
+function sleep(ms: number, signal?: AbortSignal | null): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+async function toApiError(res: Response): Promise<ApiError> {
+  let message = `HTTP ${res.status} ${res.statusText}`.trim();
+  let code: string | undefined;
+  try {
+    const text = await res.text();
+    try {
+      const body = JSON.parse(text);
+      const detail = body?.detail;
+      if (typeof detail === "string") {
+        message = detail;
+      } else if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+        code = typeof detail.code === "string" ? detail.code : undefined;
+        message =
+          typeof detail.message === "string" ? detail.message : JSON.stringify(detail);
+      } else if (detail !== undefined) {
+        message = JSON.stringify(detail);
+      } else {
+        message = JSON.stringify(body);
+      }
+    } catch {
+      message = text || message;
+    }
+  } catch {
+    // Keep the status line
+  }
+  if (code === "vault_conflict") {
+    message = VAULT_CONFLICT_MESSAGE;
+  }
+  return new ApiError(message, res.status, code);
+}
+
+/**
+ * Sends a request with auth, the retry policy, and the app-wide handling of 401
+ * and 409 vault conflicts. Resolves with the successful Response; throws
+ * ApiError for any other non-2xx status.
+ */
+async function send(path: string, init: RequestInit = {}): Promise<Response> {
+  const token = getStoredToken();
+  const method = (init.method ?? "GET").toUpperCase();
+  const headers: Record<string, string> = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(init.headers as Record<string, string> | undefined),
+  };
+
+  let res: Response;
+  for (let attempt = 1; ; attempt++) {
+    res = await fetch(`${API_BASE}${path}`, {
+      credentials: "same-origin",
+      ...init,
+      method,
+      headers,
+    });
+    if (attempt >= retryPolicy.maxAttempts || !isRetryable(res.status, method)) break;
+    await sleep(retryDelayMs(attempt, res.headers.get("Retry-After")), init.signal);
+  }
 
   if (res.status === 401 && !path.startsWith("/auth/")) {
     setStoredToken(null);
@@ -70,20 +185,25 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   if (!res.ok) {
-    let errorDetail = `HTTP ${res.status} ${res.statusText}`;
-    try {
-      const text = await res.text();
-      try {
-        const errJson = JSON.parse(text);
-        errorDetail = errJson.detail || JSON.stringify(errJson);
-      } catch {
-        errorDetail = text || errorDetail;
-      }
-    } catch {
-      // Keep default status message
+    const error = await toApiError(res);
+    if (error.status === 409 && error.code === "vault_conflict") {
+      notify(VAULT_CONFLICT_MESSAGE, "warning");
+      emitVaultConflict();
     }
-    throw new Error(errorDetail);
+    throw error;
   }
+
+  return res;
+}
+
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await send(path, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options?.headers as Record<string, string> | undefined),
+    },
+  });
 
   if (res.status === 204) {
     return {} as T;
@@ -93,6 +213,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  /** Accounts, categories, dashboard analytics, household members and server limits in one request. */
+  getBootstrap: () => request<BootstrapResponse>("/bootstrap"),
+
   // Authentication
   auth: {
     getStatus: () =>
@@ -265,6 +388,8 @@ export const api = {
     max_amount?: number;
     sort_by?: string;
     sort_order?: string;
+    /** Cancels the request; used to drop stale searches. */
+    signal?: AbortSignal;
   }) => {
     const query = new URLSearchParams();
     if (params?.page) query.append("page", params.page.toString());
@@ -285,7 +410,9 @@ export const api = {
     if (params?.sort_order) query.append("sort_order", params.sort_order);
 
     const queryString = query.toString() ? `?${query.toString()}` : "";
-    return request<TransactionListResponse>(`/transactions${queryString}`);
+    return request<TransactionListResponse>(`/transactions${queryString}`, {
+      signal: params?.signal,
+    });
   },
   createTransaction: (txn: Partial<Transaction> & { splits?: any[] }) =>
     request<Transaction>("/transactions", {
@@ -462,23 +589,11 @@ export const api = {
       formData.append("account_id", accountId.trim());
     }
 
-    const token = getStoredToken();
-    const authHeader: Record<string, string> = token
-      ? { Authorization: `Bearer ${token}` }
-      : {};
-
-    const res = await fetch(`${API_BASE}/ingestion/upload-preview`, {
+    // No Content-Type header: the browser sets the multipart boundary.
+    const res = await send("/ingestion/upload-preview", {
       method: "POST",
-      credentials: "same-origin",
-      headers: authHeader,
       body: formData,
     });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: "Upload failed" }));
-      throw new Error(err.detail || "Upload failed");
-    }
-
     return res.json() as Promise<IngestionPreviewResponse>;
   },
   commitIngestionBatch: (req: {
@@ -492,30 +607,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify(req),
     }),
-  uploadStatement: (accountId: string, file: File) => {
+  uploadStatement: async (accountId: string, file: File) => {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("account_id", accountId);
 
-    const token = getStoredToken();
-    const authHeader: Record<string, string> = token
-      ? { Authorization: `Bearer ${token}` }
-      : {};
-
-    return fetch(`${API_BASE}/ingestion/upload`, {
+    const res = await send("/ingestion/upload", {
       method: "POST",
       body: formData,
-      credentials: "same-origin",
-      headers: {
-        ...authHeader,
-      },
-    }).then(async (res) => {
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Upload failed");
-      }
-      return res.json() as Promise<IngestionPreviewResponse>;
     });
+    return res.json() as Promise<IngestionPreviewResponse>;
   },
   commitTransactions: (payload: {
     account_id: string;

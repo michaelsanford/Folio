@@ -502,3 +502,84 @@ describe("IngestionWorkspace Auto-Account Creation", () => {
     expect(payload.items[0].category_name).toBe("Groceries");
   });
 });
+
+describe("IngestionWorkspace upload size limit", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const bigFile = (megabytes: number, name = "big.pdf") => {
+    const file = new File(["x"], name, { type: "application/pdf" });
+    Object.defineProperty(file, "size", { value: megabytes * 1024 * 1024 });
+    return file;
+  };
+
+  it("shows the server's limit in the help text", () => {
+    render(
+      <IngestionWorkspace accounts={[]} categories={mockCategories} onCommitSuccess={vi.fn()} maxUploadMb={5} />
+    );
+    expect(screen.getByText("Up to 5 MB per file")).toBeDefined();
+  });
+
+  it("defaults the limit to 25 MB when the server did not report one", () => {
+    render(<IngestionWorkspace accounts={[]} categories={mockCategories} onCommitSuccess={vi.fn()} />);
+    expect(screen.getByText("Up to 25 MB per file")).toBeDefined();
+  });
+
+  it("rejects an oversized file before uploading it", async () => {
+    const { container } = render(
+      <IngestionWorkspace accounts={[]} categories={mockCategories} onCommitSuccess={vi.fn()} maxUploadMb={5} />
+    );
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [bigFile(6)] } });
+
+    await waitFor(() => {
+      expect(screen.getByText(/big\.pdf is 6\.0 MB, which is over the 5 MB upload limit/)).toBeDefined();
+    });
+    expect(api.uploadStatementPreview).not.toHaveBeenCalled();
+  });
+
+  it("explains a 413 from the server in terms of the limit", async () => {
+    vi.mocked(api.uploadStatementPreview).mockRejectedValue(
+      Object.assign(new Error("Request Entity Too Large"), { status: 413 })
+    );
+    const { container } = render(
+      <IngestionWorkspace accounts={[]} categories={mockCategories} onCommitSuccess={vi.fn()} maxUploadMb={5} />
+    );
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [bigFile(4, "edge.pdf")] } });
+
+    await waitFor(() => {
+      expect(screen.getByText(/edge\.pdf is over the 5 MB upload limit/)).toBeDefined();
+    });
+    expect(api.uploadStatementPreview).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("IngestionWorkspace unreadable rows", () => {
+  it("lists rows the server skipped instead of hiding them", async () => {
+    vi.mocked(api.uploadStatementPreview).mockResolvedValueOnce({
+      filename: "march.csv",
+      file_type: "CSV",
+      total_parsed: 0,
+      duplicates_count: 0,
+      new_count: 0,
+      items: [],
+      row_errors: [
+        { row_number: 7, field: "date", value: "31/02/2026", message: "Date could not be read" },
+      ],
+    });
+    const { container } = render(
+      <IngestionWorkspace accounts={[]} categories={mockCategories} onCommitSuccess={vi.fn()} />
+    );
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["a,b"], "march.csv", { type: "text/csv" })] },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/1 row skipped because it couldn't be read/)).toBeDefined();
+    });
+    expect(screen.getByText("Date could not be read")).toBeDefined();
+  });
+});

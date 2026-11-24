@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import React from "react";
 import { LedgerWorkspace } from "./LedgerWorkspace";
@@ -205,5 +205,88 @@ describe("LedgerWorkspace Household Features", () => {
       expect(screen.getByText("5 transactions classified, 0 remaining uncategorized")).toBeDefined();
       expect(onDataModified).toHaveBeenCalled();
     });
+  });
+});
+
+describe("LedgerWorkspace loading and layout", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  const stubViewport = (desktop: boolean) =>
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({
+        matches: desktop,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }))
+    );
+
+  it("renders only the desktop table on wide screens", async () => {
+    stubViewport(true);
+    vi.spyOn(api, "getTransactions").mockResolvedValue({
+      items: mockTransactions,
+      total: mockTransactions.length,
+      page: 1,
+      page_size: 50,
+    });
+    const { container } = render(
+      <LedgerWorkspace accounts={mockAccounts} categories={mockCategories} onDataModified={vi.fn()} />
+    );
+
+    await waitFor(() => expect(screen.getAllByText("Hydro One").length).toBe(1));
+    expect(container.querySelector("table")).not.toBeNull();
+    expect(screen.getByLabelText("Select all transactions")).toBeDefined();
+  });
+
+  it("renders only the mobile feed on narrow screens", async () => {
+    stubViewport(false);
+    vi.spyOn(api, "getTransactions").mockResolvedValue({
+      items: mockTransactions,
+      total: mockTransactions.length,
+      page: 1,
+      page_size: 50,
+    });
+    const { container } = render(
+      <LedgerWorkspace accounts={mockAccounts} categories={mockCategories} onDataModified={vi.fn()} />
+    );
+
+    await waitFor(() => expect(screen.getAllByText("Hydro One").length).toBe(1));
+    expect(container.querySelector("table")).toBeNull();
+  });
+
+  it("aborts a stale search so its late response cannot overwrite a newer one", async () => {
+    stubViewport(true);
+    const signals: AbortSignal[] = [];
+    let resolveFirst: (value: { items: Transaction[]; total: number; page: number; page_size: number }) => void = () => {};
+    vi.spyOn(api, "getTransactions").mockImplementation((params) => {
+      signals.push(params!.signal!);
+      if (signals.length === 1) {
+        return new Promise((resolve) => {
+          resolveFirst = resolve;
+        });
+      }
+      return Promise.resolve({ items: [mockTransactions[1]], total: 1, page: 1, page_size: 50 });
+    });
+
+    render(
+      <LedgerWorkspace accounts={mockAccounts} categories={mockCategories} onDataModified={vi.fn()} />
+    );
+    await waitFor(() => expect(signals.length).toBe(1));
+
+    fireEvent.change(screen.getByLabelText("Search payees, notes and amounts"), {
+      target: { value: "hydro" },
+    });
+    await waitFor(() => expect(screen.getByText("Hydro One")).toBeDefined());
+    expect(signals[0].aborted).toBe(true);
+
+    // The first (stale) request finally answers with different rows
+    resolveFirst({ items: [mockTransactions[0]], total: 1, page: 1, page_size: 50 });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(screen.queryByText("Loblaws")).toBeNull();
+    expect(screen.getByText("Hydro One")).toBeDefined();
   });
 });

@@ -1,22 +1,64 @@
-import React, { useState, useEffect } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AppLayout } from "./components/layout/AppLayout";
 import type { NavTab } from "./components/layout/AppLayout";
-import { DashboardView } from "./components/dashboard/DashboardView";
-import { IngestionWorkspace } from "./components/ingestion/IngestionWorkspace";
-import { LedgerWorkspace } from "./components/ledger/LedgerWorkspace";
-import { LoanAmortizationView } from "./components/loans/LoanAmortizationView";
-import { InvestmentsView } from "./components/investments/InvestmentsView";
-import { BudgetingView } from "./components/budgeting/BudgetingView";
-import { GoalsView } from "./components/goals/GoalsView";
-import { RulesManagerView } from "./components/rules/RulesManagerView";
-import { AccountsManagerView } from "./components/accounts/AccountsManagerView";
-import { HouseholdModal } from "./components/household/HouseholdModal";
-import { LockScreen } from "./components/auth/LockScreen";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
-import type { Account, Category, DashboardAnalyticsResponse, HouseholdMember } from "./types";
+import { NotificationRegion } from "./components/common/NotificationRegion";
+import type { LedgerRefreshScope } from "./components/ledger/LedgerWorkspace";
+import type { Account, Category, DashboardAnalyticsResponse, HouseholdMember, ServerLimits } from "./types";
 import { api, setOnUnauthorized } from "./services/api";
+import { onVaultConflict } from "./services/notifications";
 import { ArrowRight } from "lucide-react";
+
+// Each view is its own chunk, so the first paint only downloads the shell and
+// the view the user is looking at.
+const DashboardView = lazy(() =>
+  import("./components/dashboard/DashboardView").then((m) => ({ default: m.DashboardView }))
+);
+const IngestionWorkspace = lazy(() =>
+  import("./components/ingestion/IngestionWorkspace").then((m) => ({ default: m.IngestionWorkspace }))
+);
+const LedgerWorkspace = lazy(() =>
+  import("./components/ledger/LedgerWorkspace").then((m) => ({ default: m.LedgerWorkspace }))
+);
+const LoanAmortizationView = lazy(() =>
+  import("./components/loans/LoanAmortizationView").then((m) => ({ default: m.LoanAmortizationView }))
+);
+const InvestmentsView = lazy(() =>
+  import("./components/investments/InvestmentsView").then((m) => ({ default: m.InvestmentsView }))
+);
+const BudgetingView = lazy(() =>
+  import("./components/budgeting/BudgetingView").then((m) => ({ default: m.BudgetingView }))
+);
+const GoalsView = lazy(() =>
+  import("./components/goals/GoalsView").then((m) => ({ default: m.GoalsView }))
+);
+const RulesManagerView = lazy(() =>
+  import("./components/rules/RulesManagerView").then((m) => ({ default: m.RulesManagerView }))
+);
+const AccountsManagerView = lazy(() =>
+  import("./components/accounts/AccountsManagerView").then((m) => ({ default: m.AccountsManagerView }))
+);
+const HouseholdModal = lazy(() =>
+  import("./components/household/HouseholdModal").then((m) => ({ default: m.HouseholdModal }))
+);
+const LockScreen = lazy(() =>
+  import("./components/auth/LockScreen").then((m) => ({ default: m.LockScreen }))
+);
+
+/** Used when the server does not report a limit (matches the backend default). */
+const DEFAULT_LIMITS: ServerLimits = { max_upload_mb: 25 };
+
+const Spinner: React.FC = () => (
+  <div className="animate-spin rounded-full h-4 w-4 border-2 border-[var(--border-default)] border-t-[var(--accent-primary)]"></div>
+);
+
+const ViewFallback: React.FC = () => (
+  <div role="status" className="py-16 flex items-center justify-center gap-3 text-sm text-muted">
+    <Spinner />
+    Loading…
+  </div>
+);
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState<NavTab>("dashboard");
@@ -26,6 +68,9 @@ function AppContent() {
   const [analytics, setAnalytics] = useState<DashboardAnalyticsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isHouseholdModalOpen, setIsHouseholdModalOpen] = useState(false);
+  const [limits, setLimits] = useState<ServerLimits>(DEFAULT_LIMITS);
+  // Set after edits that change analytics; the dashboard refetches when next shown.
+  const [isAnalyticsStale, setIsAnalyticsStale] = useState(false);
 
   // Authentication State
   const [authStatus, setAuthStatus] = useState<{
@@ -62,24 +107,58 @@ function AppContent() {
     }
   };
 
-  const loadAllData = async () => {
+  const loadAllData = useCallback(async () => {
     try {
-      const [accs, cats, anl, members] = await Promise.all([
-        api.getAccounts(),
-        api.getCategories(),
-        api.getDashboardAnalytics(),
-        api.household.getMembers(),
-      ]);
-      setAccounts(accs);
-      setCategories(cats);
-      setAnalytics(anl);
-      setHouseholdMembers(members);
+      const data = await api.getBootstrap();
+      setAccounts(data.accounts);
+      setCategories(data.categories);
+      setAnalytics(data.analytics);
+      setHouseholdMembers(data.household_members);
+      setLimits({ ...DEFAULT_LIMITS, ...data.limits });
+      setIsAnalyticsStale(false);
     } catch (err) {
       console.error("Data load error:", err);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  /**
+   * After a ledger edit only balances (accounts) change for the views that are
+   * on screen. Categories and members are untouched, and analytics are fetched
+   * lazily the next time the dashboard is shown.
+   */
+  const refreshAfterLedgerEdit = useCallback(
+    async (scope: LedgerRefreshScope = "transactions") => {
+      if (scope === "all") {
+        await loadAllData();
+        return;
+      }
+      setIsAnalyticsStale(true);
+      try {
+        setAccounts(await api.getAccounts());
+      } catch (err) {
+        console.error("Balance refresh error:", err);
+      }
+    },
+    [loadAllData]
+  );
+
+  useEffect(() => {
+    if (activeTab !== "dashboard" || !isAnalyticsStale) return;
+    let cancelled = false;
+    api
+      .getDashboardAnalytics()
+      .then((anl) => {
+        if (cancelled) return;
+        setAnalytics(anl);
+        setIsAnalyticsStale(false);
+      })
+      .catch((err) => console.error("Analytics refresh error:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, isAnalyticsStale]);
 
   useEffect(() => {
     setOnUnauthorized(() => {
@@ -87,6 +166,9 @@ function AppContent() {
     });
     checkAuth();
   }, []);
+
+  // The server has already reloaded the vault; bring every dataset up to date.
+  useEffect(() => onVaultConflict(() => void loadAllData()), [loadAllData]);
 
   // Quick starter seeder for initial Canadian user demo with complete ledger history
   const handleSeedDemoData = async () => {
@@ -122,7 +204,7 @@ function AppContent() {
   if (authStatus.is_loading) {
     return (
       <div className="min-h-screen bg-canvas flex items-center justify-center gap-3 text-sm text-muted">
-        <div className="animate-spin rounded-full h-4 w-4 border-2 border-[var(--border-default)] border-t-[var(--accent-primary)]"></div>
+        <Spinner />
         Checking session…
       </div>
     );
@@ -130,7 +212,18 @@ function AppContent() {
 
   // If Auth Required and Unauthenticated -> Render Lock Screen
   if (authStatus.auth_required && !authStatus.authenticated) {
-    return <LockScreen onUnlocked={checkAuth} authMode={authStatus.auth_mode} />;
+    return (
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-canvas flex items-center justify-center gap-3 text-sm text-muted">
+            <Spinner />
+            Loading…
+          </div>
+        }
+      >
+        <LockScreen onUnlocked={checkAuth} authMode={authStatus.auth_mode} />
+      </Suspense>
+    );
   }
 
   return (
@@ -177,6 +270,7 @@ function AppContent() {
 
       {/* Dynamic Tab Views */}
       <ErrorBoundary key={activeTab} fallbackTitle={`Error loading ${activeTab} view`}>
+        <Suspense fallback={<ViewFallback />}>
         {activeTab === "dashboard" && (
         <DashboardView
           analytics={analytics}
@@ -190,7 +284,7 @@ function AppContent() {
           accounts={accounts}
           categories={categories}
           householdMembers={householdMembers}
-          onDataModified={loadAllData}
+          onDataModified={refreshAfterLedgerEdit}
         />
       )}
 
@@ -199,6 +293,7 @@ function AppContent() {
           accounts={accounts}
           categories={categories}
           onCommitSuccess={loadAllData}
+          maxUploadMb={limits.max_upload_mb}
         />
       )}
 
@@ -239,15 +334,22 @@ function AppContent() {
           onManageHousehold={() => setIsHouseholdModalOpen(true)}
         />
       )}
+        </Suspense>
       </ErrorBoundary>
 
-      {/* Household Management Modal */}
-      <HouseholdModal
-        isOpen={isHouseholdModalOpen}
-        onClose={() => setIsHouseholdModalOpen(false)}
-        members={householdMembers}
-        onMembersModified={loadAllData}
-      />
+      {/* Household Management Modal: mounted only while open so its chunk loads on demand */}
+      {isHouseholdModalOpen && (
+        <Suspense fallback={null}>
+          <HouseholdModal
+            isOpen={isHouseholdModalOpen}
+            onClose={() => setIsHouseholdModalOpen(false)}
+            members={householdMembers}
+            onMembersModified={loadAllData}
+          />
+        </Suspense>
+      )}
+
+      <NotificationRegion />
     </AppLayout>
   );
 }

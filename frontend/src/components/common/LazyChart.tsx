@@ -6,9 +6,10 @@ import React, { Suspense, lazy } from "react";
  * code before painting -- on the mobile connection the PWA is meant for, that is
  * the whole of the perceived load time.
  *
- * Deferring it lets the numbers render immediately and the charts fill in.
+ * Deferring it lets the numbers render immediately and the charts fill in. The
+ * chunk itself uses the tree-shaken build registered in `./echarts`.
  */
-const ReactECharts = lazy(() => import("echarts-for-react"));
+const ReactECharts = lazy(() => import("./EChartsCore"));
 
 interface LazyChartProps {
   option: Record<string, unknown>;

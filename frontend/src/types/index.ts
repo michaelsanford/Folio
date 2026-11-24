@@ -238,6 +238,15 @@ export interface IngestionPreviewResponse {
   duplicates_count: number;
   new_count: number;
   items: ParsedTransactionItem[];
+  /** Rows skipped because a value (usually the date) could not be read. */
+  row_errors?: ParsedRowError[];
+}
+
+export interface ParsedRowError {
+  row_number?: number | null;
+  field: string;
+  value?: string | null;
+  message: string;
 }
 
 export interface IngestionAccountResolution {
@@ -349,6 +358,20 @@ export interface DashboardAnalyticsResponse {
   net_worth_history: NetWorthPoint[];
   category_spending: CategorySpendPoint[];
   sankey: SankeyData;
+}
+
+export interface ServerLimits {
+  /** Largest statement upload the server accepts, in megabytes. */
+  max_upload_mb: number;
+}
+
+/** `GET /api/bootstrap`: everything the shell needs on first load, in one round trip. */
+export interface BootstrapResponse {
+  accounts: Account[];
+  categories: Category[];
+  analytics: DashboardAnalyticsResponse;
+  household_members: HouseholdMember[];
+  limits: ServerLimits;
 }
 
 export interface AuthStatusResponse {

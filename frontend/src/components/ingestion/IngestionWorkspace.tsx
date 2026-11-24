@@ -56,7 +56,21 @@ interface IngestionWorkspaceProps {
   accounts: Account[];
   categories: Category[];
   onCommitSuccess: () => void;
+  /** Largest upload the server accepts, from the bootstrap limits (5 MB on AWS). */
+  maxUploadMb?: number;
 }
+
+/** Backend default when the server has not reported its limit. */
+export const DEFAULT_MAX_UPLOAD_MB = 25;
+
+const formatMegabytes = (bytes: number) => {
+  const mb = bytes / (1024 * 1024);
+  return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+};
+
+const fileTooLargeMessage = (fileName: string, maxUploadMb: number, size?: number) =>
+  `${fileName}${size !== undefined ? ` is ${formatMegabytes(size)}, which` : ""} is over the ${maxUploadMb} MB upload limit. ` +
+  "Export a shorter date range or split the statement into smaller files, then try again.";
 
 function makeRowKey(item: ParsedTransactionItem, idx: number): string {
   return `${item.import_hash}::${idx}`;
@@ -166,6 +180,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
   accounts,
   categories,
   onCommitSuccess,
+  maxUploadMb = DEFAULT_MAX_UPLOAD_MB,
 }) => {
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [isDragging, setIsDragging] = useState(false);
@@ -232,10 +247,19 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
   };
 
   const handleFileUpload = async (file: File) => {
-    setIsLoading(true);
     setSuccessMessage(null);
     setErrorMessage(null);
     setPropagationNote(null);
+    // Check the size before sending: an oversized body is rejected by the
+    // gateway after the whole file has been uploaded.
+    if (file.size > maxUploadMb * 1024 * 1024) {
+      setErrorMessage(fileTooLargeMessage(file.name, maxUploadMb, file.size));
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
+    setIsLoading(true);
     try {
       const resp = await api.uploadStatementPreview(selectedAccountId || null, file);
       setPreview(resp);
@@ -277,7 +301,11 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
       setRowCategories(initialCats);
       setAccountResolutions(initialResolutions);
     } catch (err: any) {
-      setErrorMessage(`Ingestion failed: ${err.message}`);
+      if (err?.status === 413) {
+        setErrorMessage(fileTooLargeMessage(file.name, maxUploadMb));
+      } else {
+        setErrorMessage(`Ingestion failed: ${err.message}`);
+      }
     } finally {
       setIsLoading(false);
       if (fileInputRef.current) {
@@ -662,6 +690,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
               <p className="text-sm text-sub">
                 Single or multi-account CSV exports, PDF statements, and OFX, QFX or QBO files
               </p>
+              <p className="text-xs text-muted">Up to {maxUploadMb} MB per file</p>
             </div>
 
             <p className="text-xs text-muted">
@@ -744,6 +773,30 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Rows the parser could not read: shown so nothing is skipped silently */}
+          {(preview.row_errors?.length ?? 0) > 0 && (
+            <details className="p-4 rounded-xl bg-surface border border-subtle text-sm">
+              <summary className="cursor-pointer text-warning font-medium">
+                {preview.row_errors!.length === 1
+                  ? "1 row skipped because it couldn't be read"
+                  : `${preview.row_errors!.length} rows skipped because they couldn't be read`}
+              </summary>
+              <ul className="mt-3 space-y-1 text-xs text-sub">
+                {preview.row_errors!.map((rowError, idx) => (
+                  <li key={`${rowError.row_number ?? "x"}-${idx}`} className="break-words">
+                    {rowError.row_number != null && (
+                      <span className="tabular-nums text-muted">Row {rowError.row_number}: </span>
+                    )}
+                    {rowError.message}
+                    {rowError.value ? (
+                      <span className="text-muted"> ({rowError.field} “{rowError.value}”)</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
 
           {/* Detected accounts review */}
           {detectedAccounts.length > 0 && (
