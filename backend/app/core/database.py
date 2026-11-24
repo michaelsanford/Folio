@@ -71,7 +71,7 @@ def _clear_on_rollback(session):
 
 def get_db() -> Generator[Session, None, None]:
     """FastAPI database session dependency."""
-    if settings.S3_BUCKET_NAME:
+    if settings.s3_sync_enabled:
         from app.core.s3_sync import ensure_db_fresh
 
         ensure_db_fresh(settings.SQLITE_DB_PATH, settings.S3_BUCKET_NAME, settings.AWS_REGION)

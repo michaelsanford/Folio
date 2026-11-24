@@ -100,7 +100,7 @@ def backup_database(db_path: Path, revision: str | None) -> Path:
             logger.warning(f"Could not prune old migration backup {stale}: {exc}")
     logger.info(f"Pre-migration backup written to {target}")
 
-    if settings.S3_BUCKET_NAME:
+    if settings.s3_sync_enabled:
         from app.core.s3_sync import BACKUP_PREFIX, upload_backup
 
         key = f"{BACKUP_PREFIX}pre-migrate-{label}-{ts}.db"

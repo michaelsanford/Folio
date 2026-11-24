@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from app.core.config import is_lambda_runtime, settings, validate_production_settings
+from app.core.config import settings, validate_production_settings, warn_ignored_s3_bucket
 from app.core.logging import (
     EVENT_HTTP_5XX,
     RequestContextMiddleware,
@@ -29,7 +29,12 @@ from app.core.security import (  # noqa: E402
     origin_header_valid,
     require_auth,
 )
-from app.core.s3_sync import VaultConflictError, startup_restore, sync_now  # noqa: E402
+from app.core.s3_sync import (  # noqa: E402
+    VaultConflictError,
+    VaultSyncFailedError,
+    startup_restore,
+    sync_now,
+)
 from app.core.sync_scheduler import sync_scheduler  # noqa: E402
 import app.models  # noqa: F401,E402 - registers SQLAlchemy models with Base metadata
 
@@ -55,6 +60,7 @@ VAULT_CONFLICT_MESSAGE = (
     "The vault was changed from another session. Your last change was not saved; "
     "the latest data has been reloaded."
 )
+VAULT_SYNC_FAILED_MESSAGE = "Your change wasn't saved. Please try again."
 
 
 def seeding_needed(db: Session) -> bool:
@@ -90,8 +96,9 @@ def seeding_needed(db: Session) -> bool:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Lambda: restore the vault from S3, failing closed on anything but "absent".
-    # Docker: restore only when the local file is missing.
-    if settings.S3_BUCKET_NAME:
+    # Docker / local never sync to S3; a bucket set there is ignored (with a warning).
+    warn_ignored_s3_bucket()
+    if settings.s3_sync_enabled:
         startup_restore(settings.SQLITE_DB_PATH, settings.S3_BUCKET_NAME, settings.AWS_REGION)
 
     # Refuse to serve production traffic with development-grade secrets.
@@ -116,20 +123,25 @@ async def lifespan(app: FastAPI):
 
         # Upload a migrated or freshly seeded vault now rather than at the next
         # write: leaving it dirty would suspend this container's freshness
-        # check (and on Lambda nothing flushes until a mutating request).
-        if settings.S3_BUCKET_NAME and (migrated or sync_scheduler.has_pending_changes()):
+        # check, and nothing flushes until a mutating request.
+        if settings.s3_sync_enabled and (migrated or sync_scheduler.has_pending_changes()):
             try:
                 sync_now()
             except VaultConflictError:
                 logger.warning("Another container replaced the vault during startup; reloaded it.")
+            except VaultSyncFailedError:
+                logger.warning("Uploading the migrated or seeded vault failed; reloaded the S3 copy.")
 
     yield
 
-    # On graceful shutdown, flush anything the debounce window still holds.
-    try:
-        sync_now()
-    except VaultConflictError:
-        logger.warning("Shutdown flush hit a vault conflict; local changes were discarded.")
+    # Every mutating request is flushed before it returns, so normally nothing
+    # is pending here; upload anything that slipped through (e.g. a write made
+    # by a GET) rather than lose it with the container.
+    if settings.s3_sync_enabled and sync_scheduler.has_pending_changes():
+        try:
+            sync_now()
+        except (VaultConflictError, VaultSyncFailedError):
+            logger.warning("Shutdown flush failed; local changes were discarded.")
 
 
 # In production mode, disable public Swagger docs to prevent API surface scanning
@@ -153,9 +165,21 @@ def vault_conflict_response() -> JSONResponse:
     )
 
 
+def vault_sync_failed_response() -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={"detail": {"code": "vault_sync_failed", "message": VAULT_SYNC_FAILED_MESSAGE}},
+    )
+
+
 @app.exception_handler(VaultConflictError)
 async def handle_vault_conflict(request: Request, exc: VaultConflictError):
     return vault_conflict_response()
+
+
+@app.exception_handler(VaultSyncFailedError)
+async def handle_vault_sync_failed(request: Request, exc: VaultSyncFailedError):
+    return vault_sync_failed_response()
 
 
 @app.exception_handler(Exception)
@@ -202,22 +226,26 @@ def _build_csp() -> str:
 
 @app.middleware("http")
 async def flush_vault_on_lambda(request: Request, call_next):
-    """Lambda freezes the container once a response is sent, so a debounced
-    upload would never run. Upload synchronously before a mutating request
-    returns; a conflicting writer turns the response into 409 vault_conflict."""
+    """Lambda freezes the container once a response is sent, so nothing can
+    upload afterwards. Upload synchronously before a mutating request returns.
+
+    A save is either durable or visibly rejected:
+    - a conflicting writer turns the response into 409 vault_conflict;
+    - any other upload failure discards this container's local change (the
+      vault is re-downloaded from S3) and turns it into 503 vault_sync_failed.
+    """
     response = await call_next(request)
     if (
         request.method in MUTATING_METHODS
-        and settings.S3_BUCKET_NAME
-        and is_lambda_runtime()
+        and settings.s3_sync_enabled
         and sync_scheduler.has_pending_changes()
     ):
         try:
             await run_in_threadpool(sync_now)
         except VaultConflictError:
             return vault_conflict_response()
-        # A False result is already logged as s3_sync_failed and leaves the
-        # vault dirty; the next mutating request on this container retries.
+        except VaultSyncFailedError:
+            return vault_sync_failed_response()
     return response
 
 

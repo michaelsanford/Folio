@@ -1,3 +1,4 @@
+import logging
 import os
 import secrets
 from pathlib import Path
@@ -64,9 +65,8 @@ def generated_secret_key(key_file: Path | None = None) -> str:
 def is_lambda_runtime() -> bool:
     """True when running inside AWS Lambda (the runtime always sets this variable).
 
-    Lambda freezes the execution environment as soon as a response is returned,
-    so background timers cannot be relied on there: writes are flushed to S3
-    synchronously before responding instead of being debounced.
+    Only Lambda syncs the vault with S3 (see Settings.s3_sync_enabled): Docker
+    and local runs are for development and never talk to AWS storage.
     """
     return bool(os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
 
@@ -164,12 +164,12 @@ class Settings(BaseSettings):
     # Overridable because Lambda's filesystem is read-only outside /tmp -- without
     # this, statement upload fails in the serverless deployment.
     UPLOAD_DIR: Path = Path(os.getenv("FOLIO_UPLOAD_DIR", str(BASE_DIR / "data" / "uploads")))
-    # FOLIO_MAX_UPLOAD_MB (default 25). The SAM template sets 5 because a Lambda
+    # FOLIO_MAX_UPLOAD_MB (default 25). The SAM template sets 4 because a Lambda
     # Function URL rejects request payloads above 6 MB.
     MAX_UPLOAD_MB: int = _max_upload_mb()
     MAX_UPLOAD_SIZE_BYTES: int = _max_upload_mb() * 1024 * 1024
     
-    # AWS S3 Backup & Persistence configs
+    # AWS S3 vault persistence. Honoured only on Lambda; see s3_sync_enabled.
     S3_BUCKET_NAME: str = os.getenv("S3_BUCKET_NAME", "")
     AWS_REGION: str = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "ca-central-1"))
     
@@ -253,15 +253,44 @@ class Settings(BaseSettings):
     def is_lambda(self) -> bool:
         return is_lambda_runtime()
 
+    @property
+    def s3_sync_enabled(self) -> bool:
+        """Sync the vault with S3 only on Lambda, and only when a bucket is set.
+
+        Docker and local runs are development environments: they keep the vault
+        on local disk and never read from or write to S3, even when
+        S3_BUCKET_NAME happens to be set (warn_ignored_s3_bucket logs that once).
+        """
+        return bool(self.S3_BUCKET_NAME) and is_lambda_runtime()
 
     @property
     def is_production(self) -> bool:
-        # "prod" is the SAM/deploy.ps1 default EnvironmentName; matching only
-        # "production" silently skipped every production guard on AWS.
-        return self.ENVIRONMENT.lower() in ("production", "prod")
+        """Production guards apply on every AWS stack (prod, qa, staging, ...).
+
+        Lambda is always treated as production: each stack is internet-facing
+        and its secrets come from the template. Outside Lambda, FOLIO_ENV=prod or
+        production opts a self-hosted run into the same guards. ("prod" is the
+        SAM/deploy.ps1 default EnvironmentName.)
+        """
+        return is_lambda_runtime() or self.ENVIRONMENT.lower() in ("production", "prod")
 
 
 settings = Settings()
+
+_s3_ignored_warned = False
+
+
+def warn_ignored_s3_bucket(current: Settings = settings) -> bool:
+    """Log once that S3_BUCKET_NAME is ignored outside Lambda. Returns whether it warned."""
+    global _s3_ignored_warned
+    if _s3_ignored_warned or not current.S3_BUCKET_NAME or is_lambda_runtime():
+        return False
+    _s3_ignored_warned = True
+    logging.getLogger("folio.config").warning(
+        "S3_BUCKET_NAME is set but ignored: S3 vault sync runs only on AWS Lambda. "
+        "Docker and local runs are for development and never sync to AWS."
+    )
+    return True
 
 
 def validate_production_settings(current: Settings = settings) -> list[str]:

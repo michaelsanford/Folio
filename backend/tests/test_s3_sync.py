@@ -1,4 +1,5 @@
-"""S3 vault persistence: conditional uploads, fail-closed restore, freshness."""
+"""S3 vault persistence (Lambda only): conditional uploads, fail-closed restore,
+freshness, and discarding a change that could not be uploaded."""
 import logging
 import sqlite3
 from pathlib import Path
@@ -7,14 +8,18 @@ from unittest.mock import patch
 import pytest
 
 from app.core import s3_sync
+from app.core.config import settings
 from app.core.s3_sync import (
     S3_DB_KEY,
     S3RestoreError,
     VaultConflictError,
+    VaultSyncFailedError,
+    discard_local_changes,
     ensure_db_fresh,
     restore_db_from_s3,
     startup_restore,
     sync_db_to_s3,
+    sync_now,
 )
 from app.core.sync_scheduler import sync_scheduler
 from tests.a_fake_s3 import FakeS3, client_error
@@ -24,13 +29,16 @@ BUCKET = "my-vault-bucket"
 
 @pytest.fixture(autouse=True)
 def clean_sync_state(monkeypatch):
-    monkeypatch.delenv("AWS_LAMBDA_FUNCTION_NAME", raising=False)
+    # S3 sync only ever runs on Lambda.
+    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "folio")
     s3_sync._last_known_etag = None
     s3_sync._last_fresh_check = 0.0
+    s3_sync._local_untrusted = False
     sync_scheduler.reset()
     yield
     s3_sync._last_known_etag = None
     s3_sync._last_fresh_check = 0.0
+    s3_sync._local_untrusted = False
     sync_scheduler.reset()
 
 
@@ -101,8 +109,7 @@ def test_restore_db_404_starts_fresh(fake_s3, tmp_path):
     assert s3_sync._last_known_etag is None
 
 
-def test_restore_fails_closed_on_lambda(fake_s3, tmp_path, monkeypatch, caplog):
-    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "folio")
+def test_restore_fails_closed(fake_s3, tmp_path, caplog):
     fake_s3.seed(BUCKET, S3_DB_KEY, b"x")
     fake_s3.fail_get_with = client_error("AccessDenied", 403, "GetObject")
 
@@ -112,34 +119,29 @@ def test_restore_fails_closed_on_lambda(fake_s3, tmp_path, monkeypatch, caplog):
     assert any(getattr(r, "event", None) == "s3_restore_failed" for r in caplog.records)
 
 
-def test_restore_error_outside_lambda_is_logged_not_raised(fake_s3, tmp_path):
+def test_restore_throttling_error_also_fails_closed(fake_s3, tmp_path):
     fake_s3.fail_get_with = client_error("SlowDown", 503, "GetObject")
-    assert restore_db_from_s3(tmp_path / "folio.db", BUCKET) is False
+    with pytest.raises(S3RestoreError):
+        restore_db_from_s3(tmp_path / "folio.db", BUCKET)
 
 
-def test_docker_startup_keeps_existing_local_db(fake_s3, tmp_path):
-    db_path = _make_db(tmp_path / "folio.db", "local")
-    remote_etag = fake_s3.seed(BUCKET, S3_DB_KEY, _db_bytes(tmp_path, "remote"))
-
-    assert startup_restore(db_path, BUCKET) is False
-    assert fake_s3.get_calls == 0, "Docker must not overwrite an existing local DB"
-    assert _read_value(db_path) == "local"
-    # Adopting the ETag lets the next conditional upload replace the S3 copy.
-    assert s3_sync._last_known_etag == remote_etag
+def test_restore_without_a_client_fails_closed(tmp_path):
+    with patch("app.core.s3_sync.get_s3_client", return_value=None):
+        with pytest.raises(S3RestoreError):
+            restore_db_from_s3(tmp_path / "folio.db", BUCKET)
 
 
-def test_docker_startup_restores_when_local_db_missing(fake_s3, tmp_path):
+def test_startup_always_restores_over_a_stale_local_file(fake_s3, tmp_path):
+    db_path = _make_db(tmp_path / "folio.db", "stale")
     fake_s3.seed(BUCKET, S3_DB_KEY, _db_bytes(tmp_path, "remote"))
-    db_path = tmp_path / "data" / "folio.db"
 
     assert startup_restore(db_path, BUCKET) is True
     assert _read_value(db_path) == "remote"
 
 
-def test_lambda_startup_always_restores(fake_s3, tmp_path, monkeypatch):
-    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "folio")
-    db_path = _make_db(tmp_path / "folio.db", "stale")
+def test_startup_restores_when_local_db_missing(fake_s3, tmp_path):
     fake_s3.seed(BUCKET, S3_DB_KEY, _db_bytes(tmp_path, "remote"))
+    db_path = tmp_path / "data" / "folio.db"
 
     assert startup_restore(db_path, BUCKET) is True
     assert _read_value(db_path) == "remote"
@@ -264,3 +266,82 @@ def test_ensure_db_fresh_logs_warning_when_head_fails(fake_s3, tmp_path, caplog)
     with caplog.at_level(logging.WARNING, logger="folio.s3_sync"):
         assert ensure_db_fresh(tmp_path / "folio.db", BUCKET) is False
     assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+# ------------------------------------------------- failed upload is discarded
+
+@pytest.fixture
+def lambda_vault(monkeypatch, tmp_path):
+    """settings pointed at a tmp vault on Lambda with a bucket configured."""
+    db_path = tmp_path / "folio.db"
+    monkeypatch.setattr(settings, "S3_BUCKET_NAME", BUCKET)
+    monkeypatch.setattr(settings, "SQLITE_DB_PATH", db_path)
+    return db_path
+
+
+def test_sync_now_discards_a_change_that_failed_to_upload(fake_s3, lambda_vault, tmp_path, no_migrations):
+    s3_sync._last_known_etag = fake_s3.seed(BUCKET, S3_DB_KEY, _db_bytes(tmp_path, "durable"))
+    _make_db(lambda_vault, "unsaved edit")
+    sync_scheduler.mark_dirty()
+    fake_s3.fail_put_with = client_error("InternalError", 500, "PutObject")
+
+    with patch("app.core.database.engine.dispose"):
+        with pytest.raises(VaultSyncFailedError):
+            sync_now()
+
+    assert _read_value(lambda_vault) == "durable", "the local copy must equal S3 again"
+    assert sync_scheduler.has_pending_changes() is False
+    assert s3_sync._local_untrusted is False
+
+
+def test_sync_now_returns_false_when_sync_is_disabled(fake_s3, monkeypatch):
+    monkeypatch.delenv("AWS_LAMBDA_FUNCTION_NAME")
+    monkeypatch.setattr(settings, "S3_BUCKET_NAME", BUCKET)
+    assert sync_now() is False
+    assert fake_s3.put_calls == [] and fake_s3.head_calls == 0 and fake_s3.get_calls == 0
+
+
+def test_discard_when_the_vault_never_reached_s3_rebuilds_empty(fake_s3, tmp_path, no_migrations):
+    db_path = _make_db(tmp_path / "folio.db", "never uploaded")
+    with patch("app.core.database.engine.dispose"):
+        assert discard_local_changes(db_path, BUCKET) is True
+    assert not db_path.exists()
+    no_migrations.assert_called_once()
+
+
+def test_failed_reload_marks_the_local_copy_untrusted(fake_s3, tmp_path, no_migrations, caplog):
+    db_path = _make_db(tmp_path / "folio.db", "unsaved edit")
+    remote = fake_s3.seed(BUCKET, S3_DB_KEY, _db_bytes(tmp_path, "durable"))
+    s3_sync._last_known_etag = remote
+    fake_s3.fail_get_with = client_error("SlowDown", 503, "GetObject")
+
+    with caplog.at_level(logging.ERROR, logger="folio.s3_sync"):
+        with patch("app.core.database.engine.dispose"):
+            assert discard_local_changes(db_path, BUCKET) is False
+    assert any(getattr(r, "event", None) == "s3_sync_failed" for r in caplog.records)
+    assert s3_sync._local_untrusted is True
+    assert s3_sync._last_known_etag is None, "no upload may overwrite S3 from this copy"
+
+    # The next request refuses to serve the untrusted copy while S3 is down...
+    with patch("app.core.database.engine.dispose"):
+        with pytest.raises(VaultSyncFailedError):
+            ensure_db_fresh(db_path, BUCKET)
+    assert _read_value(db_path) == "unsaved edit"
+
+    # ...and reloads it, bypassing the freshness throttle, once S3 answers.
+    fake_s3.fail_get_with = None
+    s3_sync._last_fresh_check = 10**12
+    with patch("app.core.database.engine.dispose"):
+        assert ensure_db_fresh(db_path, BUCKET) is True
+    assert _read_value(db_path) == "durable"
+    assert s3_sync._local_untrusted is False
+    assert s3_sync._last_known_etag == remote
+
+
+def test_untrusted_copy_cannot_be_uploaded_over_the_vault(fake_s3, tmp_path):
+    db_path = _make_db(tmp_path / "folio.db", "unsaved edit")
+    fake_s3.seed(BUCKET, S3_DB_KEY, _db_bytes(tmp_path, "durable"))
+    s3_sync._local_untrusted = True
+    s3_sync._last_known_etag = None
+    assert sync_db_to_s3(db_path, BUCKET) is False
+    assert fake_s3.put_calls == []

@@ -17,7 +17,7 @@ from app.api.rules import auto_learn_rules_bulk, seed_default_rules
 from app.api.transactions import recalculate_account_balances
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.s3_sync import VaultConflictError, sync_now
+from app.core.s3_sync import VaultConflictError, VaultSyncFailedError, sync_now
 from app.models.account import Account, AccountType, LoanCompounding
 from app.models.category import Category
 from app.models.rule import CategorizationRule
@@ -177,7 +177,7 @@ def upload_statement_preview(
 
     try:
         preview = _parse_statement(db, ext, resolved_account_id, content, safe_filename)
-    except (HTTPException, VaultConflictError):
+    except (HTTPException, VaultConflictError, VaultSyncFailedError):
         raise
     except (ValueError, UnicodeDecodeError, csv.Error) as e:
         logger.info("Statement %s could not be parsed: %s", safe_filename, e)
@@ -461,7 +461,7 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
     except HTTPException:
         db.rollback()
         raise
-    except VaultConflictError:
+    except (VaultConflictError, VaultSyncFailedError):
         db.rollback()
         raise
     except IntegrityError:
@@ -485,7 +485,10 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
 
     # The rows are committed. Balances and transfer links are derived data:
     # whatever happens to them, the import itself must still reach S3, so the
-    # flush runs in ``finally`` (and its conflict error propagates).
+    # flush runs in ``finally``. On Lambda sync_now never reports success
+    # without an upload: a conflict raises VaultConflictError (409) and any
+    # other failure discards the import locally and raises VaultSyncFailedError
+    # (503 vault_sync_failed). Elsewhere it is a no-op.
     summaries: list[CommittedAccountSummary] = []
     transfers_linked = 0
     try:

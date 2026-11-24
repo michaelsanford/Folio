@@ -70,6 +70,59 @@ def test_docs_are_hidden_in_production(env):
     assert out.stdout.strip().splitlines()[-1] == "None None None"
 
 
+def test_docs_are_hidden_on_every_lambda_stack():
+    """A qa / staging stack on AWS gets the production guards too."""
+    script = (
+        "from app.core.config import settings, validate_production_settings; "
+        "from app.main import app; "
+        "print(settings.is_production, app.docs_url, app.redoc_url, app.openapi_url)"
+    )
+    environ = {
+        **os.environ,
+        "AWS_LAMBDA_FUNCTION_NAME": "folio-qa",
+        "FOLIO_ENV": "qa",
+        "FOLIO_SKIP_STARTUP_TASKS": "1",
+    }
+    for key in ("FOLIO_CORS_ORIGINS", "S3_BUCKET_NAME", "FOLIO_SESSION_SECRET_ARN", "FOLIO_ORIGIN_SECRET_ARN"):
+        environ.pop(key, None)
+    out = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=BACKEND_DIR,
+        env=environ,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == "True None None None"
+
+
+def test_lambda_is_production_whatever_folio_env_says(monkeypatch):
+    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "folio-qa")
+    monkeypatch.delenv("FOLIO_CORS_ORIGINS", raising=False)
+    qa = Settings(ENVIRONMENT="qa")
+    assert qa.is_production is True
+    assert qa.CORS_ORIGINS == []
+
+    monkeypatch.delenv("AWS_LAMBDA_FUNCTION_NAME")
+    assert Settings(ENVIRONMENT="qa").is_production is False
+    assert Settings(ENVIRONMENT="prod").is_production is True
+
+
+def test_setup_is_forbidden_on_a_lambda_qa_stack(unauthenticated_client, restore_settings, monkeypatch):
+    settings.ENVIRONMENT = "qa"
+    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "folio-qa")
+    resp = unauthenticated_client.post("/api/auth/setup", json={"password": "CorrectHorseBattery1!"})
+    assert resp.status_code == 403
+    assert "disabled in production" in resp.json()["detail"]
+
+
+def test_maintenance_guard_applies_on_a_lambda_qa_stack(client, restore_settings, monkeypatch):
+    settings.ENVIRONMENT = "qa"
+    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "folio-qa")
+    assert client.post("/api/maintenance/seed-demo-data").status_code == 403
+
+
 def test_docs_are_served_in_development():
     assert app.docs_url == "/api/docs"
 

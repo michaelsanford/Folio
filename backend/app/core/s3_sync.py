@@ -1,7 +1,10 @@
-"""SQLite vault persistence in S3.
+"""SQLite vault persistence in S3 (AWS Lambda only).
 
 The S3 object ``database/folio.db`` is the durable copy of the vault. Each
-container works on a local file and uploads snapshots of it.
+Lambda container works on a local file in /tmp and uploads snapshots of it.
+Docker and local runs never reach this module's network paths: they are
+development environments and keep the vault on local disk only (see
+``Settings.s3_sync_enabled``).
 
 Consistency rules:
 
@@ -12,10 +15,15 @@ Consistency rules:
   ``VaultConflictError`` is raised so the API can answer 409.
 - Snapshots are taken with the SQLite online backup API, so a concurrent write
   cannot produce a torn file.
-- Restore fails closed on Lambda: any error other than "object does not exist"
-  raises, so the container never starts with an empty vault and then uploads
-  it over the real one. As a second guard, an upload is refused when the remote
-  object exists but this process never established its ETag.
+- A failed upload (anything but a conflict) also discards the local change:
+  the vault is re-downloaded and ``VaultSyncFailedError`` is raised so the API
+  can answer 503 vault_sync_failed. A save is either durable or visibly
+  rejected. If even the re-download fails, the local copy is marked untrusted
+  and the next request must reload it before anything is served.
+- Restore fails closed: any error other than "object does not exist" raises,
+  so the container never starts with an empty vault and then uploads it over
+  the real one. As a second guard, an upload is refused when the remote object
+  exists but this process never established its ETag.
 """
 import logging
 import os
@@ -27,7 +35,6 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app.core.config import is_lambda_runtime
 from app.core.logging import (
     EVENT_S3_RESTORE_FAILED,
     EVENT_S3_SYNC_CONFLICT,
@@ -46,6 +53,9 @@ _last_known_etag: str | None = None
 # Monotonic time of the last freshness HEAD, so ensure_db_fresh costs at most
 # one S3 round trip per second per container.
 _last_fresh_check: float = 0.0
+# Set when a failed upload could not be undone by re-downloading the vault: the
+# local file may hold a change S3 never received, so it must not be served.
+_local_untrusted: bool = False
 
 _client_lock = threading.Lock()
 _clients: dict[str, object] = {}
@@ -56,6 +66,13 @@ class VaultConflictError(Exception):
 
     The local copy has already been replaced by the current S3 object when this
     is raised; the caller's write is lost and the client must reload.
+    """
+
+
+class VaultSyncFailedError(Exception):
+    """A change could not be uploaded to S3 and was discarded locally.
+
+    The API answers 503 vault_sync_failed: the client's change was not saved.
     """
 
 
@@ -177,23 +194,14 @@ def _migrate_after_swap() -> None:
         logger.exception("Migrating the refreshed database failed")
 
 
-def restore_db_from_s3(
-    db_path: Path,
-    bucket_name: str,
-    region: str = "ca-central-1",
-    *,
-    fail_closed: bool | None = None,
-) -> bool:
-    """Download the vault from S3 into ``db_path``.
+def restore_db_from_s3(db_path: Path, bucket_name: str, region: str = "ca-central-1") -> bool:
+    """Download the vault from S3 into ``db_path``, failing closed.
 
-    Returns True when restored and False when there is nothing to restore. When
-    the object exists but cannot be read, raises S3RestoreError in fail-closed
-    mode (the Lambda default) and returns False otherwise.
+    Returns True when restored and False when there is nothing to restore (no
+    bucket, or the object does not exist yet). When the object exists but
+    cannot be read, raises S3RestoreError.
     """
     global _last_known_etag
-
-    if fail_closed is None:
-        fail_closed = is_lambda_runtime()
 
     if not bucket_name:
         logger.info("No S3_BUCKET_NAME configured. Skipping S3 database restore.")
@@ -201,10 +209,8 @@ def restore_db_from_s3(
 
     client = get_s3_client(region)
     if not client:
-        if fail_closed:
-            log_event(logger, logging.ERROR, EVENT_S3_RESTORE_FAILED, "No S3 client available to restore the vault")
-            raise S3RestoreError("No S3 client available to restore the vault")
-        return False
+        log_event(logger, logging.ERROR, EVENT_S3_RESTORE_FAILED, "No S3 client available to restore the vault")
+        raise S3RestoreError("No S3 client available to restore the vault")
 
     with _sync_lock:
         try:
@@ -224,35 +230,17 @@ def restore_db_from_s3(
                 f"Unable to download database from S3: {e}",
                 exc_info=True,
             )
-            if fail_closed:
-                raise S3RestoreError(f"Unable to restore vault from S3: {e}") from e
-            return False
+            raise S3RestoreError(f"Unable to restore vault from S3: {e}") from e
 
 
 def startup_restore(db_path: Path, bucket_name: str, region: str = "ca-central-1") -> bool:
-    """Startup policy.
+    """Startup policy (Lambda only): always restore, failing closed.
 
-    Lambda: always restore (local /tmp is empty or stale), failing closed.
-    Docker: the volume's local file is authoritative; restore only when it is
-    missing, otherwise adopt the remote ETag so conditional uploads can proceed.
+    The container's /tmp copy is empty or stale, so S3 is authoritative.
     """
-    global _last_known_etag
-
     if not bucket_name:
         return False
-    if is_lambda_runtime() or not db_path.exists():
-        return restore_db_from_s3(db_path, bucket_name, region)
-
-    client = get_s3_client(region)
-    if client is None:
-        return False
-    try:
-        with _sync_lock:
-            _last_known_etag = _head_etag(client, bucket_name)
-        logger.info("Local database present; keeping it and tracking the S3 copy's ETag.")
-    except Exception as exc:
-        logger.warning(f"Could not read the S3 vault's ETag at startup: {exc}")
-    return False
+    return restore_db_from_s3(db_path, bucket_name, region)
 
 
 def _snapshot(db_path: Path) -> Path:
@@ -272,6 +260,7 @@ def _snapshot(db_path: Path) -> Path:
 
 
 def _handle_conflict(client, bucket_name: str, db_path: Path, exc: Exception) -> None:
+    global _local_untrusted, _last_known_etag
     log_event(
         logger,
         logging.WARNING,
@@ -281,6 +270,9 @@ def _handle_conflict(client, bucket_name: str, db_path: Path, exc: Exception) ->
     try:
         _replace_local_from_s3(client, bucket_name, db_path)
     except Exception:
+        # The losing change is still in the local file: never serve it.
+        _local_untrusted = True
+        _last_known_etag = None
         log_event(
             logger,
             logging.ERROR,
@@ -294,12 +286,69 @@ def _handle_conflict(client, bucket_name: str, db_path: Path, exc: Exception) ->
     raise VaultConflictError("The vault was changed elsewhere; local changes were discarded.") from exc
 
 
+def _reset_local_to_s3(client, bucket_name: str, db_path: Path) -> None:
+    """Make the local file equal to S3's current vault.
+
+    When the object does not exist yet (a brand-new vault whose first upload
+    failed), the local file is removed and the schema rebuilt empty, which is
+    what S3 holds: nothing.
+    """
+    global _last_known_etag
+    try:
+        _replace_local_from_s3(client, bucket_name, db_path)
+    except Exception as exc:
+        if not _is_not_found(exc):
+            raise
+        from app.core.database import engine
+
+        engine.dispose()
+        _remove_sqlite_sidecars(db_path)
+        db_path.unlink(missing_ok=True)
+        _last_known_etag = None
+        _migrate_after_swap()
+
+
+def discard_local_changes(db_path: Path, bucket_name: str, region: str = "ca-central-1") -> bool:
+    """Throw away this container's un-uploaded changes by reloading the vault.
+
+    Returns True when the local copy now equals S3. On failure the local copy
+    is marked untrusted, so ensure_db_fresh reloads it (or refuses to serve it)
+    on the next request instead of serving a change S3 never received.
+    """
+    global _local_untrusted, _last_known_etag
+    from app.core.sync_scheduler import sync_scheduler
+
+    with _sync_lock:
+        sync_scheduler.reset()
+        try:
+            client = get_s3_client(region)
+            if client is None:
+                raise S3RestoreError("No S3 client available to reload the vault")
+            _reset_local_to_s3(client, bucket_name, db_path)
+            _local_untrusted = False
+            return True
+        except Exception:
+            _local_untrusted = True
+            # Also blocks uploads from this container until it reloads: with no
+            # known ETag, sync_db_to_s3 refuses to overwrite an existing vault.
+            _last_known_etag = None
+            log_event(
+                logger,
+                logging.ERROR,
+                EVENT_S3_SYNC_FAILED,
+                "Reloading the vault after a failed upload failed; the local copy must be "
+                "reloaded before the next request is served.",
+                exc_info=True,
+            )
+            return False
+
+
 def sync_db_to_s3(db_path: Path, bucket_name: str, region: str = "ca-central-1") -> bool:
     """Upload a consistent snapshot to S3 with a conditional write.
 
-    Returns True on success and False on failure (logged as s3_sync_failed; the
-    caller keeps the database dirty and retries). Raises VaultConflictError when
-    S3 rejects the write because another writer got there first.
+    Returns True on success and False on failure (logged as s3_sync_failed).
+    Raises VaultConflictError when S3 rejects the write because another writer
+    got there first. A plain failure discards nothing here; sync_now does.
     """
     global _last_known_etag
 
@@ -385,11 +434,19 @@ def ensure_db_fresh(db_path: Path, bucket_name: str, region: str = "ca-central-1
 
     Checks S3 at most once per FRESHNESS_INTERVAL_SECONDS, never while local
     changes are waiting to upload, and migrates a swapped-in file before use.
+    An untrusted local copy (see discard_local_changes) is always reloaded
+    first; if that fails, VaultSyncFailedError is raised rather than serving it.
     """
     global _last_fresh_check
 
     if not bucket_name:
         return False
+
+    if _local_untrusted:
+        if discard_local_changes(db_path, bucket_name, region):
+            logger.info("Reloaded the vault after an earlier failed upload.")
+            return True
+        raise VaultSyncFailedError("The local vault copy could not be reloaded from S3.")
 
     from app.core.sync_scheduler import sync_scheduler
 
@@ -440,11 +497,23 @@ def sync_db_if_configured() -> bool:
 
 
 def sync_now() -> bool:
-    """Upload immediately, bypassing the debounce.
+    """Upload the vault now, so a change is durable before the response.
 
-    Returns whether the upload succeeded. Raises VaultConflictError when another
-    writer replaced the vault (the local copy has been reloaded from S3).
+    Returns True when uploaded and False when S3 sync is not enabled (Docker /
+    local, or no bucket). It never returns success without an upload:
+
+    - VaultConflictError: another writer replaced the vault; the local copy
+      has been reloaded from S3 (API: 409 vault_conflict).
+    - VaultSyncFailedError: the upload failed for another reason; the local
+      change has been discarded by reloading the vault (API: 503
+      vault_sync_failed).
     """
+    from app.core.config import settings
     from app.core.sync_scheduler import sync_scheduler
 
-    return sync_scheduler.flush()
+    if not settings.s3_sync_enabled:
+        return False
+    if sync_scheduler.flush():
+        return True
+    discard_local_changes(settings.SQLITE_DB_PATH, settings.S3_BUCKET_NAME, settings.AWS_REGION)
+    raise VaultSyncFailedError("The change could not be uploaded to S3 and was discarded.")

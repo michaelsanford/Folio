@@ -43,6 +43,8 @@ def test_upgrade_from_an_older_revision_takes_a_backup_first(temp_db, monkeypatc
     command.upgrade(migrations._alembic_config(), previous)
     assert migrations.current_revision(temp_db) == previous
 
+    # The pre-migration copy goes to S3 only on Lambda.
+    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "folio")
     monkeypatch.setattr(settings, "S3_BUCKET_NAME", "vault-bucket")
     with patch("app.core.s3_sync.upload_backup", return_value=True) as upload:
         assert migrations.run_migrations() is True
@@ -59,6 +61,23 @@ def test_upgrade_from_an_older_revision_takes_a_backup_first(temp_db, monkeypatc
     upload.assert_called_once()
     key = upload.call_args.args[1]
     assert key.startswith(f"backups/pre-migrate-{previous}-") and key.endswith(".db")
+
+
+def test_backup_is_never_uploaded_outside_lambda(temp_db, monkeypatch):
+    """Docker / local is development only: a bucket set there is ignored."""
+    _, previous = _revisions()
+    command.upgrade(migrations._alembic_config(), previous)
+
+    monkeypatch.delenv("AWS_LAMBDA_FUNCTION_NAME", raising=False)
+    monkeypatch.setattr(settings, "S3_BUCKET_NAME", "vault-bucket")
+    with (
+        patch("boto3.client", side_effect=AssertionError("no AWS client outside Lambda")) as make_client,
+        patch("app.core.s3_sync.get_s3_client", side_effect=AssertionError("no S3 outside Lambda")) as get_client,
+    ):
+        assert migrations.run_migrations() is True
+    make_client.assert_not_called()
+    get_client.assert_not_called()
+    assert len(list(temp_db.parent.glob(f"folio.db.pre-migrate-{previous}-*.bak"))) == 1
 
 
 def test_only_the_newest_local_backups_are_kept(temp_db):

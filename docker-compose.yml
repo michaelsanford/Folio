@@ -26,15 +26,8 @@ services:
       # Optional: when set, every request must carry this value in the
       # X-Folio-Origin-Verify header (use it behind a reverse proxy that adds it).
       - FOLIO_ORIGIN_VERIFY_SECRET=${FOLIO_ORIGIN_VERIFY_SECRET:-}
-      # Optional S3 vault. On start the app restores database/folio.db from S3
-      # only when the local database file is missing, so ./backend/data stays the
-      # working copy across restarts. Changes are uploaded with S3 conditional
-      # writes: if another instance (for example the Lambda deployment) changed
-      # the vault first, the upload is rejected instead of overwriting it.
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME:-}
-      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ca-central-1}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      # Docker is for local development: the vault lives only in ./backend/data
+      # and is never synced to AWS. S3 sync runs only in the Lambda deployment.
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/health"]
       interval: 30s

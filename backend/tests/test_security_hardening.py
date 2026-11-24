@@ -26,6 +26,20 @@ def test_production_rejects_the_generated_secret(env):
     assert any("FOLIO_SECRET_KEY" in p for p in problems)
 
 
+def test_lambda_qa_stack_runs_the_production_checks(monkeypatch):
+    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "folio-qa")
+    qa = Settings(ENVIRONMENT="qa", SECRET_KEY=generated_secret_key())
+    assert any("FOLIO_SECRET_KEY" in p for p in validate_production_settings(qa))
+
+    configured = Settings(
+        ENVIRONMENT="qa",
+        SECRET_KEY=secrets.token_hex(32),
+        FOLIO_MASTER_PASSWORD="",
+        FOLIO_MASTER_PASSWORD_HASH=hash_password("CorrectHorseBattery1!"),
+    )
+    assert validate_production_settings(configured) == []
+
+
 def test_generated_secret_is_random_and_persisted(tmp_path):
     from app.core.config import _load_or_create_key
 

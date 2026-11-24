@@ -64,6 +64,9 @@ export class ApiError extends Error {
 export const VAULT_CONFLICT_MESSAGE =
   "Your change wasn't saved because the vault was changed elsewhere. The latest data has been loaded — please retry.";
 
+/** Shown when the server sends vault_sync_failed without a message of its own. */
+export const VAULT_SYNC_FAILED_MESSAGE = "Your change wasn't saved. Please try again.";
+
 /**
  * Retry policy for transient responses. 429 means the request was rejected
  * before it ran, so any method may be retried. 503 may arrive after a mutating
@@ -148,14 +151,16 @@ async function toApiError(res: Response): Promise<ApiError> {
   }
   if (code === "vault_conflict") {
     message = VAULT_CONFLICT_MESSAGE;
+  } else if (code === "vault_sync_failed" && !message.trim()) {
+    message = VAULT_SYNC_FAILED_MESSAGE;
   }
   return new ApiError(message, res.status, code);
 }
 
 /**
- * Sends a request with auth, the retry policy, and the app-wide handling of 401
- * and 409 vault conflicts. Resolves with the successful Response; throws
- * ApiError for any other non-2xx status.
+ * Sends a request with auth, the retry policy, and the app-wide handling of 401,
+ * 409 vault conflicts and 503 vault sync failures. Resolves with the successful
+ * Response; throws ApiError for any other non-2xx status.
  */
 async function send(path: string, init: RequestInit = {}): Promise<Response> {
   const token = getStoredToken();
@@ -189,6 +194,10 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
     if (error.status === 409 && error.code === "vault_conflict") {
       notify(VAULT_CONFLICT_MESSAGE, "warning");
       emitVaultConflict();
+    } else if (error.status === 503 && error.code === "vault_sync_failed") {
+      // The server could not store the change and discarded it; say so with
+      // the server's own wording. (A mutating 503 is never retried.)
+      notify(error.message, "error");
     }
     throw error;
   }

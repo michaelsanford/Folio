@@ -162,6 +162,54 @@ describe("vault conflict handling", () => {
   });
 });
 
+describe("vault sync failure handling", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the server's message for 503 vault_sync_failed and does not retry the write", async () => {
+    const serverMessage = "Your change wasn't saved. Please try again.";
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse(503, { detail: { code: "vault_sync_failed", message: serverMessage } })
+    );
+    const notices: { message: string; tone: string }[] = [];
+    const reload = vi.fn();
+    const unsubscribeNotices = subscribeToNotifications((n) =>
+      notices.push({ message: n.message, tone: n.tone })
+    );
+    const unsubscribeConflict = onVaultConflict(reload);
+
+    try {
+      const error = await api.updateAccount("acc-1", { name: "Renamed" }).catch((e) => e);
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({ status: 503, code: "vault_sync_failed", message: serverMessage });
+      expect(notices).toEqual([{ message: serverMessage, tone: "error" }]);
+      expect(reload).not.toHaveBeenCalled();
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      unsubscribeNotices();
+      unsubscribeConflict();
+    }
+  });
+
+  it("does not raise a notice for an ordinary 503", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(503, { detail: "Unavailable" }));
+    const notices: string[] = [];
+    const unsubscribe = subscribeToNotifications((n) => notices.push(n.message));
+
+    try {
+      await expect(api.createAccount({ name: "Chequing" })).rejects.toMatchObject({ status: 503 });
+      expect(notices).toEqual([]);
+    } finally {
+      unsubscribe();
+    }
+  });
+});
+
 describe("statement upload errors", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
