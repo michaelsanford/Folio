@@ -7,7 +7,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Build Backend Python Environment with uv
-FROM python:3.14-slim AS backend-builder
+FROM python:3.15-slim AS backend-builder
 COPY --from=ghcr.io/astral-sh/uv:0.13.9 /uv /bin/uv
 
 WORKDIR /app
@@ -22,7 +22,7 @@ COPY backend/pyproject.toml backend/uv.lock backend/.python-version ./
 RUN uv sync --locked --no-dev --no-install-project --no-cache
 
 # Stage 3: Unified Execution Environment (Docker Compose / AWS Lambda Web Adapter)
-FROM python:3.14-slim
+FROM python:3.15-slim
 COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0 /lambda-adapter /opt/extensions/lambda-adapter
 
 WORKDIR /app
