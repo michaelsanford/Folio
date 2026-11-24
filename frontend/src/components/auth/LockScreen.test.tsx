@@ -11,7 +11,8 @@ describe("LockScreen Component", () => {
   it("renders master passphrase input and lock branding", () => {
     render(<LockScreen onUnlocked={vi.fn()} />);
 
-    expect(screen.getByRole("heading", { name: "Folio" })).toBeDefined();
+    const heading = screen.getByRole("heading", { name: "Folio" });
+    expect(heading.querySelector('img[src="/folio-icon.svg"]')).not.toBeNull();
     expect(screen.getByText("Master passphrase")).toBeDefined();
     expect(screen.getByPlaceholderText("••••••••••••")).toBeDefined();
     expect(screen.getByRole("button", { name: /Unlock vault/i })).toBeDefined();

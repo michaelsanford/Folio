@@ -64,3 +64,12 @@ describe("AppLayout update-available item", () => {
     expect(onApplyUpdate).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("AppLayout brand icon", () => {
+  it("uses the Folio app icon in the sidebar and mobile header", () => {
+    const { container } = renderLayout(false);
+    const marks = container.querySelectorAll('img[src="/folio-icon.svg"]');
+    // Expanded desktop sidebar wordmark + mobile header wordmark.
+    expect(marks.length).toBe(2);
+  });
+});

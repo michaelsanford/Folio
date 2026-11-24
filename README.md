@@ -1,3 +1,5 @@
+<p><img src="frontend/public/folio-icon.svg" alt="" width="72" height="72"></p>
+
 # Folio
 
 Folio is a self-hosted personal finance tracking, statement ingestion, and household budgeting application. Built with **FastAPI**, **SQLite (WAL mode)**, and a **React 19 + Vite + Tailwind CSS PWA**, it is engineered for high performance on desktop and mobile, with an optional low-cost AWS SAM serverless deployment (CloudFront + Lambda + S3) in `ca-central-1`.
@@ -20,6 +22,7 @@ Folio combines high-density desktop statement parsing and data entry with respon
   - [9. Built-in Canadian Demo Dataset](#9-built-in-canadian-demo-dataset)
 - [Architecture](#architecture)
   - [Performance Notes](#performance-notes)
+  - [Installing the App & Updates](#installing-the-app--updates)
 - [Quick Start (Local Development)](#quick-start-local-development)
   - [Prerequisites](#prerequisites)
   - [1-Command Local Launcher](#1-command-local-launcher)
@@ -240,6 +243,18 @@ flowchart LR
 
 - Statement imports, auto-classification and transfer linking work in batches: rules, categories and categorisation history are loaded once per request rather than once per row. A 300-row statement previews in about a second on a vault with 50,000 transactions.
 - The frontend loads each view (dashboard, ledger, ingestion, loans, investments and so on) and its charts on demand, so the first page load only fetches what it shows.
+
+### Installing the App & Updates
+
+Folio is an installable Progressive Web App with its own icon (a wallet with cards, in the Folio Emerald palette).
+
+- **Android (Chrome, Edge, Samsung Internet):** open Folio, then use **Install app** from the browser menu. The home-screen icon adapts to the launcher's shape.
+- **iPhone and iPad (Safari):** Share, then **Add to Home Screen**. Folio opens full screen, clear of the notch and home indicator.
+- **Desktop (Chrome, Edge):** the install icon in the address bar, or the browser menu's **Install Folio**. Right-click the installed app's icon for shortcuts to Ledger, Budget and Import.
+
+**Updates.** When a new version has been deployed, an **Update available** item appears at the top of the sidebar (and in the mobile header and menu). Select it to reload into the new version. Folio never reloads on its own while you are signed in, so nothing you are in the middle of is lost. An open or installed app checks for a new version every hour and each time you return to it; on the sign-in screen a waiting update is applied straight away.
+
+**Changing the icon.** The sources are `frontend/public/folio-icon.svg` (rounded tile: favicon and app icons) and `frontend/icons/folio-icon-maskable.svg` (full-bleed square with the mark inside the maskable safe zone: Android adaptive icons and the iOS home screen). After editing either, run `npm run generate-icons` in `frontend/` and commit the PNGs and `favicon.ico` it writes to `frontend/public/`. Builds use the committed files, so CI and Docker do not need the image toolchain.
 
 ---
 

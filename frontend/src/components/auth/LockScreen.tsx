@@ -6,13 +6,13 @@ import {
   EyeOff,
   ShieldCheck,
   ArrowRight,
-  BookOpen,
   Mail,
   Copy,
   Check,
   Smartphone,
   RotateCcw,
 } from "lucide-react";
+import { FolioMark } from "../common/FolioMark";
 import { api } from "../../services/api";
 import type { CognitoAuthResponse } from "../../types";
 
@@ -271,7 +271,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
         <div className="text-center mb-8">
           <Lock className="w-5 h-5 text-muted mx-auto mb-4" strokeWidth={1.5} aria-hidden="true" />
           <h1 className="inline-flex items-center gap-2 text-2xl font-semibold text-main leading-none">
-            <BookOpen className="w-6 h-6 text-accent-main" strokeWidth={1.5} aria-hidden="true" />
+            <FolioMark className="w-8 h-8" />
             Folio
           </h1>
           <p className="text-sm text-sub mt-2">{headerSubtitle}</p>

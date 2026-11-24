@@ -15,7 +15,6 @@ import {
   Palette,
   Sun,
   Moon,
-  BookOpen,
   PanelLeftClose,
   PanelLeftOpen,
   LogOut,
@@ -26,6 +25,7 @@ import { isAssetAccount } from "../../constants/canadianAccountTypes";
 import { useTheme } from "../../context/ThemeContext";
 import { ThemePickerModal } from "../common/ThemePickerModal";
 import { Money } from "../common/Money";
+import { FolioMark } from "../common/FolioMark";
 import { formatMoney } from "../../utils/format";
 import { useFormatPrefs } from "../../hooks/useFormatPrefs";
 
@@ -64,7 +64,7 @@ const Wordmark: React.FC<{ compact?: boolean }> = ({ compact = false }) => (
     title={compact ? "Folio" : undefined}
     aria-label={compact ? "Folio" : undefined}
   >
-    <BookOpen className="w-6 h-6 text-accent-main shrink-0" strokeWidth={1.75} />
+    <FolioMark className="w-7 h-7" />
     {!compact && (
       <span className="text-base font-semibold text-main leading-none">Folio</span>
     )}
