@@ -1,6 +1,7 @@
 """Bedrock: cached client with bounded timeouts, chunked parallel calls, per-chunk failure."""
 import json
 import threading
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -38,8 +39,9 @@ def _reply(prompt_text: str, fail_marker: str | None = None):
 def test_client_config_bounds_latency():
     cfg = bc.BEDROCK_CLIENT_CONFIG
     assert cfg.connect_timeout == 3
-    assert cfg.read_timeout == 20
-    assert cfg.retries == {"max_attempts": 2, "mode": "adaptive"}
+    assert cfg.read_timeout == 12
+    assert cfg.retries == {"max_attempts": 1, "mode": "standard"}
+    assert bc.BATCH_DEADLINE_SECONDS == 20.0
 
 
 def test_client_is_cached_per_region():
@@ -91,3 +93,49 @@ def test_all_chunks_failing_returns_empty():
     client.converse.return_value = {"output": {"message": {"content": [{"text": "nope"}]}}}
     with patch("boto3.client", return_value=client):
         assert bc.classify_with_bedrock([{"raw_payee": f"X{i}"} for i in range(50)], CATS) == []
+
+
+def test_slow_chunks_are_cut_off_at_the_deadline(monkeypatch):
+    """A chunk still running at the deadline leaves its rows unclassified, and
+    the call returns without waiting for it."""
+    monkeypatch.setattr(bc, "BATCH_DEADLINE_SECONDS", 0.3)
+    release = threading.Event()
+
+    def converse(**kwargs):
+        prompt = kwargs["messages"][0]["content"][0]["text"]
+        if '"raw_payee": "SLOW 40"' in prompt:
+            release.wait(5)  # far beyond the deadline
+        return _reply(prompt)
+
+    client = MagicMock()
+    client.converse.side_effect = converse
+    txns = [{"raw_payee": f"FAST {i}", "amount": -1.0} for i in range(40)]
+    txns += [{"raw_payee": f"SLOW {i}", "amount": -1.0} for i in range(40, 80)]
+    try:
+        with patch("boto3.client", return_value=client):
+            started = time.monotonic()
+            results = bc.classify_with_bedrock(txns, CATS)
+            elapsed = time.monotonic() - started
+    finally:
+        release.set()
+
+    assert elapsed < 2.0, f"classify_with_bedrock blocked for {elapsed:.2f}s past its deadline"
+    assert len(results) == 80
+    assert all(r.confidence == 0.9 for r in results[:40])
+    assert all(r.confidence == 0.0 for r in results[40:]), "late rows stay uncategorised"
+
+
+def test_a_single_slow_chunk_returns_nothing_by_the_deadline(monkeypatch):
+    monkeypatch.setattr(bc, "BATCH_DEADLINE_SECONDS", 0.2)
+    release = threading.Event()
+    client = MagicMock()
+    client.converse.side_effect = lambda **kw: release.wait(5) and _reply(kw["messages"][0]["content"][0]["text"])
+    try:
+        with patch("boto3.client", return_value=client):
+            started = time.monotonic()
+            results = bc.classify_with_bedrock([{"raw_payee": "SLOW"}], CATS)
+            elapsed = time.monotonic() - started
+    finally:
+        release.set()
+    assert elapsed < 1.5
+    assert results == [], "every chunk missed the deadline: nothing classified"

@@ -2,7 +2,8 @@ import json
 import logging
 import re
 import threading
-from concurrent.futures import ThreadPoolExecutor
+import time
+from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from typing import Any
 
@@ -14,16 +15,22 @@ from app.core.config import settings
 
 logger = logging.getLogger("folio.bedrock")
 
-# Bedrock calls happen inside a request. Without explicit timeouts botocore waits
-# 60 s per read and retries several times, which outlives the request budget;
-# adaptive mode also backs off client-side when throttled.
+# Bedrock calls happen inside a request, and Lambda / CloudFront give a request
+# 30 s in total, which must also cover the S3 upload of the vault. Without
+# explicit timeouts botocore waits 60 s per read and retries several times. One
+# attempt (max_attempts counts the first call) with a 12 s read keeps a single
+# chunk well inside the budget.
 BEDROCK_CLIENT_CONFIG = Config(
     connect_timeout=3,
-    read_timeout=20,
-    retries={"max_attempts": 2, "mode": "adaptive"},
+    read_timeout=12,
+    retries={"max_attempts": 1, "mode": "standard"},
 )
 CHUNK_SIZE = 40
 MAX_PARALLEL_CHUNKS = 4
+# Overall wall-clock budget for one classify_with_bedrock call. Chunks still
+# running at the deadline are abandoned: their rows come back unclassified
+# (zero confidence), exactly like a failed chunk. Patched in tests.
+BATCH_DEADLINE_SECONDS = 20.0
 
 _client_lock = threading.Lock()
 _clients: dict[str, Any] = {}
@@ -224,7 +231,9 @@ def classify_with_bedrock(
     at once, so a large batch neither overflows the model's output budget nor
     waits on one long serial call. A chunk that errors or returns unparseable
     JSON loses only its own rows (they come back with zero confidence); the
-    other chunks keep their answers.
+    other chunks keep their answers. The whole call returns within
+    ``BATCH_DEADLINE_SECONDS``: chunks not finished by then are treated as
+    failed and are not waited for.
 
     Zero unhandled exceptions: returns an empty list when disabled or when every
     chunk failed; otherwise exactly one result per input transaction.
@@ -261,11 +270,36 @@ def classify_with_bedrock(
     def _run(chunk: list[dict[str, Any]]) -> list[BedrockClassificationResult] | None:
         return _classify_chunk(client, target_model_id, category_summary, chunk)
 
-    if len(chunks) == 1:
-        chunk_results = [_run(chunks[0])]
-    else:
-        with ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_CHUNKS, len(chunks))) as pool:
-            chunk_results = list(pool.map(_run, chunks))
+    deadline = time.monotonic() + BATCH_DEADLINE_SECONDS
+    pool = ThreadPoolExecutor(
+        max_workers=min(MAX_PARALLEL_CHUNKS, len(chunks)),
+        thread_name_prefix="bedrock",
+    )
+    try:
+        futures = [pool.submit(_run, chunk) for chunk in chunks]
+        wait(futures, timeout=max(deadline - time.monotonic(), 0.0))
+        chunk_results: list[list[BedrockClassificationResult] | None] = []
+        late = 0
+        for future in futures:
+            if future.done() and not future.cancelled():
+                error = future.exception()
+                if error is not None:
+                    logger.error("Unexpected error classifying a Bedrock chunk: %s", error)
+                chunk_results.append(None if error is not None else future.result())
+            else:
+                late += 1
+                chunk_results.append(None)
+        if late:
+            logger.warning(
+                "Bedrock deadline of %.0f s reached; %d of %d chunk(s) left unclassified",
+                BATCH_DEADLINE_SECONDS,
+                late,
+                len(chunks),
+            )
+    finally:
+        # Never block the request on stragglers: queued chunks are cancelled and
+        # running ones end on their own read timeout in the background.
+        pool.shutdown(wait=False, cancel_futures=True)
 
     if all(r is None for r in chunk_results):
         return []
