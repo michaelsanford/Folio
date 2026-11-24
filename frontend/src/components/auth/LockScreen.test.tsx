@@ -16,6 +16,9 @@ describe("LockScreen Component", () => {
     expect(screen.getByText("Master passphrase")).toBeDefined();
     expect(screen.getByPlaceholderText("••••••••••••")).toBeDefined();
     expect(screen.getByRole("button", { name: /Unlock vault/i })).toBeDefined();
+    expect(screen.getByLabelText("Master passphrase")).toBeDefined();
+    expect(screen.getByText("End-to-end encrypted session")).toBeDefined();
+    expect(screen.queryByText(/Step \d of 3/)).toBeNull();
   });
 
   it("handles successful unlock submission", async () => {
@@ -49,7 +52,7 @@ describe("LockScreen Component", () => {
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
-      expect(screen.getByText("Incorrect master password")).toBeDefined();
+      expect(screen.getByRole("alert").textContent).toBe("Incorrect master password");
     });
   });
 
@@ -92,6 +95,8 @@ describe("LockScreen Component", () => {
       expect(cognitoLoginSpy).toHaveBeenCalledWith("owner@example.com", "TempPass123!");
       expect(screen.getByLabelText("New passphrase")).toBeDefined();
     });
+    expect(screen.getByText("Step 2 of 3")).toBeDefined();
+    expect(screen.getByText(/Set passphrase/)).toBeDefined();
 
     // Rejects short passphrase client-side
     fireEvent.change(screen.getByLabelText("New passphrase"), {
@@ -101,7 +106,7 @@ describe("LockScreen Component", () => {
       target: { value: "too-short" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Continue to MFA setup/i }));
-    expect(screen.getByText(/at least 20 characters/i)).toBeDefined();
+    expect(screen.getByRole("alert").textContent).toMatch(/at least 20 characters/i);
     expect(cognitoChallengeSpy).not.toHaveBeenCalled();
 
     // Rejects mismatched passphrases client-side
@@ -112,7 +117,7 @@ describe("LockScreen Component", () => {
       target: { value: "very-long-household-passphrase-two" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Continue to MFA setup/i }));
-    expect(screen.getByText(/Passphrases do not match/i)).toBeDefined();
+    expect(screen.getByRole("alert").textContent).toMatch(/Passphrases do not match/i);
     expect(cognitoChallengeSpy).not.toHaveBeenCalled();
 
     // Submits matching valid passphrase -> transitions to MFA_SETUP with QR and secret
@@ -132,6 +137,8 @@ describe("LockScreen Component", () => {
       expect(qrImg.src).toContain("data:image/svg+xml");
       expect(screen.getByText("JBSW Y3DP EHPK 3PXP")).toBeDefined();
     });
+    expect(screen.getByText("Step 3 of 3")).toBeDefined();
+    expect(screen.getByText(/Set up authenticator/)).toBeDefined();
 
     // Verifies 6-digit setup code -> unlocks app
     fireEvent.change(screen.getByLabelText("6-digit verification code"), {
@@ -179,6 +186,7 @@ describe("LockScreen Component", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Authenticator code")).toBeDefined();
     });
+    expect(screen.queryByText(/Step \d of 3/)).toBeNull();
 
     fireEvent.change(screen.getByLabelText("Authenticator code"), {
       target: { value: "654321" },

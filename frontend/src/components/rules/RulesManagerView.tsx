@@ -235,7 +235,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
         : tier === "HEURISTIC"
         ? "Heuristics"
         : tier === "BEDROCK_AI"
-        ? "Bedrock AI"
+        ? "AI"
         : "Unclassified";
     return (
       <span className="rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-sub">{label}</span>
@@ -278,9 +278,9 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
     },
     {
       tier: "Tier 4",
-      title: "Bedrock AI",
+      title: "AI model",
       description: engineStatus?.bedrock_enabled
-        ? `${engineStatus.bedrock_model_id} (${engineStatus.bedrock_region})`
+        ? "Ambiguous payees are sent to a language model"
         : "No external network calls, runs fully offline",
       active: !!engineStatus?.bedrock_enabled,
       status: engineStatus?.bedrock_enabled ? "Enabled" : "Off",
@@ -675,7 +675,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                   className="rounded border-default bg-input accent-[var(--accent-primary)]"
                 />
                 <label htmlFor="sandboxEnableBedrock" className="text-sm text-sub cursor-pointer select-none">
-                  Fall back to Bedrock AI when local confidence is too low
+                  Fall back to AI when local confidence is too low
                 </label>
               </div>
             </form>
@@ -816,7 +816,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                     className="rounded border-default bg-input accent-[var(--accent-primary)]"
                   />
                   <label htmlFor="batchEnableBedrock" className="text-sm text-sub cursor-pointer select-none">
-                    Use Bedrock AI for ambiguous payees
+                    Use AI for ambiguous payees
                   </label>
                 </div>
 

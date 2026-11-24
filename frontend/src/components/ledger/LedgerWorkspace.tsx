@@ -139,7 +139,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
     if (tier === "BEDROCK_AI") {
       dotColor = "bg-accent-main";
-      label = "Bedrock AI";
+      label = "AI";
     } else if (isHigh) {
       dotColor = "bg-positive";
       label = "High confidence";
@@ -1214,7 +1214,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               <div className="space-y-4">
                 <p className="text-sm text-sub leading-relaxed">
                   Folio checks every uncategorized transaction against the four-tier engine (rules,
-                  history, heuristics, then Bedrock AI) and assigns categories that meet the threshold
+                  history, heuristics, then AI) and assigns categories that meet the threshold
                 </p>
 
                 <div className="p-4 rounded-lg bg-surface-subtle space-y-3">
@@ -1245,7 +1245,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                       className={checkboxClass}
                     />
                     <label htmlFor="confirmEnableBedrock" className="text-sm text-sub cursor-pointer select-none">
-                      Use Bedrock AI for ambiguous items
+                      Use AI for ambiguous items
                     </label>
                   </div>
                 </div>

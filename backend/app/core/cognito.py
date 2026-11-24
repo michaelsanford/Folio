@@ -123,7 +123,7 @@ def _process_auth_response(
 ) -> dict[str, Any]:
     """Interpret a Cognito auth/challenge response or advance intermediate setup steps."""
     if depth > 4:
-        raise CognitoAuthError(400, "Too many Cognito challenge transitions.")
+        raise CognitoAuthError(400, "Too many sign-in steps. Please start over.")
 
     if "AuthenticationResult" in resp:
         auth = resp["AuthenticationResult"]
@@ -180,7 +180,7 @@ def _process_auth_response(
             "message": "Enter the 6-digit code from your authenticator app.",
         }
 
-    raise CognitoAuthError(400, f"Unsupported Cognito authentication challenge: {challenge}")
+    raise CognitoAuthError(400, "Unsupported sign-in step. Please start over.")
 
 
 def cognito_initiate_login(email: str, password: str) -> dict[str, Any]:
@@ -204,7 +204,7 @@ def cognito_initiate_login(email: str, password: str) -> dict[str, Any]:
         raise _map_client_error(exc) from exc
     except BotoCoreError as exc:
         logger.error(f"Cognito service transport error during sign-in: {exc}")
-        raise CognitoAuthError(502, "Unable to reach AWS Cognito right now.") from exc
+        raise CognitoAuthError(502, "Unable to reach the sign-in service right now. Please try again.") from exc
 
 
 def cognito_respond_challenge(
@@ -271,12 +271,12 @@ def cognito_respond_challenge(
             )
             return _process_auth_response(resp, clean_user, client)
 
-        raise CognitoAuthError(400, f"Unsupported Cognito authentication challenge: {challenge}")
+        raise CognitoAuthError(400, "Unsupported sign-in step. Please start over.")
     except ClientError as exc:
         raise _map_client_error(exc) from exc
     except BotoCoreError as exc:
         logger.error(f"Cognito service transport error during challenge: {exc}")
-        raise CognitoAuthError(502, "Unable to reach AWS Cognito right now.") from exc
+        raise CognitoAuthError(502, "Unable to reach the sign-in service right now. Please try again.") from exc
 
 
 def cognito_refresh_session(refresh_token: str) -> dict[str, Any] | None:

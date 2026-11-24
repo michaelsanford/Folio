@@ -196,7 +196,8 @@ def test_master_password_login_rejected_when_cognito_enabled(unauthenticated_cli
 
     resp = unauthenticated_client.post("/api/auth/login", json={"password": "SomeStrongPassword123!"})
     assert resp.status_code == 400
-    assert "Cognito" in resp.json()["detail"]
+    assert "account sign-in" in resp.json()["detail"]
+    assert "Cognito" not in resp.json()["detail"]
 
 
 def test_cognito_token_validation_claims(monkeypatch):

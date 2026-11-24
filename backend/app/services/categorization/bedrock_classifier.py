@@ -142,7 +142,7 @@ def _parse_results(raw_output: str, count: int) -> list[BedrockClassificationRes
             result_obj = BedrockClassificationResult(
                 category_slug=str(slug),
                 confidence=float(item.get("confidence", 0.70)),
-                reasoning=str(item.get("reasoning", "Classified by Bedrock AI")),
+                reasoning=str(item.get("reasoning", "Classified by AI")),
                 normalized_payee=item.get("normalized_payee"),
             )
             if idx is not None and isinstance(idx, int):
@@ -150,7 +150,7 @@ def _parse_results(raw_output: str, count: int) -> list[BedrockClassificationRes
 
         if indexed_results:
             return [
-                indexed_results.get(i) or _omitted("Bedrock omitted result for transaction")
+                indexed_results.get(i) or _omitted("AI returned no result for this transaction")
                 for i in range(count)
             ]
 
@@ -161,7 +161,7 @@ def _parse_results(raw_output: str, count: int) -> list[BedrockClassificationRes
                     BedrockClassificationResult(
                         category_slug=str(item["category_slug"]),
                         confidence=float(item.get("confidence", 0.70)),
-                        reasoning=str(item.get("reasoning", "Classified by Bedrock AI")),
+                        reasoning=str(item.get("reasoning", "Classified by AI")),
                         normalized_payee=item.get("normalized_payee"),
                     )
                 )
@@ -307,9 +307,9 @@ def classify_with_bedrock(
     results: list[BedrockClassificationResult] = []
     for chunk, chunk_result in zip(chunks, chunk_results):
         if chunk_result is None:
-            results.extend(_omitted("Bedrock chunk failed") for _ in chunk)
+            results.extend(_omitted("AI classification failed for this batch") for _ in chunk)
             continue
         missing = len(chunk) - len(chunk_result)
         results.extend(chunk_result[: len(chunk)])
-        results.extend(_omitted("Bedrock omitted result for transaction") for _ in range(max(missing, 0)))
+        results.extend(_omitted("AI returned no result for this transaction") for _ in range(max(missing, 0)))
     return results

@@ -8,7 +8,7 @@ class ClassificationEvaluateRequest(BaseModel):
     amount: float | None = Field(None, description="Transaction amount")
     account_id: str | None = Field(None, description="Optional account ID")
     account_type: str | None = Field(None, description="Optional account type (e.g. CHECKING, CREDIT_CARD, MORTGAGE)")
-    enable_bedrock: bool = Field(False, description="Whether to allow Bedrock AI fallback recourse")
+    enable_bedrock: bool = Field(False, description="Whether to fall back to the AI model for ambiguous items")
     min_confidence: float = Field(0.70, description="Minimum confidence threshold (0.0 to 1.0)")
 
 
@@ -26,7 +26,7 @@ class ClassificationEvaluateResponse(BaseModel):
 
 class BatchClassificationRequest(BaseModel):
     transactions: list[ClassificationEvaluateRequest]
-    enable_bedrock: bool = Field(False, description="Whether to allow Bedrock AI fallback recourse")
+    enable_bedrock: bool = Field(False, description="Whether to fall back to the AI model for ambiguous items")
     min_confidence: float = Field(0.70, description="Minimum confidence threshold (0.0 to 1.0)")
 
 
@@ -39,7 +39,7 @@ class BatchClassificationResponse(BaseModel):
 
 class AutoClassifyUncategorizedRequest(BaseModel):
     threshold: float = Field(0.70, description="Minimum confidence threshold for auto-classification")
-    enable_bedrock: bool = Field(False, description="Whether to allow Bedrock AI fallback recourse")
+    enable_bedrock: bool = Field(False, description="Whether to fall back to the AI model for ambiguous items")
     account_id: str | None = Field(None, description="Optional account ID filter")
     dry_run: bool = Field(False, description="If true, returns results without committing changes to the database")
 

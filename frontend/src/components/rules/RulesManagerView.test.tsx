@@ -116,7 +116,7 @@ describe("RulesManagerView & Auto-Classification Engine", () => {
       expect(screen.getByText("Local rules")).toBeDefined();
       expect(screen.getByText("User history")).toBeDefined();
       expect(screen.getByText("Heuristics")).toBeDefined();
-      expect(screen.getByText("Bedrock AI")).toBeDefined();
+      expect(screen.getByText("AI model")).toBeDefined();
       expect(screen.getByText("Enabled")).toBeDefined();
     });
   });

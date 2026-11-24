@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import {
-  Lock,
   KeyRound,
   Eye,
   EyeOff,
@@ -12,6 +11,7 @@ import {
   Smartphone,
   RotateCcw,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { FolioMark } from "../common/FolioMark";
 import { api } from "../../services/api";
 import type { CognitoAuthResponse } from "../../types";
@@ -29,6 +29,182 @@ type CognitoStep =
   | "SOFTWARE_TOKEN_MFA";
 
 const MIN_COGNITO_PASSWORD_LENGTH = 20;
+
+const ICON_CLASS =
+  "w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none";
+
+const INPUT_CLASS =
+  "w-full h-11 rounded-lg bg-input border border-default text-main text-sm placeholder:text-muted outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] transition-shadow";
+
+type InputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "className" | "id"> & {
+  id: string;
+};
+
+interface FieldShellProps {
+  id: string;
+  label: React.ReactNode;
+  hint?: React.ReactNode;
+  children: React.ReactNode;
+}
+
+/** Label above, control below, optional hint line under the control. */
+const FieldShell: React.FC<FieldShellProps> = ({ id, label, hint, children }) => (
+  <div className="flex flex-col gap-1.5">
+    <label htmlFor={id} className="text-sm font-medium text-main">
+      {label}
+    </label>
+    {children}
+    {hint}
+  </div>
+);
+
+interface FieldProps extends InputProps {
+  label: React.ReactNode;
+  icon?: LucideIcon;
+  mono?: boolean;
+  hint?: React.ReactNode;
+}
+
+/** Plain text-like input with an optional leading icon. */
+const Field: React.FC<FieldProps> = ({ label, icon: Icon, mono, hint, id, ...input }) => (
+  <FieldShell id={id} label={label} hint={hint}>
+    <div className="relative">
+      <input
+        id={id}
+        {...input}
+        className={`${INPUT_CLASS} ${Icon ? "pl-9" : "pl-3"} pr-3 ${mono ? "font-mono" : ""}`}
+      />
+      {Icon && <Icon className={ICON_CLASS} strokeWidth={1.5} aria-hidden="true" />}
+    </div>
+  </FieldShell>
+);
+
+interface PasswordFieldProps extends Omit<InputProps, "type"> {
+  label: React.ReactNode;
+  visible: boolean;
+  onToggleVisible: () => void;
+  /** Accessible names for the show/hide toggle, e.g. ["Show password", "Hide password"]. */
+  toggleLabels: [show: string, hide: string];
+  hint?: React.ReactNode;
+}
+
+/** Secret input with a leading key icon and a show/hide toggle. */
+const PasswordField: React.FC<PasswordFieldProps> = ({
+  label,
+  visible,
+  onToggleVisible,
+  toggleLabels,
+  hint,
+  id,
+  ...input
+}) => (
+  <FieldShell id={id} label={label} hint={hint}>
+    <div className="relative">
+      <input
+        id={id}
+        type={visible ? "text" : "password"}
+        {...input}
+        className={`${INPUT_CLASS} pl-9 pr-11 font-mono`}
+      />
+      <KeyRound className={ICON_CLASS} strokeWidth={1.5} aria-hidden="true" />
+      <button
+        type="button"
+        onClick={onToggleVisible}
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center rounded-md text-muted hover:text-main outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] transition-colors cursor-pointer"
+        aria-label={visible ? toggleLabels[1] : toggleLabels[0]}
+      >
+        {visible ? (
+          <EyeOff className="w-4 h-4" strokeWidth={1.5} />
+        ) : (
+          <Eye className="w-4 h-4" strokeWidth={1.5} />
+        )}
+      </button>
+    </div>
+  </FieldShell>
+);
+
+interface CodeFieldProps extends Omit<InputProps, "type" | "inputMode" | "autoComplete"> {
+  label: React.ReactNode;
+}
+
+/** Six-digit authenticator code input. */
+const CodeField: React.FC<CodeFieldProps> = ({ label, id, ...input }) => (
+  <FieldShell id={id} label={label}>
+    <div className="relative">
+      <input
+        id={id}
+        type="text"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        maxLength={12}
+        {...input}
+        className={`${INPUT_CLASS} pl-9 pr-3 font-mono tracking-widest`}
+      />
+      <Smartphone className={ICON_CLASS} strokeWidth={1.5} aria-hidden="true" />
+    </div>
+  </FieldShell>
+);
+
+interface PrimaryButtonProps {
+  disabled: boolean;
+  isLoading: boolean;
+  children: React.ReactNode;
+}
+
+/** Full-width submit button; the arrow appears on hover or keyboard focus. */
+const PrimaryButton: React.FC<PrimaryButtonProps> = ({ disabled, isLoading, children }) => (
+  <button
+    type="submit"
+    disabled={disabled}
+    className="group w-full h-11 px-4 rounded-lg bg-accent-main hover:bg-[var(--accent-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-accent-main text-accent-contrast text-sm font-semibold flex items-center justify-center gap-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)] transition-colors active:scale-[0.98] cursor-pointer"
+  >
+    {isLoading ? (
+      <div className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin"></div>
+    ) : (
+      <>
+        <span>{children}</span>
+        <ArrowRight
+          className="w-4 h-4 hidden group-hover:block group-focus-visible:block group-disabled:hidden"
+          strokeWidth={1.75}
+          aria-hidden="true"
+        />
+      </>
+    )}
+  </button>
+);
+
+interface SecondaryButtonProps {
+  onClick: () => void;
+  children: React.ReactNode;
+}
+
+/** Quiet text button used for "Start over" / "Back to sign in". */
+const SecondaryButton: React.FC<SecondaryButtonProps> = ({ onClick, children }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="w-full h-9 px-3 rounded-lg text-sm text-muted hover:text-main flex items-center justify-center gap-1.5 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] transition-colors cursor-pointer"
+  >
+    <RotateCcw className="w-3.5 h-3.5" strokeWidth={1.5} aria-hidden="true" />
+    <span>{children}</span>
+  </button>
+);
+
+/** Inline form error, announced to assistive tech. */
+const ErrorNote: React.FC<{ message: string | null }> = ({ message }) =>
+  message ? (
+    <div
+      role="alert"
+      className="px-3 py-2.5 rounded-r-md border-l-2 border-negative bg-negative-subtle text-negative text-sm"
+    >
+      {message}
+    </div>
+  ) : null;
+
+/** Short explanatory text at the top of a challenge step. */
+const StepIntro: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="text-sm text-sub leading-relaxed">{children}</div>
+);
 
 export const LockScreen: React.FC<LockScreenProps> = ({
   onUnlocked,
@@ -107,7 +283,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
       return;
     }
 
-    setError("Unsupported authentication challenge received from Cognito.");
+    setError("Unsupported sign-in step. Please start over.");
   };
 
   const handleMasterSubmit = async (e: React.FormEvent) => {
@@ -145,7 +321,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
       const res = await api.auth.cognitoLogin(cleanEmail, cognitoPassword);
       applyCognitoResponse(res, cleanEmail);
     } catch (err: any) {
-      setError(err.message || "Unable to sign in with Cognito.");
+      setError(err.message || "Unable to sign in.");
     } finally {
       setIsLoading(false);
     }
@@ -264,455 +440,268 @@ export const LockScreen: React.FC<LockScreenProps> = ({
       ? "Set a master passphrase to encrypt your vault"
       : "Enter your master passphrase to unlock your vault";
 
+  const stepper =
+    authMode === "cognito"
+      ? cognitoStep === "NEW_PASSWORD_REQUIRED"
+        ? { n: 2, label: "Set passphrase" }
+        : cognitoStep === "MFA_SETUP"
+        ? { n: 3, label: "Set up authenticator" }
+        : null
+      : null;
+
+  const securityNote =
+    authMode === "cognito"
+      ? "Invite-only access · two-factor sign-in"
+      : "End-to-end encrypted session";
+
   return (
-    <div className="min-h-screen bg-canvas flex flex-col items-center justify-center p-4 relative select-none">
-      <div className="w-full max-w-sm z-10">
-        {/* Wordmark */}
-        <div className="text-center mb-8">
-          <Lock className="w-5 h-5 text-muted mx-auto mb-4" strokeWidth={1.5} aria-hidden="true" />
-          <h1 className="inline-flex items-center gap-2 text-2xl font-semibold text-main leading-none">
-            <FolioMark className="w-8 h-8" />
+    <div className="min-h-screen bg-canvas flex items-center justify-center px-4 py-10 select-none">
+      <div className="w-full max-w-sm sm:max-w-[640px] flex flex-col sm:flex-row sm:items-center gap-8 sm:gap-0">
+        {/* Brand */}
+        <div className="flex flex-col items-center text-center sm:flex-1 sm:pr-10">
+          <h1 className="flex flex-col items-center gap-4 font-display text-[2rem] font-semibold text-main leading-none">
+            <FolioMark className="w-24 h-24 sm:w-[200px] sm:h-[200px]" />
             Folio
           </h1>
-          <p className="text-sm text-sub mt-2">{headerSubtitle}</p>
+          <p className="mt-2 text-sm text-sub max-w-[260px]">{headerSubtitle}</p>
         </div>
 
-        {/* Form Card */}
-        <div className="bg-surface border border-default rounded-xl p-6">
-          {authMode === "unconfigured" && !isInitialSetup ? (
-            <div className="space-y-3 text-xs text-sub">
-              <p className="text-main font-medium text-sm">Authentication unavailable</p>
-              <p>
-                No master passphrase hash or AWS Cognito User Pool is configured on this server.
-                Configure deployment credentials and redeploy before accessing this vault.
+        {/* Divider */}
+        <div aria-hidden="true" className="hidden sm:block w-px self-stretch bg-[var(--border-subtle)]" />
+
+        {/* Form column */}
+        <div className="w-full sm:w-[320px] sm:shrink-0 sm:pl-10 flex flex-col gap-3">
+          <div className="relative overflow-hidden bg-surface border border-default rounded-lg p-6">
+            <div aria-hidden="true" className="absolute inset-x-0 top-0 h-0.5 bg-accent-main" />
+
+            {stepper && (
+              <p className="mb-4 text-xs text-muted">
+                <span className="text-accent-main font-medium">Step {stepper.n} of 3</span>
+                {" · "}
+                {stepper.label}
               </p>
-            </div>
-          ) : authMode === "cognito" ? (
-            <>
-              {cognitoStep === "login" && (
-                <form onSubmit={handleCognitoLoginSubmit} className="space-y-4">
-                  <div>
-                    <label htmlFor="cognito-email" className="block text-xs text-sub mb-2">
-                      Email address
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="cognito-email"
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="you@example.com"
-                        autoComplete="email"
-                        autoFocus
-                        required
-                        className="w-full h-9 pl-9 pr-3 rounded-lg bg-input border border-default text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] text-sm transition-colors"
-                      />
-                      <Mail
-                        className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-                        strokeWidth={1.5}
-                      />
-                    </div>
-                  </div>
+            )}
 
-                  <div>
-                    <label htmlFor="cognito-password" className="block text-xs text-sub mb-2">
-                      Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="cognito-password"
-                        type={showCognitoPassword ? "text" : "password"}
-                        value={cognitoPassword}
-                        onChange={(e) => setCognitoPassword(e.target.value)}
-                        placeholder="••••••••••••"
-                        autoComplete="current-password"
-                        required
-                        className="w-full h-9 pl-9 pr-10 rounded-lg bg-input border border-default text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] text-sm font-mono transition-colors"
-                      />
-                      <KeyRound
-                        className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-                        strokeWidth={1.5}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowCognitoPassword(!showCognitoPassword)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded-md text-muted hover:text-main transition-colors cursor-pointer"
-                        aria-label={showCognitoPassword ? "Hide password" : "Show password"}
-                      >
-                        {showCognitoPassword ? (
-                          <EyeOff className="w-4 h-4" strokeWidth={1.5} />
-                        ) : (
-                          <Eye className="w-4 h-4" strokeWidth={1.5} />
-                        )}
-                      </button>
-                    </div>
-                  </div>
+            {authMode === "unconfigured" && !isInitialSetup ? (
+              <div className="flex flex-col gap-2 text-sm text-sub">
+                <p className="text-main font-medium">Authentication unavailable</p>
+                <p>
+                  No master passphrase or account sign-in is configured on this server.
+                  Configure deployment credentials and redeploy before accessing this vault.
+                </p>
+              </div>
+            ) : authMode === "cognito" ? (
+              <>
+                {cognitoStep === "login" && (
+                  <form onSubmit={handleCognitoLoginSubmit} className="flex flex-col gap-4">
+                    <Field
+                      id="cognito-email"
+                      label="Email address"
+                      icon={Mail}
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      autoComplete="email"
+                      autoFocus
+                      required
+                    />
+                    <PasswordField
+                      id="cognito-password"
+                      label="Password"
+                      visible={showCognitoPassword}
+                      onToggleVisible={() => setShowCognitoPassword(!showCognitoPassword)}
+                      toggleLabels={["Show password", "Hide password"]}
+                      value={cognitoPassword}
+                      onChange={(e) => setCognitoPassword(e.target.value)}
+                      placeholder="••••••••••••"
+                      autoComplete="current-password"
+                      required
+                    />
+                    <ErrorNote message={error} />
+                    <PrimaryButton
+                      disabled={isLoading || !email.trim() || !cognitoPassword}
+                      isLoading={isLoading}
+                    >
+                      Sign in
+                    </PrimaryButton>
+                  </form>
+                )}
 
-                  {error && (
-                    <div className="p-3 rounded-lg bg-negative-subtle text-negative text-xs">
-                      {error}
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={isLoading || !email.trim() || !cognitoPassword}
-                    className="w-full h-9 px-4 rounded-lg bg-accent-main hover:bg-accent-main disabled:opacity-50 disabled:cursor-not-allowed text-accent-contrast text-sm font-medium flex items-center justify-center gap-2 transition-colors active:scale-[0.98] cursor-pointer"
-                  >
-                    {isLoading ? (
-                      <div className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin"></div>
-                    ) : (
-                      <>
-                        <span>Sign in</span>
-                        <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
-                      </>
-                    )}
-                  </button>
-                </form>
-              )}
-
-              {cognitoStep === "NEW_PASSWORD_REQUIRED" && (
-                <form onSubmit={handleNewPasswordSubmit} className="space-y-4">
-                  <div className="text-xs text-sub leading-relaxed">
-                    {challengeMessage ||
-                      "Choose a permanent passphrase (at least 20 characters, including a lowercase letter)."}
-                  </div>
-
-                  <div>
-                    <label htmlFor="cognito-new-password" className="block text-xs text-sub mb-2">
-                      New passphrase
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="cognito-new-password"
-                        type={showNewPassword ? "text" : "password"}
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="At least 20 characters"
-                        autoComplete="new-password"
-                        autoFocus
-                        required
-                        className="w-full h-9 pl-9 pr-10 rounded-lg bg-input border border-default text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] text-sm font-mono transition-colors"
-                      />
-                      <KeyRound
-                        className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-                        strokeWidth={1.5}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowNewPassword(!showNewPassword)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded-md text-muted hover:text-main transition-colors cursor-pointer"
-                        aria-label={showNewPassword ? "Hide passphrase" : "Show passphrase"}
-                      >
-                        {showNewPassword ? (
-                          <EyeOff className="w-4 h-4" strokeWidth={1.5} />
-                        ) : (
-                          <Eye className="w-4 h-4" strokeWidth={1.5} />
-                        )}
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between mt-1.5 text-xs">
-                      <span className={meetsCognitoPolicy ? "text-accent-main" : "text-muted"}>
-                        {newPassword.length}/{MIN_COGNITO_PASSWORD_LENGTH}+ chars
-                        {/[a-z]/.test(newPassword) ? " · lowercase OK" : " · needs lowercase"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label htmlFor="cognito-confirm-password" className="block text-xs text-sub mb-2">
-                      Confirm passphrase
-                    </label>
-                    <input
+                {cognitoStep === "NEW_PASSWORD_REQUIRED" && (
+                  <form onSubmit={handleNewPasswordSubmit} className="flex flex-col gap-4">
+                    <StepIntro>
+                      {challengeMessage ||
+                        "Choose a permanent passphrase (at least 20 characters, including a lowercase letter)."}
+                    </StepIntro>
+                    <PasswordField
+                      id="cognito-new-password"
+                      label="New passphrase"
+                      visible={showNewPassword}
+                      onToggleVisible={() => setShowNewPassword(!showNewPassword)}
+                      toggleLabels={["Show passphrase", "Hide passphrase"]}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="At least 20 characters"
+                      autoComplete="new-password"
+                      autoFocus
+                      required
+                      hint={
+                        <span
+                          className={`text-xs ${meetsCognitoPolicy ? "text-accent-main" : "text-muted"}`}
+                        >
+                          {newPassword.length}/{MIN_COGNITO_PASSWORD_LENGTH}+ chars
+                          {/[a-z]/.test(newPassword) ? " · lowercase OK" : " · needs lowercase"}
+                        </span>
+                      }
+                    />
+                    <Field
                       id="cognito-confirm-password"
+                      label="Confirm passphrase"
+                      mono
                       type={showNewPassword ? "text" : "password"}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Re-enter passphrase"
                       autoComplete="new-password"
                       required
-                      className="w-full h-9 px-3 rounded-lg bg-input border border-default text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] text-sm font-mono transition-colors"
                     />
-                  </div>
-
-                  {error && (
-                    <div className="p-3 rounded-lg bg-negative-subtle text-negative text-xs">
-                      {error}
+                    <ErrorNote message={error} />
+                    <div className="flex flex-col gap-1">
+                      <PrimaryButton
+                        disabled={isLoading || !newPassword || !confirmPassword}
+                        isLoading={isLoading}
+                      >
+                        Continue to MFA setup
+                      </PrimaryButton>
+                      <SecondaryButton onClick={() => resetCognitoFlow()}>Start over</SecondaryButton>
                     </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <button
-                      type="submit"
-                      disabled={isLoading || !newPassword || !confirmPassword}
-                      className="w-full h-9 px-4 rounded-lg bg-accent-main hover:bg-accent-main disabled:opacity-50 disabled:cursor-not-allowed text-accent-contrast text-sm font-medium flex items-center justify-center gap-2 transition-colors active:scale-[0.98] cursor-pointer"
-                    >
-                      {isLoading ? (
-                        <div className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin"></div>
-                      ) : (
-                        <>
-                          <span>Continue to MFA setup</span>
-                          <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
-                        </>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => resetCognitoFlow()}
-                      className="w-full h-8 px-3 rounded-lg text-xs text-muted hover:text-main flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" strokeWidth={1.5} />
-                      <span>Start over</span>
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {cognitoStep === "MFA_SETUP" && (
-                <form
-                  onSubmit={(e) => handleTotpChallengeSubmit(e, "MFA_SETUP")}
-                  className="space-y-4"
-                >
-                  <div className="text-xs text-sub leading-relaxed">
-                    {challengeMessage ||
-                      "Scan this QR code with your authenticator app, then enter the 6-digit code."}
-                  </div>
-
-                  {qrDataUri && (
-                    <div className="flex justify-center">
-                      <div className="p-2.5 rounded-lg bg-white border border-default inline-block">
-                        <img
-                          src={qrDataUri}
-                          alt="Authenticator QR code"
-                          className="w-44 h-44"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {totpSecret && (
-                    <div className="p-2.5 rounded-lg bg-input border border-default space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted">Manual setup key</span>
-                        <button
-                          type="button"
-                          onClick={handleCopySecret}
-                          className="inline-flex items-center gap-1 text-xs text-sub hover:text-main cursor-pointer"
-                        >
-                          {copiedSecret ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 text-accent-main" strokeWidth={1.75} />
-                              <span>Copied</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3.5 h-3.5" strokeWidth={1.5} />
-                              <span>Copy key</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                      <code className="block text-xs font-mono text-main break-all select-all">
-                        {formattedTotpSecret}
-                      </code>
-                    </div>
-                  )}
-
-                  <div>
-                    <label htmlFor="cognito-mfa-setup-code" className="block text-xs text-sub mb-2">
-                      6-digit verification code
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="cognito-mfa-setup-code"
-                        type="text"
-                        inputMode="numeric"
-                        autoComplete="one-time-code"
-                        value={totpCode}
-                        onChange={(e) => setTotpCode(e.target.value)}
-                        placeholder="123456"
-                        maxLength={12}
-                        autoFocus
-                        required
-                        className="w-full h-9 pl-9 pr-3 rounded-lg bg-input border border-default text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] text-sm font-mono tracking-widest transition-colors"
-                      />
-                      <Smartphone
-                        className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-                        strokeWidth={1.5}
-                      />
-                    </div>
-                  </div>
-
-                  {error && (
-                    <div className="p-3 rounded-lg bg-negative-subtle text-negative text-xs">
-                      {error}
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <button
-                      type="submit"
-                      disabled={isLoading || !totpCode.trim()}
-                      className="w-full h-9 px-4 rounded-lg bg-accent-main hover:bg-accent-main disabled:opacity-50 disabled:cursor-not-allowed text-accent-contrast text-sm font-medium flex items-center justify-center gap-2 transition-colors active:scale-[0.98] cursor-pointer"
-                    >
-                      {isLoading ? (
-                        <div className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin"></div>
-                      ) : (
-                        <>
-                          <span>Verify &amp; sign in</span>
-                          <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
-                        </>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => resetCognitoFlow()}
-                      className="w-full h-8 px-3 rounded-lg text-xs text-muted hover:text-main flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" strokeWidth={1.5} />
-                      <span>Start over</span>
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {cognitoStep === "SOFTWARE_TOKEN_MFA" && (
-                <form
-                  onSubmit={(e) => handleTotpChallengeSubmit(e, "SOFTWARE_TOKEN_MFA")}
-                  className="space-y-4"
-                >
-                  <div className="text-xs text-sub leading-relaxed">
-                    {challengeUsername && (
-                      <div className="text-main font-medium mb-1 truncate">{challengeUsername}</div>
-                    )}
-                    {challengeMessage || "Enter the 6-digit code from your authenticator app."}
-                  </div>
-
-                  <div>
-                    <label htmlFor="cognito-totp-code" className="block text-xs text-sub mb-2">
-                      Authenticator code
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="cognito-totp-code"
-                        type="text"
-                        inputMode="numeric"
-                        autoComplete="one-time-code"
-                        value={totpCode}
-                        onChange={(e) => setTotpCode(e.target.value)}
-                        placeholder="123456"
-                        maxLength={12}
-                        autoFocus
-                        required
-                        className="w-full h-9 pl-9 pr-3 rounded-lg bg-input border border-default text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] text-sm font-mono tracking-widest transition-colors"
-                      />
-                      <Smartphone
-                        className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-                        strokeWidth={1.5}
-                      />
-                    </div>
-                  </div>
-
-                  {error && (
-                    <div className="p-3 rounded-lg bg-negative-subtle text-negative text-xs">
-                      {error}
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <button
-                      type="submit"
-                      disabled={isLoading || !totpCode.trim()}
-                      className="w-full h-9 px-4 rounded-lg bg-accent-main hover:bg-accent-main disabled:opacity-50 disabled:cursor-not-allowed text-accent-contrast text-sm font-medium flex items-center justify-center gap-2 transition-colors active:scale-[0.98] cursor-pointer"
-                    >
-                      {isLoading ? (
-                        <div className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin"></div>
-                      ) : (
-                        <>
-                          <span>Verify &amp; unlock</span>
-                          <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
-                        </>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => resetCognitoFlow()}
-                      className="w-full h-8 px-3 rounded-lg text-xs text-muted hover:text-main flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" strokeWidth={1.5} />
-                      <span>Back to sign in</span>
-                    </button>
-                  </div>
-                </form>
-              )}
-            </>
-          ) : (
-            <form onSubmit={handleMasterSubmit} className="space-y-4">
-              <div>
-                <label htmlFor="lock-passphrase" className="block text-xs text-sub mb-2">
-                  {isInitialSetup ? "New master passphrase" : "Master passphrase"}
-                </label>
-                <div className="relative">
-                  <input
-                    id="lock-passphrase"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••••••"
-                    autoFocus
-                    required
-                    className="w-full h-9 pl-9 pr-10 rounded-lg bg-input border border-default text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] text-sm font-mono transition-colors"
-                  />
-                  <KeyRound
-                    className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-                    strokeWidth={1.5}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded-md text-muted hover:text-main transition-colors cursor-pointer"
-                    aria-label={showPassword ? "Hide passphrase" : "Show passphrase"}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4" strokeWidth={1.5} />
-                    ) : (
-                      <Eye className="w-4 h-4" strokeWidth={1.5} />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {error && (
-                <div className="p-3 rounded-lg bg-negative-subtle text-negative text-xs">
-                  {error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={isLoading || !password}
-                className="w-full h-9 px-4 rounded-lg bg-accent-main hover:bg-accent-main disabled:opacity-50 disabled:cursor-not-allowed text-accent-contrast text-sm font-medium flex items-center justify-center gap-2 transition-colors active:scale-[0.98] cursor-pointer"
-              >
-                {isLoading ? (
-                  <div className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin"></div>
-                ) : (
-                  <>
-                    <span>{isInitialSetup ? "Initialize vault" : "Unlock vault"}</span>
-                    <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
-                  </>
+                  </form>
                 )}
-              </button>
-            </form>
-          )}
 
-          <div className="mt-6 pt-4 border-t border-subtle flex items-center justify-center gap-2 text-xs text-muted">
-            <ShieldCheck className="w-4 h-4 text-muted" strokeWidth={1.5} />
-            <span>
-              {authMode === "cognito"
-                ? "Invite-only access · AWS Cognito & TOTP MFA"
-                : "End-to-end encrypted session"}
-            </span>
+                {cognitoStep === "MFA_SETUP" && (
+                  <form
+                    onSubmit={(e) => handleTotpChallengeSubmit(e, "MFA_SETUP")}
+                    className="flex flex-col gap-4"
+                  >
+                    <StepIntro>
+                      {challengeMessage ||
+                        "Scan this QR code with your authenticator app, then enter the 6-digit code."}
+                    </StepIntro>
+
+                    {qrDataUri && (
+                      <div className="flex justify-center">
+                        <div className="p-2.5 rounded-lg bg-white border border-default inline-block">
+                          <img src={qrDataUri} alt="Authenticator QR code" className="w-44 h-44" />
+                        </div>
+                      </div>
+                    )}
+
+                    {totpSecret && (
+                      <div className="p-3 rounded-lg bg-input border border-default flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted">Manual setup key</span>
+                          <button
+                            type="button"
+                            onClick={handleCopySecret}
+                            className="inline-flex items-center gap-1 rounded text-xs text-sub hover:text-main outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] cursor-pointer"
+                          >
+                            {copiedSecret ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-accent-main" strokeWidth={1.75} />
+                                <span>Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" strokeWidth={1.5} />
+                                <span>Copy key</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <code className="block text-sm font-mono text-main break-all select-all">
+                          {formattedTotpSecret}
+                        </code>
+                      </div>
+                    )}
+
+                    <CodeField
+                      id="cognito-mfa-setup-code"
+                      label="6-digit verification code"
+                      value={totpCode}
+                      onChange={(e) => setTotpCode(e.target.value)}
+                      placeholder="123456"
+                      autoFocus
+                      required
+                    />
+                    <ErrorNote message={error} />
+                    <div className="flex flex-col gap-1">
+                      <PrimaryButton disabled={isLoading || !totpCode.trim()} isLoading={isLoading}>
+                        Verify &amp; sign in
+                      </PrimaryButton>
+                      <SecondaryButton onClick={() => resetCognitoFlow()}>Start over</SecondaryButton>
+                    </div>
+                  </form>
+                )}
+
+                {cognitoStep === "SOFTWARE_TOKEN_MFA" && (
+                  <form
+                    onSubmit={(e) => handleTotpChallengeSubmit(e, "SOFTWARE_TOKEN_MFA")}
+                    className="flex flex-col gap-4"
+                  >
+                    <StepIntro>
+                      {challengeUsername && (
+                        <div className="text-main font-medium mb-1 truncate">{challengeUsername}</div>
+                      )}
+                      {challengeMessage || "Enter the 6-digit code from your authenticator app."}
+                    </StepIntro>
+                    <CodeField
+                      id="cognito-totp-code"
+                      label="Authenticator code"
+                      value={totpCode}
+                      onChange={(e) => setTotpCode(e.target.value)}
+                      placeholder="123456"
+                      autoFocus
+                      required
+                    />
+                    <ErrorNote message={error} />
+                    <div className="flex flex-col gap-1">
+                      <PrimaryButton disabled={isLoading || !totpCode.trim()} isLoading={isLoading}>
+                        Verify &amp; unlock
+                      </PrimaryButton>
+                      <SecondaryButton onClick={() => resetCognitoFlow()}>
+                        Back to sign in
+                      </SecondaryButton>
+                    </div>
+                  </form>
+                )}
+              </>
+            ) : (
+              <form onSubmit={handleMasterSubmit} className="flex flex-col gap-4">
+                <PasswordField
+                  id="lock-passphrase"
+                  label={isInitialSetup ? "New master passphrase" : "Master passphrase"}
+                  visible={showPassword}
+                  onToggleVisible={() => setShowPassword(!showPassword)}
+                  toggleLabels={["Show passphrase", "Hide passphrase"]}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  autoFocus
+                  required
+                />
+                <ErrorNote message={error} />
+                <PrimaryButton disabled={isLoading || !password} isLoading={isLoading}>
+                  {isInitialSetup ? "Initialize vault" : "Unlock vault"}
+                </PrimaryButton>
+              </form>
+            )}
           </div>
+
+          <p className="flex items-center justify-center gap-1.5 text-xs text-muted">
+            <ShieldCheck className="w-3.5 h-3.5" strokeWidth={1.5} aria-hidden="true" />
+            <span>{securityNote}</span>
+          </p>
         </div>
       </div>
     </div>

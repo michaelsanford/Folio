@@ -484,7 +484,7 @@ class ClassificationEngine:
                             normalized_payee=learned_norm,
                             confidence=b_res.confidence,
                             tier=ClassificationTier.BEDROCK_AI,
-                            reason=f"Bedrock AI: {b_res.reasoning}",
+                            reason=f"AI: {b_res.reasoning}",
                             rule_id=learned_rule.id if learned_rule else None,
                         )
 
@@ -573,7 +573,7 @@ class ClassificationEngine:
                     normalized_payee=learned_norm,
                     confidence=b_res.confidence,
                     tier=ClassificationTier.BEDROCK_AI,
-                    reason=f"Bedrock AI: {b_res.reasoning}",
+                    reason=f"AI: {b_res.reasoning}",
                     rule_id=learned_rule.id if learned_rule else None,
                 )
             if rules_to_commit:

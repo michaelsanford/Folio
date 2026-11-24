@@ -248,7 +248,7 @@ def cognito_login(request_data: CognitoLoginRequest, request: Request, response:
     if not settings.is_cognito_enabled:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="AWS Cognito authentication is not enabled on this instance.",
+            detail="Account sign-in is not enabled on this instance.",
         )
 
     key = client_key(request)
@@ -279,7 +279,7 @@ def cognito_challenge(request_data: CognitoChallengeRequest, request: Request, r
     if not settings.is_cognito_enabled:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="AWS Cognito authentication is not enabled on this instance.",
+            detail="Account sign-in is not enabled on this instance.",
         )
 
     key = client_key(request)
@@ -316,7 +316,7 @@ def cognito_refresh(request: Request, response: Response):
     if not settings.is_cognito_enabled:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="AWS Cognito authentication is not enabled on this instance.",
+            detail="Account sign-in is not enabled on this instance.",
         )
 
     refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
@@ -353,7 +353,7 @@ def login(request_data: LoginRequest, request: Request, response: Response):
     if settings.is_cognito_enabled:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="AWS Cognito authentication is enabled on this instance. Sign in with Cognito instead.",
+            detail="This instance uses account sign-in. Sign in with your email address instead.",
         )
 
     if not is_auth_configured():
