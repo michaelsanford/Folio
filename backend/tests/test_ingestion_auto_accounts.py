@@ -361,7 +361,8 @@ def test_auto_create_commit_rollback_is_atomic(client, db_session, monkeypatch):
             ],
         },
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 500
+    assert "simulated" not in resp.text
     assert db_session.query(Account).count() == 0, "new account must be rolled back too"
     assert db_session.query(Transaction).count() == 0
 

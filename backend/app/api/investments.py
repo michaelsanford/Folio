@@ -27,7 +27,12 @@ from app.schemas.investment import (
     SecurityCreate,
     SecurityResponse,
 )
-from app.services.investments.performance import account_performance, holding_valuation
+from app.services.investments.performance import (
+    account_performance,
+    holding_valuation,
+    load_holdings,
+    value_holdings,
+)
 from app.services.investments.quote_fetcher import (
     INVESTMENT_ACCOUNT_TYPES,
     fetch_boc_usdcad_rate,
@@ -107,10 +112,9 @@ def list_holdings(
     as_of: date | None = Query(None, description="Value the positions as at this date"),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Holding).options(joinedload(Holding.security), joinedload(Holding.lots))
-    if account_id:
-        query = query.filter(Holding.account_id == account_id)
-    return [_valuation_to_schema(holding_valuation(db, h, as_of)) for h in query.all()]
+    holdings = load_holdings(db, [account_id] if account_id else None)
+    # One batched price lookup for every position instead of one per holding.
+    return [_valuation_to_schema(v) for v in value_holdings(db, holdings, as_of)]
 
 
 @router.post("/holdings", response_model=HoldingValuation, status_code=status.HTTP_201_CREATED)
@@ -351,6 +355,11 @@ class AutomatedQuotesResponse(BaseModel):
     usdcad_fx_rate: float | None = None
     accounts_revalued: int
     quotes_fetched: int = 0
+    # Symbols that already had a quote for the date and were not re-fetched.
+    skipped_count: int = 0
+    skipped_symbols: list[str] = []
+    # True when the overall fetch deadline cut slow symbols off.
+    timed_out: bool = False
 
 
 class FxRateResponse(BaseModel):

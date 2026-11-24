@@ -36,9 +36,13 @@ def test_semantic_keyword_classification():
     assert hydro_res.category_slug == "utilities"
 
 
-def test_multi_tier_evaluation_with_seeds_and_semantic(client):
+def test_multi_tier_evaluation_with_seeds_and_semantic(client, db_session):
     """Verifies that explicit rules (Suno, Tidal, A30 Express) take Tier 1 precedence,
     and unknown commercial payees fall back to Tier 2 semantic matching."""
+    # Default rules are seeded at startup (not by read endpoints any more).
+    from app.api.rules import seed_default_rules
+
+    seed_default_rules(db_session)
     cat_resp = client.get("/api/categories")
     categories = cat_resp.json()
     cat_map = {c["slug"]: c["id"] for c in categories}

@@ -4,10 +4,22 @@ from unittest.mock import MagicMock, patch
 from botocore.exceptions import ClientError, EndpointConnectionError
 
 from app.core.config import settings
+import pytest
+
 from app.services.categorization.bedrock_classifier import (
+    BEDROCK_CLIENT_CONFIG,
     _clean_json_response,
     classify_with_bedrock,
+    reset_bedrock_client_cache,
 )
+
+
+@pytest.fixture(autouse=True)
+def _fresh_bedrock_client():
+    # The client is cached per process; each test patches boto3.client anew.
+    reset_bedrock_client_cache()
+    yield
+    reset_bedrock_client_cache()
 
 
 def test_clean_json_response():
@@ -90,7 +102,11 @@ def test_classify_with_bedrock_success(monkeypatch):
 
         results = classify_with_bedrock(txns, cats)
 
-        mock_boto.assert_called_once_with("bedrock-runtime", region_name=settings.FOLIO_BEDROCK_REGION)
+        mock_boto.assert_called_once_with(
+            "bedrock-runtime",
+            region_name=settings.FOLIO_BEDROCK_REGION,
+            config=BEDROCK_CLIENT_CONFIG,
+        )
         assert mock_client.converse.called
         call_kwargs = mock_client.converse.call_args.kwargs
         assert call_kwargs["modelId"] == "amazon.nova-micro-v1:0"

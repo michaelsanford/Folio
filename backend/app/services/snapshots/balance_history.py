@@ -4,10 +4,11 @@ The dashboard used to build its "6-month net worth progression" by appending the
 *current* net worth six times, producing a flat line presented as a trend. These
 helpers record and reconstruct genuine daily balances instead.
 """
+from bisect import bisect_right
 from datetime import date, datetime, timedelta
 
 from dateutil.relativedelta import relativedelta
-from sqlalchemy import func
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.core.money import from_cents
@@ -95,35 +96,70 @@ def net_worth_series(
         return []
 
     now = datetime.now()
-    points: list[tuple[str, float, float, float]] = []
-
+    month_ends: list[tuple[str, date]] = []
     for i in range(months - 1, -1, -1):
         month_ref = now - relativedelta(months=i)
         # Last day of that month.
         first_of_next = (datetime(month_ref.year, month_ref.month, 1) + relativedelta(months=1)).date()
-        month_end = first_of_next - timedelta(days=1)
+        month_ends.append((month_ref.strftime("%b %Y"), first_of_next - timedelta(days=1)))
+    last_end = month_ends[-1][1]
 
+    # One grouped query: the last snapshot of every (account, calendar month) up
+    # to the final month end. This used to be one query per account per month
+    # (12 x accounts) on every dashboard load.
+    month_key = func.strftime("%Y-%m", AccountBalanceSnapshot.as_of_date)
+    latest_per_month = (
+        db.query(
+            AccountBalanceSnapshot.account_id.label("account_id"),
+            func.max(AccountBalanceSnapshot.as_of_date).label("as_of_date"),
+        )
+        .filter(AccountBalanceSnapshot.as_of_date <= last_end)
+        .group_by(AccountBalanceSnapshot.account_id, month_key)
+        .subquery()
+    )
+    rows = (
+        db.query(
+            AccountBalanceSnapshot.account_id,
+            AccountBalanceSnapshot.as_of_date,
+            AccountBalanceSnapshot.balance_cents,
+        )
+        .join(
+            latest_per_month,
+            and_(
+                AccountBalanceSnapshot.account_id == latest_per_month.c.account_id,
+                AccountBalanceSnapshot.as_of_date == latest_per_month.c.as_of_date,
+            ),
+        )
+        .order_by(AccountBalanceSnapshot.account_id, AccountBalanceSnapshot.as_of_date)
+        .all()
+    )
+
+    history: dict[str, tuple[list[date], list[int]]] = {}
+    for account_id, as_of, balance_cents in rows:
+        dates, balances = history.setdefault(account_id, ([], []))
+        dates.append(as_of)
+        balances.append(balance_cents)
+
+    points: list[tuple[str, float, float, float]] = []
+    for label, month_end in month_ends:
         assets_cents = 0
         liabilities_cents = 0
         for account in accounts:
-            snap = (
-                db.query(AccountBalanceSnapshot)
-                .filter(
-                    AccountBalanceSnapshot.account_id == account.id,
-                    AccountBalanceSnapshot.as_of_date <= month_end,
-                )
-                .order_by(AccountBalanceSnapshot.as_of_date.desc())
-                .first()
-            )
-            if snap is None:
+            series = history.get(account.id)
+            if not series:
                 continue
+            # Most recent snapshot at or before month end (carried forward).
+            pos = bisect_right(series[0], month_end)
+            if pos == 0:
+                continue
+            balance = series[1][pos - 1]
             if account.type in asset_types:
-                assets_cents += snap.balance_cents
+                assets_cents += balance
             elif account.type in liability_types:
-                liabilities_cents += abs(snap.balance_cents)
+                liabilities_cents += abs(balance)
 
         points.append((
-            month_ref.strftime("%b %Y"),
+            label,
             float(from_cents(assets_cents)),
             float(from_cents(liabilities_cents)),
             float(from_cents(assets_cents - liabilities_cents)),

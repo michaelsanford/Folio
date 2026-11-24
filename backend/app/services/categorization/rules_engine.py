@@ -2,7 +2,7 @@ import logging
 import re
 from functools import lru_cache
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.money import to_cents
 from app.models.category import Category
@@ -61,28 +61,40 @@ class RuleMatchResult:
         self.confidence = confidence
 
 
+def load_active_rules(db: Session) -> list[CategorizationRule]:
+    """Active rules in priority order, with their categories eagerly loaded.
+
+    Load once per request and pass the list down: evaluating a statement used to
+    re-query every rule for every row (and lazily load each matched category).
+    """
+    return (
+        db.query(CategorizationRule)
+        .options(selectinload(CategorizationRule.category))
+        .filter(CategorizationRule.is_active.is_(True))
+        .order_by(CategorizationRule.priority.asc())
+        .all()
+    )
+
+
 def evaluate_rules(
     db: Session,
     raw_payee: str,
     amount: float | None = None,
     account_id: str | None = None,
     rules: list[CategorizationRule] | None = None,
+    semantic: bool = True,
 ) -> RuleMatchResult:
     """
     Multi-tier transaction evaluation:
     - Tier 1: Explicit user and default priority rules (100% confidence)
-    - Tier 2: Semantic Keyword Classifier (85% confidence)
+    - Tier 2: Semantic Keyword Classifier (85% confidence), skipped when
+      ``semantic`` is False (callers that only want an explicit rule).
     """
     if not raw_payee:
         return RuleMatchResult(matched=False)
 
     if rules is None:
-        rules = (
-            db.query(CategorizationRule)
-            .filter(CategorizationRule.is_active.is_(True))
-            .order_by(CategorizationRule.priority.asc())
-            .all()
-        )
+        rules = load_active_rules(db)
 
     target_text = raw_payee.upper().strip()
     abs_cents = abs(to_cents(amount)) if amount is not None else None
@@ -127,6 +139,9 @@ def evaluate_rules(
                 normalized_payee=norm_name,
                 confidence=1.0,
             )
+
+    if not semantic:
+        return RuleMatchResult(matched=False)
 
     # Tier 2: Semantic Keyword Classification
     semantic_match = classify_by_semantic_keywords(raw_payee)

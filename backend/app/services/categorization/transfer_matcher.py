@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta
 from typing import Any
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, func
+from sqlalchemy.orm import Session, aliased
 from app.models.transaction import Transaction
 from app.models.account import Account
-from app.models.category import Category, CategoryType
 from app.core.money import to_cents
 
 
@@ -57,60 +57,123 @@ def find_potential_transfers(
     return None
 
 
-def link_offsetting_transfers(db: Session, window_days: int = 3) -> tuple[int, int]:
-    """Link offsetting transactions across accounts so they stop reading as cash flow.
+_ID_CHUNK = 500
 
-    Returns ``(pairs_linked, transactions_scanned)``.
+
+def _candidate_pairs(db: Session, window_days: int, anchor_ids: list[str] | None) -> list[tuple]:
+    """Offsetting (outflow, inflow) candidates from one self-join per id chunk.
+
+    Matches opposite ``amount_cents`` in a *different* account where both sides
+    are still unpaired. SQLite stores datetimes as text, so the join uses a
+    window one day wider than requested (cheap, index-friendly) and the exact
+    +/- ``window_days`` check is applied in Python on real datetimes.
     """
-    transfer_category_ids = {
-        c.id for c in db.query(Category).filter(Category.type == CategoryType.TRANSFER).all()
-    }
-
-    unpaired = (
-        db.query(Transaction)
-        .filter(Transaction.transfer_transaction_id.is_(None))
-        .order_by(Transaction.transaction_date.asc())
-        .all()
+    a = aliased(Transaction)
+    b = aliased(Transaction)
+    slack = window_days + 1
+    base = (
+        db.query(
+            a.id, a.amount_cents, a.transaction_date,
+            b.id, b.transaction_date,
+        )
+        .join(
+            b,
+            and_(
+                b.amount_cents == -a.amount_cents,
+                b.account_id != a.account_id,
+                b.transfer_transaction_id.is_(None),
+                b.transaction_date >= func.datetime(a.transaction_date, f"-{slack} days"),
+                b.transaction_date <= func.datetime(a.transaction_date, f"+{slack} days"),
+            ),
+        )
+        .filter(a.transfer_transaction_id.is_(None), a.amount_cents != 0)
     )
 
+    window = timedelta(days=window_days)
+    pairs: list[tuple] = []
+
+    def _collect(rows) -> None:
+        for a_id, a_cents, a_date, b_id, b_date in rows:
+            if abs(b_date - a_date) > window:
+                continue
+            # Normalise to (outflow, inflow) so each pair is seen once from one side.
+            if a_cents < 0:
+                pairs.append((a_date, abs(b_date - a_date), a_id, b_id))
+            else:
+                pairs.append((b_date, abs(b_date - a_date), b_id, a_id))
+
+    if anchor_ids is None:
+        _collect(base.filter(a.amount_cents < 0).all())
+    else:
+        for i in range(0, len(anchor_ids), _ID_CHUNK):
+            _collect(base.filter(a.id.in_(anchor_ids[i : i + _ID_CHUNK])).all())
+    return pairs
+
+
+def link_offsetting_transfers(
+    db: Session,
+    window_days: int = 3,
+    transaction_ids: list[str] | None = None,
+) -> tuple[int, int]:
+    """Link offsetting transactions across accounts so they stop reading as cash flow.
+
+    With ``transaction_ids`` (the import path) only pairs involving those rows
+    are considered -- the previous implementation walked every unpaired
+    transaction in the vault with several queries each (~90k statements and
+    30+ s at 50k rows) after every import. Without it, every unpaired outflow
+    is considered (the maintenance ``detect-transfers`` repair).
+
+    Pairing is greedy: outflows in date order, each taking the closest
+    unpaired counterpart. Returns ``(pairs_linked, transactions_scanned)``.
+    """
+    if transaction_ids is not None:
+        anchor_ids = list(dict.fromkeys(i for i in transaction_ids if i))
+        if not anchor_ids:
+            return 0, 0
+        scanned = len(anchor_ids)
+    else:
+        anchor_ids = None
+        scanned = (
+            db.query(func.count(Transaction.id))
+            .filter(Transaction.transfer_transaction_id.is_(None))
+            .scalar()
+        ) or 0
+
+    pairs = _candidate_pairs(db, window_days, anchor_ids)
+    if not pairs:
+        return 0, scanned
+
+    pairs.sort(key=lambda p: (p[0], p[1], p[2], p[3]))
+    used: set[str] = set()
+    chosen: list[tuple[str, str]] = []
+    for _, _, out_id, in_id in pairs:
+        if out_id in used or in_id in used:
+            continue
+        used.add(out_id)
+        used.add(in_id)
+        chosen.append((out_id, in_id))
+
+    ids = list(used)
+    by_id: dict[str, Transaction] = {}
+    for i in range(0, len(ids), _ID_CHUNK):
+        for txn in db.query(Transaction).filter(Transaction.id.in_(ids[i : i + _ID_CHUNK])).all():
+            by_id[txn.id] = txn
+
     linked = 0
-    for txn in unpaired:
-        if txn.transfer_transaction_id:
-            continue  # paired earlier in this same pass
-
-        # Only consider outflows, so each pair is examined once from one side.
-        if txn.amount >= 0:
+    for out_id, in_id in chosen:
+        out_txn, in_txn = by_id.get(out_id), by_id.get(in_id)
+        if out_txn is None or in_txn is None:
             continue
-
-        is_tagged_transfer = any(
-            s.category_id in transfer_category_ids for s in txn.splits
-        )
-
-        match = find_potential_transfers(
-            db,
-            current_account_id=txn.account_id,
-            transaction_date=txn.transaction_date,
-            amount=txn.amount,
-            window_days=window_days,
-        )
-        if not match or not match.transaction_id:
+        if out_txn.transfer_transaction_id or in_txn.transfer_transaction_id:
             continue
-
-        counterpart = db.query(Transaction).filter(Transaction.id == match.transaction_id).first()
-        if not counterpart or counterpart.transfer_transaction_id:
-            continue
-
-        if not is_tagged_transfer and abs(counterpart.amount + txn.amount) > 0.01:
-            continue
-
-        txn.transfer_transaction_id = counterpart.id
-        counterpart.transfer_transaction_id = txn.id
+        out_txn.transfer_transaction_id = in_txn.id
+        in_txn.transfer_transaction_id = out_txn.id
         linked += 1
 
     if linked > 0:
         db.commit()
 
-    return linked, len(unpaired)
+    return linked, scanned
 
 
 def annotate_in_batch_transfers(

@@ -1,12 +1,12 @@
 import io
 import re
 from datetime import datetime
-from ofxtools import OFXTree
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.account import Account, AccountType
 from app.schemas.ingestion import (
     DetectedAccountPreview,
+    ParsedRowError,
     ParsedTransactionItem,
     IngestionPreviewResponse,
 )
@@ -18,12 +18,9 @@ from app.services.ingestion.account_detector import (
     match_existing_account,
     suggest_account_name,
 )
-from app.services.ingestion.deduplication import (
-    generate_transaction_hash,
-    check_existing_duplicates,
-)
+from app.services.ingestion.deduplication import check_existing_duplicates
+from app.services.ingestion.preview_common import HashSequencer, classify_preview_items, row_error
 from app.services.categorization.normalizer import normalize_payee
-from app.services.categorization.engine import ClassificationEngine
 from app.services.categorization.transfer_matcher import (
     annotate_in_batch_transfers,
     find_potential_transfers,
@@ -47,8 +44,17 @@ def _safe_getattr(obj: object, attr: str) -> object | None:
 
 
 def _extract_ofx_statements(raw_bytes: bytes) -> list[dict]:
-    """Extract statement blocks with optional account metadata and transactions."""
+    """Extract statement blocks with optional account metadata and transactions.
+
+    Each statement carries ``transactions`` (parsed rows) and ``errors``
+    (``(row_number, raw_date)`` for rows whose posting date is unusable). A row
+    with no valid date is reported rather than stamped with today's date.
+    """
     try:
+        # Imported on first use: ofxtools is only needed for OFX uploads and
+        # adds to every cold start otherwise.
+        from ofxtools import OFXTree
+
         parser = OFXTree()
         parser.parse(io.BytesIO(raw_bytes))
         ofx = parser.convert()
@@ -58,6 +64,7 @@ def _extract_ofx_statements(raw_bytes: bytes) -> list[dict]:
             "org",
         )
         extracted: list[dict] = []
+        row_counter = 0
         for stmt in statements:
             stmt_currency = _iso_currency(_safe_getattr(stmt, "curdef")) or settings.DEFAULT_CURRENCY
             acct = _safe_getattr(stmt, "account")
@@ -70,14 +77,16 @@ def _extract_ofx_statements(raw_bytes: bytes) -> list[dict]:
                 raw_acct_type = "Credit Card"
 
             txns: list[tuple[str, datetime, float, str, str]] = []
+            errors: list[tuple[int, str]] = []
             for trn in _safe_getattr(stmt, "transactions") or []:
+                row_counter += 1
                 dt_posted = _safe_getattr(trn, "dtposted")
                 if isinstance(dt_posted, datetime):
                     iso_date = dt_posted.strftime("%Y-%m-%d")
                     dt_obj = dt_posted
                 else:
-                    dt_obj = datetime.now()
-                    iso_date = dt_obj.strftime("%Y-%m-%d")
+                    errors.append((row_counter, str(dt_posted) if dt_posted is not None else ""))
+                    continue
 
                 amt = float(_safe_getattr(trn, "trnamt") or 0.0)
                 payee = str(_safe_getattr(trn, "name") or _safe_getattr(trn, "memo") or "Unknown").strip()
@@ -91,6 +100,7 @@ def _extract_ofx_statements(raw_bytes: bytes) -> list[dict]:
                     "raw_acct_type": str(raw_acct_type).strip() if raw_acct_type else None,
                     "org_hint": str(org_hint).strip() if org_hint else None,
                     "transactions": txns,
+                    "errors": errors,
                 }
             )
         if extracted:
@@ -110,6 +120,7 @@ def _extract_ofx_statements(raw_bytes: bytes) -> list[dict]:
         blocks = [(bool(re.search(r"<CCSTMTRS>|<CCACCTFROM>", text, re.IGNORECASE)), text)]
 
     extracted = []
+    row_counter = 0
     for is_cc, block in blocks:
         curdef_match = re.search(r"<CURDEF>([A-Za-z]{3})", block, re.IGNORECASE)
         stmt_currency = (
@@ -123,22 +134,28 @@ def _extract_ofx_statements(raw_bytes: bytes) -> list[dict]:
             raw_acct_type = "Credit Card"
 
         txns = []
+        errors = []
         trn_blocks = re.findall(r"<STMTTRN>(.*?)</STMTTRN>", block, re.DOTALL | re.IGNORECASE)
         for trn_block in trn_blocks:
+            row_counter += 1
             dt_match = re.search(r"<DTPOSTED>(\d{8})", trn_block, re.IGNORECASE)
             amt_match = re.search(r"<TRNAMT>([-\d\.]+)", trn_block, re.IGNORECASE)
             name_match = re.search(r"<NAME>(.*?)(?:<|\r|\n)", trn_block, re.IGNORECASE)
             memo_match = re.search(r"<MEMO>(.*?)(?:<|\r|\n)", trn_block, re.IGNORECASE)
             fitid_match = re.search(r"<FITID>(.*?)(?:<|\r|\n)", trn_block, re.IGNORECASE)
 
+            if amt_match and not dt_match:
+                raw_dt_match = re.search(r"<DTPOSTED>([^<\r\n]*)", trn_block, re.IGNORECASE)
+                errors.append((row_counter, raw_dt_match.group(1).strip() if raw_dt_match else ""))
+                continue
             if dt_match and amt_match:
                 raw_dt = dt_match.group(1)
                 try:
                     dt_obj = datetime.strptime(raw_dt[:8], "%Y%m%d")
                     iso_date = dt_obj.strftime("%Y-%m-%d")
-                except Exception:
-                    dt_obj = datetime.now()
-                    iso_date = dt_obj.strftime("%Y-%m-%d")
+                except ValueError:
+                    errors.append((row_counter, raw_dt))
+                    continue
 
                 amt = float(amt_match.group(1))
                 payee = (name_match.group(1) if name_match else (memo_match.group(1) if memo_match else "Unknown")).strip()
@@ -152,6 +169,7 @@ def _extract_ofx_statements(raw_bytes: bytes) -> list[dict]:
                 "raw_acct_type": raw_acct_type,
                 "org_hint": org_hint,
                 "transactions": txns,
+                "errors": errors,
             }
         )
 
@@ -169,9 +187,19 @@ def parse_ofx_content(
     statements = _extract_ofx_statements(raw_bytes)
 
     if account_id is not None:
-        return _build_single_account_ofx_preview(db, account_id, filename, statements)
+        preview = _build_single_account_ofx_preview(db, account_id, filename, statements)
+    else:
+        preview = _build_auto_detected_ofx_preview(db, filename, statements)
+    preview.row_errors = _row_errors(statements)
+    return preview
 
-    return _build_auto_detected_ofx_preview(db, filename, statements)
+
+def _row_errors(statements: list[dict]) -> list[ParsedRowError]:
+    return [
+        row_error(row_number, "DTPOSTED", raw, "Missing or invalid posting date")
+        for stmt in statements
+        for row_number, raw in stmt.get("errors", [])
+    ]
 
 
 def _build_single_account_ofx_preview(
@@ -186,45 +214,32 @@ def _build_single_account_ofx_preview(
 
     parsed_items: list[ParsedTransactionItem] = []
     hashes: list[str] = []
+    sequencer = HashSequencer()
 
     for stmt in statements:
         stmt_currency = stmt["currency"]
         for iso_date, dt_obj, amt, payee, fitid in stmt["transactions"]:
-            item_hash = fitid if fitid else generate_transaction_hash(account_id, iso_date, amt, payee)
+            item_hash = fitid if fitid else sequencer.next_hash(account_id, iso_date, amt, payee)
             hashes.append(item_hash)
-
-            norm_payee = normalize_payee(payee)
-            cls_match = ClassificationEngine.classify_transaction(
-                db, payee, amount=amt, account_id=account_id, account_type=account_type_str
-            )
-            suggested_cat_id = cls_match.category_id if cls_match.matched else None
-            suggested_cat_name = cls_match.category_name if cls_match.matched else None
-            suggested_cat_color = cls_match.category_color if cls_match.matched else None
-            if cls_match.matched and cls_match.normalized_payee:
-                norm_payee = cls_match.normalized_payee
 
             transfer_match = find_potential_transfers(db, account_id, dt_obj, amt)
             parsed_items.append(
                 ParsedTransactionItem(
                     transaction_date=iso_date,
                     raw_payee=payee,
-                    normalized_payee=norm_payee,
+                    normalized_payee=normalize_payee(payee),
                     amount=amt,
                     currency=stmt_currency,
-                    suggested_category_id=suggested_cat_id,
-                    suggested_category_name=suggested_cat_name,
-                    suggested_category_color=suggested_cat_color,
                     is_duplicate=False,
                     import_hash=item_hash,
                     account_id=account_id,
                     account_label=account_label,
                     potential_transfer_account_id=transfer_match.account_id if transfer_match else None,
                     potential_transfer_account_name=transfer_match.account_name if transfer_match else None,
-                    confidence_score=cls_match.confidence if cls_match.matched else 0.5,
-                    classification_tier=cls_match.tier.value if cls_match.matched else None,
-                    classification_reason=cls_match.reason if cls_match.matched else None,
                 )
             )
+
+    classify_preview_items(db, parsed_items, [account_type_str] * len(parsed_items))
 
     existing_hashes = check_existing_duplicates(db, account_id, hashes)
     duplicates_count = 0
@@ -256,6 +271,8 @@ def _build_auto_detected_ofx_preview(
     account_labels: dict[str, str] = {}
     hashes_by_matched_account: dict[str, list[str]] = {}
     parsed_items: list[ParsedTransactionItem] = []
+    account_types: list[str | None] = []
+    sequencer = HashSequencer()
 
     if not statements:
         statements = [
@@ -265,6 +282,7 @@ def _build_auto_detected_ofx_preview(
                 "raw_acct_type": None,
                 "org_hint": None,
                 "transactions": [],
+                "errors": [],
             }
         ]
 
@@ -315,35 +333,18 @@ def _build_auto_detected_ofx_preview(
         hash_scope = matched_id if matched_id else key
 
         for iso_date, dt_obj, amt, payee, fitid in stmt["transactions"]:
-            item_hash = fitid if fitid else generate_transaction_hash(hash_scope, iso_date, amt, payee)
+            item_hash = fitid if fitid else sequencer.next_hash(hash_scope, iso_date, amt, payee)
             if matched_id:
                 hashes_by_matched_account.setdefault(matched_id, []).append(item_hash)
-
-            norm_payee = normalize_payee(payee)
-            cls_match = ClassificationEngine.classify_transaction(
-                db,
-                payee,
-                amount=amt,
-                account_id=matched_id,
-                account_type=acc_preview.suggested_type.value,
-            )
-            suggested_cat_id = cls_match.category_id if cls_match.matched else None
-            suggested_cat_name = cls_match.category_name if cls_match.matched else None
-            suggested_cat_color = cls_match.category_color if cls_match.matched else None
-            if cls_match.matched and cls_match.normalized_payee:
-                norm_payee = cls_match.normalized_payee
 
             transfer_match = find_potential_transfers(db, matched_id or "__new__", dt_obj, amt)
             parsed_items.append(
                 ParsedTransactionItem(
                     transaction_date=iso_date,
                     raw_payee=payee,
-                    normalized_payee=norm_payee,
+                    normalized_payee=normalize_payee(payee),
                     amount=amt,
                     currency=stmt_currency,
-                    suggested_category_id=suggested_cat_id,
-                    suggested_category_name=suggested_cat_name,
-                    suggested_category_color=suggested_cat_color,
                     is_duplicate=False,
                     import_hash=item_hash,
                     source_account_key=key,
@@ -351,11 +352,11 @@ def _build_auto_detected_ofx_preview(
                     account_label=account_labels[key],
                     potential_transfer_account_id=transfer_match.account_id if transfer_match else None,
                     potential_transfer_account_name=transfer_match.account_name if transfer_match else None,
-                    confidence_score=cls_match.confidence if cls_match.matched else 0.5,
-                    classification_tier=cls_match.tier.value if cls_match.matched else None,
-                    classification_reason=cls_match.reason if cls_match.matched else None,
                 )
             )
+            account_types.append(acc_preview.suggested_type.value)
+
+    classify_preview_items(db, parsed_items, account_types)
 
     existing_hashes_by_account: dict[str, set[str]] = {
         acc_id: check_existing_duplicates(db, acc_id, acc_hashes)

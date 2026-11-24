@@ -105,8 +105,12 @@ def test_rule_priority_resolution(client):
     assert test_resp.json()["suggested_category_id"] == dining["id"]
 
 
-def test_seed_merchant_rules_matches(client):
+def test_seed_merchant_rules_matches(client, db_session):
     """Verifies that common seeded merchant patterns match immediately out-of-the-box."""
+    # Default rules are seeded at startup (not by read endpoints any more).
+    from app.api.rules import seed_default_rules
+
+    seed_default_rules(db_session)
     cat_resp = client.get("/api/categories")
     categories = cat_resp.json()
     cat_map = {c["slug"]: c["id"] for c in categories}

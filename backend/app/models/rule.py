@@ -22,7 +22,7 @@ class CategorizationRule(Base):
     category_id = Column(String(36), ForeignKey("categories.id", ondelete="CASCADE"), nullable=False, index=True)
     priority = Column(Integer, nullable=False, default=10)  # Lower number = higher priority
     pattern_type = Column(Enum(RulePatternType), nullable=False, default=RulePatternType.CONTAINS)
-    pattern = Column(String(255), nullable=False)
+    pattern = Column(String(255), nullable=False, index=True)
     
     # Optional constraints
     min_amount_cents = Column(Integer, nullable=True)

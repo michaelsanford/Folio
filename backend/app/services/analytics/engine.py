@@ -50,6 +50,46 @@ LIABILITY_TYPES = {
 }
 
 
+def _month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
+    start = datetime(year, month, 1)
+    end = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
+    return start, end
+
+
+def monthly_income_expense_cents(
+    db: Session,
+    year: int | None = None,
+    month: int | None = None,
+) -> tuple[int, int]:
+    """(income, expenses) in cents for one calendar month, transfers excluded.
+
+    The same classification the dashboard uses, but a single grouped query with
+    no category join -- for callers (the cash-flow forecast) that need only the
+    two totals and used to build the entire dashboard, net-worth history
+    included, to read them.
+    """
+    now = datetime.now()
+    start, end = _month_bounds(year or now.year, month or now.month)
+    kind = split_kind_case().label("kind")
+    rows = (
+        db.query(kind, func.sum(TransactionSplit.amount_cents).label("total_cents"))
+        .join(Transaction, TransactionSplit.transaction_id == Transaction.id)
+        .outerjoin(Category, TransactionSplit.category_id == Category.id)
+        .filter(Transaction.transaction_date >= start, Transaction.transaction_date < end)
+        .group_by(kind)
+        .all()
+    )
+    income_cents = 0
+    expenses_cents = 0
+    for row in rows:
+        total = row.total_cents or 0
+        if row.kind == "INCOME":
+            income_cents += total
+        elif row.kind == "EXPENSE":
+            expenses_cents += -total
+    return income_cents, expenses_cents
+
+
 def get_dashboard_analytics(
     db: Session,
     year: int | None = None,

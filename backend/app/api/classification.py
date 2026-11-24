@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import select
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -112,23 +113,28 @@ def auto_classify_uncategorized(
     Scans the database for uncategorized transactions and classifies them using
     the 4-tier waterfall. Commits matched categories to transactions unless dry_run is true.
     """
+    # Genuinely uncategorized = no split carries a category. Filtered in SQL so
+    # only those rows are loaded, not the whole ledger.
+    has_category = (
+        select(TransactionSplit.id)
+        .where(
+            TransactionSplit.transaction_id == Transaction.id,
+            TransactionSplit.category_id.isnot(None),
+        )
+        .exists()
+    )
     query = (
         db.query(Transaction)
         .options(
-            joinedload(Transaction.splits),
+            selectinload(Transaction.splits),
             joinedload(Transaction.account),
         )
+        .filter(~has_category)
     )
     if req.account_id:
         query = query.filter(Transaction.account_id == req.account_id)
 
-    candidates = query.all()
-
-    # Filter to transactions that are genuinely uncategorized
-    uncategorized_txns = [
-        txn for txn in candidates
-        if not txn.splits or all(s.category_id is None for s in txn.splits)
-    ]
+    uncategorized_txns = query.all()
 
     tier_counts: dict[str, int] = {tier.value: 0 for tier in ClassificationTier}
     classified_count = 0

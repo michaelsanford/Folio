@@ -56,6 +56,15 @@ class ParsedTransactionItem(BaseModel):
     classification_reason: str | None = None
 
 
+class ParsedRowError(BaseModel):
+    """A statement row that could not be imported, reported instead of guessed."""
+
+    row_number: int | None = None  # 1-based position in the source (CSV line, OFX/PDF row)
+    field: str
+    value: str | None = None
+    message: str
+
+
 class IngestionPreviewResponse(BaseModel):
     file_id: str | None = None
     filename: str
@@ -67,6 +76,9 @@ class IngestionPreviewResponse(BaseModel):
     duplicates_count: int
     new_count: int
     items: list[ParsedTransactionItem]
+    # Rows skipped because a value (usually the date) could not be parsed. The
+    # importer used to drop them silently or stamp them with today's date.
+    row_errors: list[ParsedRowError] = Field(default_factory=list)
 
 
 class IngestionAccountResolution(BaseModel):

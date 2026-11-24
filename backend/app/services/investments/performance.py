@@ -13,7 +13,8 @@ contribution just before a rally flatters MWR while TWR is unchanged.
 from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, func
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.investment import (
     Holding,
@@ -42,6 +43,63 @@ def latest_price_cents(db: Session, security_id: str, as_of: date | None = None)
     return (quote.price_cents, quote.as_of_date) if quote else (None, None)
 
 
+_ID_CHUNK = 500
+
+
+def latest_prices_cents(
+    db: Session,
+    security_ids: list[str],
+    as_of: date | None = None,
+) -> dict[str, tuple[int, date]]:
+    """Latest price at or before ``as_of`` for many securities in one query.
+
+    Returns ``{security_id: (price_cents, as_of_date)}``; unpriced securities
+    are absent. Replaces one query per holding when valuing a portfolio.
+    """
+    ids = list(dict.fromkeys(i for i in security_ids if i))
+    prices: dict[str, tuple[int, date]] = {}
+    for i in range(0, len(ids), _ID_CHUNK):
+        chunk = ids[i : i + _ID_CHUNK]
+        latest = db.query(
+            PriceQuote.security_id.label("security_id"),
+            func.max(PriceQuote.as_of_date).label("as_of_date"),
+        ).filter(PriceQuote.security_id.in_(chunk))
+        if as_of is not None:
+            latest = latest.filter(PriceQuote.as_of_date <= as_of)
+        latest = latest.group_by(PriceQuote.security_id).subquery()
+        rows = (
+            db.query(PriceQuote.security_id, PriceQuote.price_cents, PriceQuote.as_of_date)
+            .join(
+                latest,
+                and_(
+                    PriceQuote.security_id == latest.c.security_id,
+                    PriceQuote.as_of_date == latest.c.as_of_date,
+                ),
+            )
+            .all()
+        )
+        for security_id, price_cents, quote_date in rows:
+            prices[security_id] = (price_cents, quote_date)
+    return prices
+
+
+def load_holdings(db: Session, account_ids: list[str] | None = None) -> list[Holding]:
+    """Holdings with their lots and security loaded up front (no lazy loads per row)."""
+    query = db.query(Holding).options(selectinload(Holding.lots), selectinload(Holding.security))
+    if account_ids is not None:
+        query = query.filter(Holding.account_id.in_(account_ids))
+    return query.all()
+
+
+def value_holdings(db: Session, holdings: list[Holding], as_of: date | None = None) -> list[dict]:
+    """Value many holdings with a single batched price lookup."""
+    prices = latest_prices_cents(db, [h.security_id for h in holdings], as_of)
+    return [
+        holding_valuation(db, h, as_of, price=prices.get(h.security_id, (None, None)))
+        for h in holdings
+    ]
+
+
 def open_quantity(holding: Holding) -> Decimal:
     """Units still held, i.e. purchased minus disposed, across all lots."""
     return sum(
@@ -62,11 +120,23 @@ def open_cost_basis_cents(holding: Holding) -> int:
     return total
 
 
-def holding_valuation(db: Session, holding: Holding, as_of: date | None = None) -> dict:
-    """Market value, cost basis, and unrealized gain for one position."""
+def holding_valuation(
+    db: Session,
+    holding: Holding,
+    as_of: date | None = None,
+    price: tuple[int | None, date | None] | None = None,
+) -> dict:
+    """Market value, cost basis, and unrealized gain for one position.
+
+    Pass ``price`` (from :func:`latest_prices_cents`) when valuing many
+    holdings, to avoid one price query per holding.
+    """
     quantity = open_quantity(holding)
     cost_cents = open_cost_basis_cents(holding)
-    price_cents, price_date = latest_price_cents(db, holding.security_id, as_of)
+    if price is None:
+        price_cents, price_date = latest_price_cents(db, holding.security_id, as_of)
+    else:
+        price_cents, price_date = price
 
     if price_cents is None:
         # No price entered yet: report cost rather than pretending the value is
@@ -97,8 +167,8 @@ def holding_valuation(db: Session, holding: Holding, as_of: date | None = None) 
 
 
 def account_market_value_cents(db: Session, account_id: str, as_of: date | None = None) -> int:
-    holdings = db.query(Holding).filter(Holding.account_id == account_id).all()
-    return sum(holding_valuation(db, h, as_of)["market_value_cents"] for h in holdings)
+    holdings = load_holdings(db, [account_id])
+    return sum(v["market_value_cents"] for v in value_holdings(db, holdings, as_of))
 
 
 # --------------------------------------------------------------------------
@@ -238,8 +308,8 @@ def account_performance(db: Session, account_id: str, as_of: date | None = None)
     """Valuation plus money-weighted and time-weighted returns per period."""
     end = as_of or date.today()
 
-    holdings = db.query(Holding).filter(Holding.account_id == account_id).all()
-    valuations = [holding_valuation(db, h, end) for h in holdings]
+    holdings = load_holdings(db, [account_id])
+    valuations = value_holdings(db, holdings, end)
 
     market_cents = sum(v["market_value_cents"] for v in valuations)
     cost_cents = sum(v["cost_basis_cents"] for v in valuations)

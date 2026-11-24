@@ -3,7 +3,6 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.s3_sync import sync_db_if_configured
 from app.models.category import Category, CategoryType
 from app.schemas.category import (
     CategoryCreate,
@@ -123,13 +122,12 @@ def slugify(text: str) -> str:
 
 @router.get("", response_model=list[CategoryResponse])
 def list_categories(db: Session = Depends(get_db)):
-    seed_default_categories(db)
+    # Default categories are seeded at startup; a read must not write.
     return db.query(Category).order_by(Category.sort_order.asc(), Category.name.asc()).all()
 
 
 @router.get("/tree", response_model=list[CategoryTreeResponse])
 def get_category_tree(db: Session = Depends(get_db)):
-    seed_default_categories(db)
     all_cats = db.query(Category).all()
     parent_map: dict[str | None, list[Category]] = {}
 
@@ -179,7 +177,6 @@ def create_category(cat_in: CategoryCreate, db: Session = Depends(get_db)):
     db.add(cat)
     db.commit()
     db.refresh(cat)
-    sync_db_if_configured()
     return cat
 
 
@@ -195,7 +192,6 @@ def update_category(category_id: str, cat_in: CategoryUpdate, db: Session = Depe
 
     db.commit()
     db.refresh(cat)
-    sync_db_if_configured()
     return cat
 
 
@@ -207,5 +203,4 @@ def delete_category(category_id: str, db: Session = Depends(get_db)):
 
     db.delete(cat)
     db.commit()
-    sync_db_if_configured()
     return None

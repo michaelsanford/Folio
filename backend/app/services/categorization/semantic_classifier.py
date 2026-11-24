@@ -277,9 +277,12 @@ def _clean_payee_text(text: str) -> str:
     return re.sub(r"\s+", " ", cleaned).upper().strip()
 
 
+_TOKEN_RE = re.compile(r"[\w\u00C0-\u017F]+")
+
+
 def _tokenize(text: str) -> list[str]:
     """Extracts alphanumeric words including French accents."""
-    return re.findall(r"[\w\u00C0-\u017F]+", text.upper())
+    return _TOKEN_RE.findall(text.upper())
 
 
 def _is_levenshtein_1(s1: str, s2: str) -> bool:
@@ -298,6 +301,67 @@ def _is_levenshtein_1(s1: str, s2: str) -> bool:
     return False
 
 
+def _compile_keywords(keywords: list[str]) -> tuple[tuple[str, str, bool, frozenset[str]], ...]:
+    """Pre-tokenize a keyword list once: (original, upper, is_multi_word, tokens)."""
+    compiled = []
+    for keyword in keywords:
+        kw_clean = keyword.upper()
+        compiled.append((keyword, kw_clean, " " in kw_clean, frozenset(_tokenize(kw_clean))))
+    return tuple(compiled)
+
+
+_INCOME_SIGNALS = _compile_keywords([
+    "PAYROLL", "SALARY", "DIRECT DEP", "DIRECT DEPOSIT",
+    "EI", "CANADA FPT", "CCB", "REFUND", "DEPOT", "DÉPÔT",
+    "VIREMENT", "PAYCHEQUE", "PAYCHECK", "WAGES", "PAIE",
+    "SALAIRE", "REMUNERATION", "RÉMUNÉRATION", "REMBOURSEMENT",
+    "EMPLOYMENT INSURANCE", "ASSURANCE-EMPLOI", "CHILD BENEFIT",
+    "OAS", "SV", "CPP", "RPC", "QPP", "RRQ", "PENSION", "BENEFIT",
+])
+
+_TAX_PATTERNS = _compile_keywords([
+    "PROPERTY TAX", "TAXES MUNICIPALES", "MUNICIPAL TAX",
+    "CRA", "REVENUE QUEBEC", "REVENU QUÉBEC", "REVENU QUEBEC",
+    "INTERNAL REVENUE", "IRS", "TAX INSTALLMENT", "IMPOT", "IMPÔT",
+    "TAX PYMT", "TAX PAYMENT", "SCHOOL TAX", "TAXE SCOLAIRE",
+    "PROPERTY TAXES",
+])
+
+_BILL_PATTERNS = _compile_keywords([
+    "BILL PMT", "BILL PAYMENT", "PAIEMENT FACTURE", "E-PAY BILL",
+    "HYDRO BILL", "WATER BILL", "ELECTRIC BILL", "GAS BILL",
+    "FACTURE", "PAYMENT TO UTILITY",
+])
+
+_FEE_PATTERNS = _compile_keywords([
+    "MONTHLY FEE", "FRAIS DE SERVICE", "FRAIS MENSUELS",
+    "OVERDRAFT", "NSF", "ATM FEE", "SERVICE CHARGE",
+    "FRAIS BANCAIRES", "FRAIS BANCAIRE", "COTISATION ANNUELLE",
+    "SERVICE FEE", "ACCOUNT FEE", "ACCOUNT SERVICE",
+])
+
+# TAXONOMY_PRIORITY tokenized once at import instead of on every payee, which
+# re-ran the tokenizer regex hundreds of times per classified transaction.
+_TAXONOMY_COMPILED: tuple[tuple[str, tuple[tuple[str, str, bool, frozenset[str]], ...]], ...] = tuple(
+    (category_slug, _compile_keywords(keywords)) for category_slug, keywords in TAXONOMY_PRIORITY
+)
+
+
+def _first_signal(
+    patterns: tuple[tuple[str, str, bool, frozenset[str]], ...],
+    cleaned_text: str,
+    tokens: set[str],
+    allow_token_subset: bool = False,
+) -> str | None:
+    for original, upper, is_multi, kw_toks in patterns:
+        if is_multi:
+            if upper in cleaned_text or (allow_token_subset and kw_toks.issubset(tokens)):
+                return original
+        elif upper in tokens:
+            return original
+    return None
+
+
 def classify_by_semantic_heuristics(
     raw_payee: str,
     amount: float | None = None,
@@ -305,7 +369,7 @@ def classify_by_semantic_heuristics(
 ) -> SemanticClassificationResult | None:
     """
     Tier 3 auto-classification: Enhanced Semantic & Heuristic Classifier.
-    
+
     1. Sign & Amount heuristics:
        - If amount > 0: Check for income signals ("PAYROLL", "SALARY", "DIRECT DEP",
          "EI", "CANADA FPT", "CCB", "REFUND", "DEPOT", "VIREMENT") -> income-salary.
@@ -322,99 +386,32 @@ def classify_by_semantic_heuristics(
 
     # 1. Sign & Amount Heuristics
     if amount is not None and amount > 0:
-        income_signals = [
-            "PAYROLL", "SALARY", "DIRECT DEP", "DIRECT DEPOSIT",
-            "EI", "CANADA FPT", "CCB", "REFUND", "DEPOT", "DÉPÔT",
-            "VIREMENT", "PAYCHEQUE", "PAYCHECK", "WAGES", "PAIE",
-            "SALAIRE", "REMUNERATION", "RÉMUNÉRATION", "REMBOURSEMENT",
-            "EMPLOYMENT INSURANCE", "ASSURANCE-EMPLOI", "CHILD BENEFIT",
-            "OAS", "SV", "CPP", "RPC", "QPP", "RRQ", "PENSION", "BENEFIT",
-        ]
-        for sig in income_signals:
-            if " " in sig:
-                if sig in cleaned_text:
-                    return SemanticClassificationResult(
-                        category_slug="income-salary",
-                        matched_keyword=sig,
-                        confidence=0.90,
-                    )
-            elif sig in tokens:
-                return SemanticClassificationResult(
-                    category_slug="income-salary",
-                    matched_keyword=sig,
-                    confidence=0.90,
-                )
+        sig = _first_signal(_INCOME_SIGNALS, cleaned_text, tokens)
+        if sig:
+            return SemanticClassificationResult(
+                category_slug="income-salary",
+                matched_keyword=sig,
+                confidence=0.90,
+            )
 
     if amount is not None and amount < 0:
-        # Check bill/tax patterns
-        tax_patterns = [
-            "PROPERTY TAX", "TAXES MUNICIPALES", "MUNICIPAL TAX",
-            "CRA", "REVENUE QUEBEC", "REVENU QUÉBEC", "REVENU QUEBEC",
-            "INTERNAL REVENUE", "IRS", "TAX INSTALLMENT", "IMPOT", "IMPÔT",
-            "TAX PYMT", "TAX PAYMENT", "SCHOOL TAX", "TAXE SCOLAIRE",
-            "PROPERTY TAXES",
-        ]
-        for pat in tax_patterns:
-            if " " in pat:
-                if pat in cleaned_text:
-                    return SemanticClassificationResult(
-                        category_slug="utilities",
-                        matched_keyword=pat,
-                        confidence=0.90,
-                    )
-            elif pat in tokens:
+        for patterns, slug, allow_subset in (
+            (_TAX_PATTERNS, "utilities", False),
+            (_BILL_PATTERNS, "utilities", False),
+            (_FEE_PATTERNS, "bank-fees", True),
+        ):
+            pat = _first_signal(patterns, cleaned_text, tokens, allow_token_subset=allow_subset)
+            if pat:
                 return SemanticClassificationResult(
-                    category_slug="utilities",
-                    matched_keyword=pat,
-                    confidence=0.90,
-                )
-
-        bill_patterns = [
-            "BILL PMT", "BILL PAYMENT", "PAIEMENT FACTURE", "E-PAY BILL",
-            "HYDRO BILL", "WATER BILL", "ELECTRIC BILL", "GAS BILL",
-            "FACTURE", "PAYMENT TO UTILITY",
-        ]
-        for pat in bill_patterns:
-            if " " in pat:
-                if pat in cleaned_text:
-                    return SemanticClassificationResult(
-                        category_slug="utilities",
-                        matched_keyword=pat,
-                        confidence=0.90,
-                    )
-            elif pat in tokens:
-                return SemanticClassificationResult(
-                    category_slug="utilities",
-                    matched_keyword=pat,
-                    confidence=0.90,
-                )
-
-        fee_patterns = [
-            "MONTHLY FEE", "FRAIS DE SERVICE", "FRAIS MENSUELS",
-            "OVERDRAFT", "NSF", "ATM FEE", "SERVICE CHARGE",
-            "FRAIS BANCAIRES", "FRAIS BANCAIRE", "COTISATION ANNUELLE",
-            "SERVICE FEE", "ACCOUNT FEE", "ACCOUNT SERVICE",
-        ]
-        for pat in fee_patterns:
-            if " " in pat:
-                if pat in cleaned_text or set(_tokenize(pat)).issubset(tokens):
-                    return SemanticClassificationResult(
-                        category_slug="bank-fees",
-                        matched_keyword=pat,
-                        confidence=0.90,
-                    )
-            elif pat in tokens:
-                return SemanticClassificationResult(
-                    category_slug="bank-fees",
+                    category_slug=slug,
                     matched_keyword=pat,
                     confidence=0.90,
                 )
 
     # 2. Priority Taxonomy: Exact Substring and Token Inclusion
-    for category_slug, keywords in TAXONOMY_PRIORITY:
-        for keyword in keywords:
-            kw_clean = keyword.upper()
-            if " " in kw_clean:
+    for category_slug, keywords in _TAXONOMY_COMPILED:
+        for keyword, kw_clean, is_multi, kw_toks in keywords:
+            if is_multi:
                 if kw_clean in cleaned_text:
                     return SemanticClassificationResult(
                         category_slug=category_slug,
@@ -422,7 +419,6 @@ def classify_by_semantic_heuristics(
                         confidence=0.85,
                     )
                 # Check multi-token inclusion
-                kw_toks = set(_tokenize(kw_clean))
                 if kw_toks and kw_toks.issubset(tokens):
                     return SemanticClassificationResult(
                         category_slug=category_slug,
@@ -437,10 +433,9 @@ def classify_by_semantic_heuristics(
                 )
 
     # 3. Fuzzy Matching: variations, token-set overlap, typo tolerance (edit dist <= 1)
-    for category_slug, keywords in TAXONOMY_PRIORITY:
-        for keyword in keywords:
-            kw_clean = keyword.upper()
-            if " " not in kw_clean and len(kw_clean) >= 4:
+    for category_slug, keywords in _TAXONOMY_COMPILED:
+        for keyword, kw_clean, is_multi, kw_toks in keywords:
+            if not is_multi and len(kw_clean) >= 4:
                 for token in tokens:
                     if len(token) < 4 or token.isdigit():
                         continue
@@ -459,8 +454,7 @@ def classify_by_semantic_heuristics(
                                 matched_keyword=keyword,
                                 confidence=0.80,
                             )
-            elif " " in kw_clean:
-                kw_toks = set(_tokenize(kw_clean))
+            elif is_multi:
                 overlap = kw_toks & tokens
                 if len(kw_toks) >= 2 and len(overlap) / len(kw_toks) >= 0.67:
                     return SemanticClassificationResult(

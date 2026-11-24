@@ -1,13 +1,12 @@
 import io
 import re
-from datetime import datetime
-from dateutil import parser as date_parser
-import pdfplumber
+from datetime import date, timedelta
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.account import Account, AccountType
 from app.schemas.ingestion import (
     DetectedAccountPreview,
+    ParsedRowError,
     ParsedTransactionItem,
     IngestionPreviewResponse,
 )
@@ -18,13 +17,16 @@ from app.services.ingestion.account_detector import (
     match_existing_account,
     suggest_account_name,
 )
-from app.services.ingestion.deduplication import (
-    generate_transaction_hash,
-    check_existing_duplicates,
-)
+from app.services.ingestion.deduplication import check_existing_duplicates
 from app.services.ingestion.csv_parser import clean_amount_str
+from app.services.ingestion.preview_common import (
+    HashSequencer,
+    classify_preview_items,
+    collect_full_dates,
+    parse_statement_date,
+    row_error,
+)
 from app.services.categorization.normalizer import normalize_payee
-from app.services.categorization.engine import ClassificationEngine
 from app.services.categorization.transfer_matcher import find_potential_transfers
 
 # Common line regex patterns in bank/credit card PDF statements
@@ -68,6 +70,19 @@ def _infer_pdf_account_hint(full_text: str, filename: str) -> tuple[str | None, 
     return None, AccountType.CHECKING
 
 
+def _statement_reference_date(header_texts: list[str]) -> date:
+    """Closing date to anchor year-less row dates on.
+
+    The latest fully dated value in the statement header (period end or due
+    date). Dates far in the future are ignored as noise; with nothing usable,
+    today is used, so a year-less row resolves to its nearest past occurrence.
+    """
+    today = date.today()
+    horizon = today + timedelta(days=62)
+    candidates = [d for d in collect_full_dates(header_texts) if d <= horizon]
+    return max(candidates) if candidates else today
+
+
 def parse_pdf_content(
     db: Session,
     account_id: str | None,
@@ -77,14 +92,23 @@ def parse_pdf_content(
     """
     Extracts tabular and text-based transaction data from bank statement PDFs using pdfplumber.
     """
+    # Imported on first use: pdfplumber (and pdfminer) are heavy and only needed
+    # for PDF uploads, so they should not weigh on every cold start.
+    import pdfplumber
+
     raw_rows: list[tuple[str, str, float]] = []
     page_texts: list[str] = []
 
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        for page in pdf.pages:
-            page_text = page.extract_text() or ""
-            if page_text:
-                page_texts.append(page_text)
+        for page_index, page in enumerate(pdf.pages):
+            # Text extraction is the expensive part; run it only where it is
+            # used: the first page (institution / account / period header) and
+            # pages whose tables yielded no transactions (line-regex fallback).
+            page_text = ""
+            if page_index == 0:
+                page_text = page.extract_text() or ""
+                if page_text:
+                    page_texts.append(page_text)
 
             # 1. Try extracting structured tables first
             tables = page.extract_tables()
@@ -139,6 +163,10 @@ def parse_pdf_content(
 
             # 2. If table extraction didn't find transactions on this page, fall back to line text regex
             if not table_found_rows:
+                if page_index != 0:
+                    page_text = page.extract_text() or ""
+                    if page_text:
+                        page_texts.append(page_text)
                 for line in page_text.splitlines():
                     line = line.strip()
                     if not line:
@@ -212,45 +240,31 @@ def parse_pdf_content(
 
     parsed_items: list[ParsedTransactionItem] = []
     hashes: list[str] = []
-    current_year = datetime.now().year
+    row_errors: list[ParsedRowError] = []
+    sequencer = HashSequencer()
+    # Statement lines usually omit the year ("08/15"): infer it from the
+    # statement's own dates rather than assuming the current year.
+    reference_date = _statement_reference_date(page_texts[:1])
 
-    for date_raw, desc_raw, amount in raw_rows:
+    for row_number, (date_raw, desc_raw, amount) in enumerate(raw_rows, start=1):
         try:
-            dt = date_parser.parse(date_raw)
-            if dt.year < 1900 or dt.year > 2100:
-                dt = dt.replace(year=current_year)
+            dt = parse_statement_date(date_raw, reference_date)
             iso_date = dt.strftime("%Y-%m-%d")
-        except Exception:
+        except (ValueError, OverflowError):
+            row_errors.append(row_error(row_number, "date", date_raw, "Unrecognized transaction date"))
             continue
 
-        item_hash = generate_transaction_hash(hash_scope, iso_date, amount, desc_raw)
+        item_hash = sequencer.next_hash(hash_scope, iso_date, amount, desc_raw)
         hashes.append(item_hash)
-
-        norm_payee = normalize_payee(desc_raw)
-        cls_match = ClassificationEngine.classify_transaction(
-            db,
-            desc_raw,
-            amount=amount,
-            account_id=effective_account_id,
-            account_type=effective_account_type,
-        )
-        suggested_cat_id = cls_match.category_id if cls_match.matched else None
-        suggested_cat_name = cls_match.category_name if cls_match.matched else None
-        suggested_cat_color = cls_match.category_color if cls_match.matched else None
-        if cls_match.matched and cls_match.normalized_payee:
-            norm_payee = cls_match.normalized_payee
 
         transfer_match = find_potential_transfers(db, effective_account_id or "__new__", dt, amount)
         parsed_items.append(
             ParsedTransactionItem(
                 transaction_date=iso_date,
                 raw_payee=desc_raw,
-                normalized_payee=norm_payee,
+                normalized_payee=normalize_payee(desc_raw),
                 amount=amount,
                 currency=settings.DEFAULT_CURRENCY,
-                suggested_category_id=suggested_cat_id,
-                suggested_category_name=suggested_cat_name,
-                suggested_category_color=suggested_cat_color,
                 is_duplicate=False,
                 import_hash=item_hash,
                 source_account_key=source_key,
@@ -258,11 +272,10 @@ def parse_pdf_content(
                 account_label=account_label,
                 potential_transfer_account_id=transfer_match.account_id if transfer_match else None,
                 potential_transfer_account_name=transfer_match.account_name if transfer_match else None,
-                confidence_score=cls_match.confidence if cls_match.matched else 0.5,
-                classification_tier=cls_match.tier.value if cls_match.matched else None,
-                classification_reason=cls_match.reason if cls_match.matched else None,
             )
         )
+
+    classify_preview_items(db, parsed_items, [effective_account_type] * len(parsed_items))
 
     duplicates_count = 0
     if effective_account_id:
@@ -287,4 +300,5 @@ def parse_pdf_content(
         duplicates_count=duplicates_count,
         new_count=len(parsed_items) - duplicates_count,
         items=parsed_items,
+        row_errors=row_errors,
     )

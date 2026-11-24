@@ -63,7 +63,6 @@ def list_goals(
 @router.post("", response_model=GoalResponse, status_code=status.HTTP_201_CREATED)
 def create_goal(goal_in: GoalCreate, db: Session = Depends(get_db)):
     """Creates a new savings, debt payoff, or CRA room goal."""
-    from app.core.s3_sync import sync_db_if_configured
     data = goal_in.model_dump()
     data["target_amount_cents"] = to_cents(data.pop("target_amount"))
     cur = data.pop("current_amount", None)
@@ -73,7 +72,6 @@ def create_goal(goal_in: GoalCreate, db: Session = Depends(get_db)):
     db.add(goal)
     db.commit()
     db.refresh(goal)
-    sync_db_if_configured()
     return _to_goal_response(goal, db)
 
 
@@ -129,7 +127,6 @@ def update_goal(
     goal_in: GoalUpdate,
     db: Session = Depends(get_db),
 ):
-    from app.core.s3_sync import sync_db_if_configured
     goal = db.query(Goal).filter(Goal.id == goal_id).first()
     if not goal:
         raise HTTPException(status_code=404, detail="Goal not found")
@@ -146,18 +143,15 @@ def update_goal(
 
     db.commit()
     db.refresh(goal)
-    sync_db_if_configured()
     return _to_goal_response(goal, db)
 
 
 @router.delete("/{goal_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_goal(goal_id: str, db: Session = Depends(get_db)):
-    from app.core.s3_sync import sync_db_if_configured
     goal = db.query(Goal).filter(Goal.id == goal_id).first()
     if not goal:
         raise HTTPException(status_code=404, detail="Goal not found")
 
     db.delete(goal)
     db.commit()
-    sync_db_if_configured()
     return None

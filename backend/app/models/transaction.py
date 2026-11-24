@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 import enum
-from sqlalchemy import Column, String, Integer, DateTime, Enum, ForeignKey, Index
+from sqlalchemy import Column, String, Integer, DateTime, Enum, ForeignKey, Index, text
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.core.config import settings
@@ -19,9 +19,10 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    account_id = Column(String(36), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True)
-    transfer_transaction_id = Column(String(36), ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True)
-    statement_file_id = Column(String(36), ForeignKey("statement_files.id", ondelete="SET NULL"), nullable=True)
+    # account_id lookups are served by ix_transactions_account_date (leading column).
+    account_id = Column(String(36), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    transfer_transaction_id = Column(String(36), ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True, index=True)
+    statement_file_id = Column(String(36), ForeignKey("statement_files.id", ondelete="SET NULL"), nullable=True, index=True)
     assigned_member_id = Column(String(36), ForeignKey("household_members.id", ondelete="SET NULL"), nullable=True)
     
     transaction_date = Column(DateTime, nullable=False, index=True)
@@ -34,7 +35,8 @@ class Transaction(Base):
     currency = Column(String(3), nullable=False, default=settings.DEFAULT_CURRENCY)
     
     # Deduplication fingerprint: SHA256(account_id|date|amount|raw_payee)
-    import_hash = Column(String(64), nullable=True, index=True)
+    # Looked up only together with account_id (see the composite indexes below).
+    import_hash = Column(String(64), nullable=True)
     
     status = Column(Enum(TransactionStatus), nullable=False, default=TransactionStatus.CLEARED)
     notes = Column(String(500), nullable=True)
@@ -53,6 +55,17 @@ class Transaction(Base):
         Index("ix_transactions_account_date", "account_id", "transaction_date"),
         # Deduplication looks up (account, hash) on every imported row.
         Index("ix_transactions_account_import_hash", "account_id", "import_hash"),
+        # The database refuses a second copy of an imported row. Migration 0005
+        # skips this on vaults that already contain duplicates.
+        Index(
+            "uq_transactions_account_import_hash",
+            "account_id",
+            "import_hash",
+            unique=True,
+            sqlite_where=text("import_hash IS NOT NULL"),
+        ),
+        # Transfer matching probes opposite amounts inside a date window.
+        Index("ix_transactions_amount_date", "amount_cents", "transaction_date"),
     )
 
 
@@ -61,7 +74,8 @@ class TransactionSplit(Base):
     __tablename__ = "transaction_splits"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    transaction_id = Column(String(36), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Served by ix_splits_transaction_category (leading column).
+    transaction_id = Column(String(36), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
     category_id = Column(String(36), ForeignKey("categories.id", ondelete="SET NULL"), nullable=True, index=True)
     amount_cents = Column(Integer, nullable=False)
     memo = Column(String(255), nullable=True)

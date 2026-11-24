@@ -1,6 +1,6 @@
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import or_, desc, asc, func, select
 from app.core.database import get_db
 from app.core.money import to_cents
@@ -18,6 +18,47 @@ from app.schemas.transaction import (
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
+# Public sort keys -> columns. ``amount`` is a Python property over
+# ``amount_cents``; ordering by the property raised instead of sorting.
+_SORT_COLUMNS = {
+    "transaction_date": Transaction.transaction_date,
+    "amount": Transaction.amount_cents,
+    "normalized_payee": Transaction.normalized_payee,
+    "raw_payee": Transaction.raw_payee,
+}
+
+
+def recalculate_account_balances(db: Session, account_ids: list[str]) -> dict[str, float]:
+    """Recalculate several accounts' balances with one grouped SUM and one commit.
+
+    Records today's snapshot for each. Returns ``{account_id: balance_dollars}``.
+    """
+    from app.core.money import from_cents
+    from app.services.snapshots.balance_history import record_snapshot
+
+    ids = list(dict.fromkeys(a for a in account_ids if a))
+    if not ids:
+        return {}
+
+    accounts = db.query(Account).filter(Account.id.in_(ids)).all()
+    if not accounts:
+        return {}
+    sums = dict(
+        db.query(Transaction.account_id, func.sum(Transaction.amount_cents))
+        .filter(Transaction.account_id.in_(ids))
+        .group_by(Transaction.account_id)
+        .all()
+    )
+
+    balances: dict[str, float] = {}
+    for account in accounts:
+        balance_cents = int(sums.get(account.id) or 0)
+        account.current_balance_cents = balance_cents
+        record_snapshot(db, account.id, balance_cents)
+        balances[account.id] = float(from_cents(balance_cents))
+    db.commit()
+    return balances
+
 
 def recalculate_account_balance(db: Session, account_id: str):
     """Recalculates an account's balance and records today's snapshot.
@@ -25,21 +66,7 @@ def recalculate_account_balance(db: Session, account_id: str):
     Aggregates in SQL -- this previously loaded every transaction for the account
     into Python and summed in a loop, on every single create, update and delete.
     """
-    from app.core.s3_sync import sync_db_if_configured
-    from app.services.snapshots.balance_history import record_snapshot
-
-    account = db.query(Account).filter(Account.id == account_id).first()
-    if not account:
-        return
-
-    balance_cents = db.query(func.sum(Transaction.amount_cents)).filter(
-        Transaction.account_id == account_id
-    ).scalar() or 0
-
-    account.current_balance_cents = balance_cents
-    record_snapshot(db, account_id, balance_cents)
-    db.commit()
-    sync_db_if_configured()
+    recalculate_account_balances(db, [account_id])
 
 
 @router.get("", response_model=TransactionListResponse)
@@ -112,7 +139,7 @@ def list_transactions(
     total_count = query.distinct().count()
 
     # Dynamic sorting
-    order_col = getattr(Transaction, sort_by)
+    order_col = _SORT_COLUMNS[sort_by]
     if sort_order == "desc":
         query = query.order_by(desc(order_col), desc(Transaction.created_at))
     else:
@@ -242,14 +269,22 @@ def batch_categorize(req: BatchCategorizeRequest, db: Session = Depends(get_db))
     Applies category and optional payee override to multiple transactions in one batch.
     Optionally creates a new categorization rule for future imports.
     """
-    from app.api.rules import auto_learn_rule
+    from app.api.rules import auto_learn_rules_bulk
 
     category = db.query(Category).filter(Category.id == req.category_id).first()
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
 
-    transactions = db.query(Transaction).filter(Transaction.id.in_(req.transaction_ids)).all()
-    
+    # Splits are loaded with the transactions (one extra query in total) rather
+    # than lazily per row, and rule learning is applied once for the batch.
+    transactions = (
+        db.query(Transaction)
+        .options(selectinload(Transaction.splits))
+        .filter(Transaction.id.in_(req.transaction_ids))
+        .all()
+    )
+
+    learned: dict = {}
     for txn in transactions:
         if req.normalized_payee:
             txn.normalized_payee = req.normalized_payee
@@ -261,14 +296,14 @@ def batch_categorize(req: BatchCategorizeRequest, db: Session = Depends(get_db))
             txn.splits.append(TransactionSplit(category_id=req.category_id, amount=txn.amount))
 
         # Auto-learn rule for each merchant
-        auto_learn_rule(
-            db,
-            raw_payee=txn.raw_payee,
-            category_id=req.category_id,
-            normalized_payee=req.normalized_payee or txn.normalized_payee,
-            notes=txn.notes,
+        note_key = (txn.notes or "").strip() or None
+        learned[(txn.raw_payee, note_key)] = (
+            req.category_id,
+            req.normalized_payee or txn.normalized_payee,
+            txn.notes,
         )
 
+    auto_learn_rules_bulk(db, learned)
     db.commit()
     return {"updated_count": len(transactions)}
 

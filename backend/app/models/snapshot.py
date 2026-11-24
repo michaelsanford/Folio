@@ -18,7 +18,8 @@ class AccountBalanceSnapshot(Base):
     __tablename__ = "account_balance_snapshots"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    account_id = Column(String(36), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Served by uq_snapshot_account_date (leading column).
+    account_id = Column(String(36), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
     as_of_date = Column(Date, nullable=False, index=True)
     balance_cents = Column(Integer, nullable=False, default=0)
 

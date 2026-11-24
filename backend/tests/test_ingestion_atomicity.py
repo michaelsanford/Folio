@@ -43,7 +43,10 @@ def test_failed_commit_writes_no_transactions(client, db_session, sample_checkin
         "items": _items(25, groceries_id),
     })
 
-    assert resp.status_code == 400
+    # An unexpected server-side failure is a 500 with a generic message, not a
+    # 400 echoing the exception text back to the client.
+    assert resp.status_code == 500
+    assert "simulated" not in resp.text
     assert db_session.query(Transaction).count() == 0, "rollback must undo every staged row"
 
 

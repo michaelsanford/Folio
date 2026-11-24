@@ -1,14 +1,14 @@
 import csv
 import re
 from collections import Counter
-from datetime import datetime
-from dateutil import parser as date_parser
+from datetime import date, datetime
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.account import Account, AccountType
 from app.schemas.ingestion import (
     CsvColumnMapping,
     DetectedAccountPreview,
+    ParsedRowError,
     ParsedTransactionItem,
     IngestionPreviewResponse,
 )
@@ -20,16 +20,14 @@ from app.services.ingestion.account_detector import (
     match_existing_account,
     suggest_account_name,
 )
-from app.services.ingestion.deduplication import (
-    generate_transaction_hash,
-    check_existing_duplicates,
+from app.services.ingestion.deduplication import check_existing_duplicates
+from app.services.ingestion.preview_common import (
+    HashSequencer,
+    classify_preview_items,
+    parse_statement_date,
+    row_error,
 )
 from app.services.categorization.normalizer import normalize_payee
-from app.services.categorization.engine import (
-    ClassificationEngine,
-    ClassificationTier,
-    lookup_category_by_slug,
-)
 from app.services.categorization.transfer_matcher import (
     annotate_in_batch_transfers,
     find_potential_transfers,
@@ -188,28 +186,6 @@ def auto_detect_csv_columns(header: list[str]) -> CsvColumnMapping:
     )
 
 
-def _classify_csv_row(
-    db: Session,
-    raw_payee: str,
-    row_notes: str | None,
-    amount: float,
-    account_id: str | None,
-    account_type: str | None,
-):
-    """Run ClassificationEngine using raw_payee plus Description 2 / notes context."""
-    base_norm = normalize_payee(raw_payee)
-    cls_match = ClassificationEngine.classify_transaction(
-        db,
-        raw_payee,
-        amount=amount,
-        account_id=account_id,
-        account_type=account_type,
-        notes=row_notes,
-    )
-    norm = cls_match.normalized_payee or base_norm
-    return cls_match, norm
-
-
 def _apply_transfer_category_fallback(
     db: Session,
     items: list[ParsedTransactionItem],
@@ -246,6 +222,8 @@ def _apply_transfer_category_fallback(
     if counterpart_ids:
         for acc in db.query(Account).filter(Account.id.in_(counterpart_ids)).all():
             account_types_by_id[acc.id] = acc.type
+
+    from app.services.categorization.engine import ClassificationTier, lookup_category_by_slug
 
     cc_cat = lookup_category_by_slug(db, "cc-payment")
     xfer_cat = lookup_category_by_slug(db, "internal-transfer")
@@ -371,6 +349,8 @@ def parse_csv_content(
     cheque_col = next((c for c in fieldnames if c and "cheque" in c.lower()), None)
 
     extracted_rows: list[tuple[str, str, str, datetime, str, str | None, float, str]] = []
+    row_errors: list[ParsedRowError] = []
+    today = date.today()
     for row in reader:
         raw_date_str = (row.get(mapping.date_column) or "").strip()
         raw_payee = (row.get(mapping.payee_column) or "").strip()
@@ -378,9 +358,14 @@ def parse_csv_content(
             continue
 
         try:
-            dt = date_parser.parse(raw_date_str)
+            dt = parse_statement_date(raw_date_str, today)
             iso_date = dt.strftime("%Y-%m-%d")
-        except Exception:
+        except (ValueError, OverflowError):
+            # Reported, not guessed: a row stamped with today's date (or quietly
+            # dropped) corrupts the ledger without anyone noticing.
+            row_errors.append(
+                row_error(reader.line_num, mapping.date_column, raw_date_str, "Unrecognized transaction date")
+            )
             continue
 
         raw_type = (row.get(mapping.account_type_column) or "").strip() if mapping.account_type_column else ""
@@ -391,9 +376,11 @@ def parse_csv_content(
         extracted_rows.append((raw_type, raw_number, iso_date, dt, raw_payee, row_notes, amount, row_currency))
 
     if account_id is not None:
-        return _build_single_account_csv_preview(db, account_id, filename, extracted_rows)
-
-    return _build_auto_detected_csv_preview(db, filename, fieldnames, extracted_rows)
+        preview = _build_single_account_csv_preview(db, account_id, filename, extracted_rows)
+    else:
+        preview = _build_auto_detected_csv_preview(db, filename, fieldnames, extracted_rows)
+    preview.row_errors = row_errors
+    return preview
 
 
 def _build_single_account_csv_preview(
@@ -408,26 +395,21 @@ def _build_single_account_csv_preview(
 
     parsed_items: list[ParsedTransactionItem] = []
     hashes: list[str] = []
+    sequencer = HashSequencer()
 
     for _, _, iso_date, dt, raw_payee, row_notes, amount, row_currency in extracted_rows:
-        item_hash = generate_transaction_hash(account_id, iso_date, amount, raw_payee)
+        item_hash = sequencer.next_hash(account_id, iso_date, amount, raw_payee)
         hashes.append(item_hash)
 
-        cls_match, norm_payee = _classify_csv_row(
-            db, raw_payee, row_notes, amount, account_id, account_type_str
-        )
         transfer_match = find_potential_transfers(db, account_id, dt, amount)
 
         parsed_items.append(
             ParsedTransactionItem(
                 transaction_date=iso_date,
                 raw_payee=raw_payee,
-                normalized_payee=norm_payee,
+                normalized_payee=normalize_payee(raw_payee),
                 amount=amount,
                 currency=row_currency,
-                suggested_category_id=cls_match.category_id if cls_match.matched else None,
-                suggested_category_name=cls_match.category_name if cls_match.matched else None,
-                suggested_category_color=cls_match.category_color if cls_match.matched else None,
                 is_duplicate=False,
                 import_hash=item_hash,
                 notes=row_notes,
@@ -435,11 +417,10 @@ def _build_single_account_csv_preview(
                 account_label=account_label,
                 potential_transfer_account_id=transfer_match.account_id if transfer_match else None,
                 potential_transfer_account_name=transfer_match.account_name if transfer_match else None,
-                confidence_score=cls_match.confidence if cls_match.matched else 0.5,
-                classification_tier=cls_match.tier.value if cls_match.matched else None,
-                classification_reason=cls_match.reason if cls_match.matched else None,
             )
         )
+
+    classify_preview_items(db, parsed_items, [account_type_str] * len(parsed_items))
 
     existing_hashes = check_existing_duplicates(db, account_id, hashes)
     duplicates_count = 0
@@ -549,37 +530,28 @@ def _build_auto_detected_csv_preview(
         )
 
     parsed_items: list[ParsedTransactionItem] = []
+    account_types: list[str | None] = []
+    sequencer = HashSequencer()
     for (_, _, iso_date, dt, raw_payee, row_notes, amount, row_currency), key in zip(
         extracted_rows, row_group_keys
     ):
         acc_preview = detected_map[key]
         matched_id = acc_preview.matched_account_id
         hash_scope = matched_id if matched_id else key
-        item_hash = generate_transaction_hash(hash_scope, iso_date, amount, raw_payee)
+        item_hash = sequencer.next_hash(hash_scope, iso_date, amount, raw_payee)
 
         if matched_id:
             hashes_by_matched_account.setdefault(matched_id, []).append(item_hash)
 
-        cls_match, norm_payee = _classify_csv_row(
-            db,
-            raw_payee,
-            row_notes,
-            amount,
-            matched_id,
-            acc_preview.suggested_type.value,
-        )
         transfer_match = find_potential_transfers(db, matched_id or "__new__", dt, amount)
 
         parsed_items.append(
             ParsedTransactionItem(
                 transaction_date=iso_date,
                 raw_payee=raw_payee,
-                normalized_payee=norm_payee,
+                normalized_payee=normalize_payee(raw_payee),
                 amount=amount,
                 currency=row_currency,
-                suggested_category_id=cls_match.category_id if cls_match.matched else None,
-                suggested_category_name=cls_match.category_name if cls_match.matched else None,
-                suggested_category_color=cls_match.category_color if cls_match.matched else None,
                 is_duplicate=False,
                 import_hash=item_hash,
                 notes=row_notes,
@@ -588,11 +560,11 @@ def _build_auto_detected_csv_preview(
                 account_label=account_labels[key],
                 potential_transfer_account_id=transfer_match.account_id if transfer_match else None,
                 potential_transfer_account_name=transfer_match.account_name if transfer_match else None,
-                confidence_score=cls_match.confidence if cls_match.matched else 0.5,
-                classification_tier=cls_match.tier.value if cls_match.matched else None,
-                classification_reason=cls_match.reason if cls_match.matched else None,
             )
         )
+        account_types.append(acc_preview.suggested_type.value)
+
+    classify_preview_items(db, parsed_items, account_types)
 
     # Batch duplicate lookup per matched existing account
     existing_hashes_by_account: dict[str, set[str]] = {

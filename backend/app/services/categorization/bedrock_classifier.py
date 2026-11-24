@@ -1,15 +1,32 @@
 import json
 import logging
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 from app.core.config import settings
 
 logger = logging.getLogger("folio.bedrock")
+
+# Bedrock calls happen inside a request. Without explicit timeouts botocore waits
+# 60 s per read and retries several times, which outlives the request budget;
+# adaptive mode also backs off client-side when throttled.
+BEDROCK_CLIENT_CONFIG = Config(
+    connect_timeout=3,
+    read_timeout=20,
+    retries={"max_attempts": 2, "mode": "adaptive"},
+)
+CHUNK_SIZE = 40
+MAX_PARALLEL_CHUNKS = 4
+
+_client_lock = threading.Lock()
+_clients: dict[str, Any] = {}
 
 
 @dataclass
@@ -36,67 +53,34 @@ def _clean_json_response(raw_text: str) -> str:
     return cleaned
 
 
-def classify_with_bedrock(
-    transactions: list[dict[str, Any]],
-    categories: list[dict[str, Any]],
-    model_id: str | None = None,
-    region: str | None = None,
-) -> list[BedrockClassificationResult]:
-    """
-    Tier 4 AI Recourse: Invokes AWS Bedrock to classify bank transactions
-    when deterministic rules, user history, and semantic heuristics fail.
+def get_bedrock_client(region: str) -> Any:
+    """One bedrock-runtime client per region for the process (boto3 clients are thread-safe)."""
+    client = _clients.get(region)
+    if client is None:
+        with _client_lock:
+            client = _clients.get(region)
+            if client is None:
+                client = boto3.client("bedrock-runtime", region_name=region, config=BEDROCK_CLIENT_CONFIG)
+                _clients[region] = client
+    return client
 
-    Supports Amazon Nova Micro (amazon.nova-micro-v1:0) and Claude 3 models
-    via Bedrock Converse API.
 
-    Zero unhandled exceptions: returns empty list on any failure or if disabled.
-    """
-    if not settings.FOLIO_BEDROCK_ENABLED:
-        logger.debug("Bedrock classification skipped: FOLIO_BEDROCK_ENABLED is False")
-        return []
+def reset_bedrock_client_cache() -> None:
+    """Drop cached clients (tests, or after a credential/region change)."""
+    with _client_lock:
+        _clients.clear()
 
-    if not transactions or not categories:
-        return []
 
-    target_model_id = model_id or settings.FOLIO_BEDROCK_MODEL_ID
-    target_region = region or settings.FOLIO_BEDROCK_REGION
+_SYSTEM_PROMPT = (
+    "You are an expert personal finance categorization engine. "
+    "Your task is to analyze bank transaction descriptions and classify them into the most appropriate category slug "
+    "from the provided categories list. "
+    "You must output ONLY a valid JSON array of objects, with NO surrounding markdown fences, commentary, or prologue."
+)
 
-    try:
-        client = boto3.client("bedrock-runtime", region_name=target_region)
-    except Exception as e:
-        logger.error("Failed to initialize Bedrock client: %s", e)
-        return []
 
-    category_summary = [
-        {
-            "id": c.get("id"),
-            "slug": c.get("slug"),
-            "name": c.get("name"),
-            "type": str(c.get("type", "")),
-        }
-        for c in categories
-        if c.get("slug")
-    ]
-
-    indexed_txns = []
-    for idx, txn in enumerate(transactions):
-        indexed_txns.append({
-            "index": idx,
-            "raw_payee": str(txn.get("raw_payee", "")),
-            "amount": txn.get("amount"),
-            "currency": txn.get("currency", settings.DEFAULT_CURRENCY),
-            "account_type": txn.get("account_type"),
-            "date": str(txn.get("date", "")),
-        })
-
-    system_prompt = (
-        "You are an expert personal finance categorization engine. "
-        "Your task is to analyze bank transaction descriptions and classify them into the most appropriate category slug "
-        "from the provided categories list. "
-        "You must output ONLY a valid JSON array of objects, with NO surrounding markdown fences, commentary, or prologue."
-    )
-
-    user_prompt = (
+def _build_user_prompt(category_summary: list[dict], indexed_txns: list[dict]) -> str:
+    return (
         f"Available Categories:\n{json.dumps(category_summary, indent=2)}\n\n"
         f"Transactions to Classify:\n{json.dumps(indexed_txns, indent=2)}\n\n"
         "Instructions:\n"
@@ -117,38 +101,29 @@ def classify_with_bedrock(
         "Return strictly the JSON array."
     )
 
-    raw_output = ""
+
+def _omitted(reason: str) -> BedrockClassificationResult:
+    # Zero confidence never clears a threshold, so callers skip the row.
+    return BedrockClassificationResult(
+        category_slug="shopping",
+        confidence=0.0,
+        reasoning=reason,
+        normalized_payee=None,
+    )
+
+
+def _parse_results(raw_output: str, count: int) -> list[BedrockClassificationResult] | None:
+    """Parse one chunk's model output; ``None`` means the whole chunk is unusable."""
     try:
-        response = client.converse(
-            modelId=target_model_id,
-            system=[{"text": system_prompt}],
-            messages=[
-                {
-                    "role": "user",
-                    "content": [{"text": user_prompt}],
-                }
-            ],
-            inferenceConfig={
-                "temperature": 0.0,
-                "maxTokens": 4096,
-            },
-        )
-        content_parts = response.get("output", {}).get("message", {}).get("content", [])
-        raw_output = "".join(part.get("text", "") for part in content_parts)
-    except (ClientError, BotoCoreError) as e:
-        logger.warning("AWS Bedrock Converse API error: %s", e)
-        return []
-    except Exception as e:
-        logger.error("Unexpected error invoking Bedrock: %s", e)
-        return []
+        parsed = json.loads(_clean_json_response(raw_output))
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning("Failed to decode Bedrock JSON output: %s (Raw: %r)", e, raw_output[:200])
+        return None
+    if not isinstance(parsed, list):
+        logger.warning("Bedrock response is not a JSON list: %r", raw_output[:200])
+        return None
 
     try:
-        cleaned_json = _clean_json_response(raw_output)
-        parsed = json.loads(cleaned_json)
-        if not isinstance(parsed, list):
-            logger.warning("Bedrock response is not a JSON list: %r", raw_output[:200])
-            return []
-
         indexed_results: dict[int, BedrockClassificationResult] = {}
         for item in parsed:
             if not isinstance(item, dict):
@@ -157,33 +132,20 @@ def classify_with_bedrock(
             slug = item.get("category_slug")
             if slug is None:
                 continue
-            conf = float(item.get("confidence", 0.70))
-            reasoning = str(item.get("reasoning", "Classified by Bedrock AI"))
-            norm = item.get("normalized_payee")
             result_obj = BedrockClassificationResult(
                 category_slug=str(slug),
-                confidence=conf,
-                reasoning=reasoning,
-                normalized_payee=norm,
+                confidence=float(item.get("confidence", 0.70)),
+                reasoning=str(item.get("reasoning", "Classified by Bedrock AI")),
+                normalized_payee=item.get("normalized_payee"),
             )
             if idx is not None and isinstance(idx, int):
                 indexed_results[idx] = result_obj
 
         if indexed_results:
-            results = []
-            for i in range(len(transactions)):
-                if i in indexed_results:
-                    results.append(indexed_results[i])
-                else:
-                    results.append(
-                        BedrockClassificationResult(
-                            category_slug="shopping",
-                            confidence=0.0,
-                            reasoning="Bedrock omitted result for transaction",
-                            normalized_payee=None,
-                        )
-                    )
-            return results
+            return [
+                indexed_results.get(i) or _omitted("Bedrock omitted result for transaction")
+                for i in range(count)
+            ]
 
         results = []
         for item in parsed:
@@ -196,11 +158,124 @@ def classify_with_bedrock(
                         normalized_payee=item.get("normalized_payee"),
                     )
                 )
-        return results
+        return results[:count]
+    except (TypeError, ValueError) as e:
+        logger.warning("Error processing Bedrock classification results: %s", e)
+        return None
 
-    except (json.JSONDecodeError, ValueError) as e:
-        logger.warning("Failed to decode Bedrock JSON output: %s (Raw: %r)", e, raw_output[:200])
-        return []
+
+def _classify_chunk(
+    client: Any,
+    model_id: str,
+    category_summary: list[dict],
+    chunk: list[dict[str, Any]],
+) -> list[BedrockClassificationResult] | None:
+    indexed_txns = [
+        {
+            "index": idx,
+            "raw_payee": str(txn.get("raw_payee", "")),
+            "amount": txn.get("amount"),
+            "currency": txn.get("currency", settings.DEFAULT_CURRENCY),
+            "account_type": txn.get("account_type"),
+            "date": str(txn.get("date", "")),
+        }
+        for idx, txn in enumerate(chunk)
+    ]
+    try:
+        response = client.converse(
+            modelId=model_id,
+            system=[{"text": _SYSTEM_PROMPT}],
+            messages=[
+                {
+                    "role": "user",
+                    "content": [{"text": _build_user_prompt(category_summary, indexed_txns)}],
+                }
+            ],
+            inferenceConfig={
+                "temperature": 0.0,
+                "maxTokens": 4096,
+            },
+        )
+        content_parts = response.get("output", {}).get("message", {}).get("content", [])
+        raw_output = "".join(part.get("text", "") for part in content_parts)
+    except (ClientError, BotoCoreError) as e:
+        logger.warning("AWS Bedrock Converse API error: %s", e)
+        return None
     except Exception as e:
-        logger.error("Error processing Bedrock classification results: %s", e)
+        logger.error("Unexpected error invoking Bedrock: %s", e)
+        return None
+    return _parse_results(raw_output, len(chunk))
+
+
+def classify_with_bedrock(
+    transactions: list[dict[str, Any]],
+    categories: list[dict[str, Any]],
+    model_id: str | None = None,
+    region: str | None = None,
+) -> list[BedrockClassificationResult]:
+    """
+    Tier 4 AI Recourse: Invokes AWS Bedrock to classify bank transactions
+    when deterministic rules, user history, and semantic heuristics fail.
+
+    Supports Amazon Nova Micro (amazon.nova-micro-v1:0) and Claude 3 models
+    via Bedrock Converse API.
+
+    Transactions go out in chunks of ``CHUNK_SIZE``, up to ``MAX_PARALLEL_CHUNKS``
+    at once, so a large batch neither overflows the model's output budget nor
+    waits on one long serial call. A chunk that errors or returns unparseable
+    JSON loses only its own rows (they come back with zero confidence); the
+    other chunks keep their answers.
+
+    Zero unhandled exceptions: returns an empty list when disabled or when every
+    chunk failed; otherwise exactly one result per input transaction.
+    """
+    if not settings.FOLIO_BEDROCK_ENABLED:
+        logger.debug("Bedrock classification skipped: FOLIO_BEDROCK_ENABLED is False")
         return []
+
+    if not transactions or not categories:
+        return []
+
+    target_model_id = model_id or settings.FOLIO_BEDROCK_MODEL_ID
+    target_region = region or settings.FOLIO_BEDROCK_REGION
+
+    try:
+        client = get_bedrock_client(target_region)
+    except Exception as e:
+        logger.error("Failed to initialize Bedrock client: %s", e)
+        return []
+
+    category_summary = [
+        {
+            "id": c.get("id"),
+            "slug": c.get("slug"),
+            "name": c.get("name"),
+            "type": str(c.get("type", "")),
+        }
+        for c in categories
+        if c.get("slug")
+    ]
+
+    chunks = [transactions[i : i + CHUNK_SIZE] for i in range(0, len(transactions), CHUNK_SIZE)]
+
+    def _run(chunk: list[dict[str, Any]]) -> list[BedrockClassificationResult] | None:
+        return _classify_chunk(client, target_model_id, category_summary, chunk)
+
+    if len(chunks) == 1:
+        chunk_results = [_run(chunks[0])]
+    else:
+        with ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_CHUNKS, len(chunks))) as pool:
+            chunk_results = list(pool.map(_run, chunks))
+
+    if all(r is None for r in chunk_results):
+        return []
+
+    results: list[BedrockClassificationResult] = []
+    for chunk, chunk_result in zip(chunks, chunk_results):
+        if chunk_result is None:
+            results.extend(_omitted("Bedrock chunk failed") for _ in chunk)
+            continue
+        missing = len(chunk) - len(chunk_result)
+        results.extend(chunk_result[: len(chunk)])
+        results.extend(_omitted("Bedrock omitted result for transaction") for _ in range(max(missing, 0)))
+    return results

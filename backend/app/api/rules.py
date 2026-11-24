@@ -1,9 +1,10 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import select
+from sqlalchemy.orm import Session, joinedload, selectinload
 from app.core.database import get_db
-from app.core.s3_sync import sync_db_if_configured, sync_now
+from app.core.s3_sync import sync_now
 from app.models.rule import CategorizationRule, RulePatternType
 from app.models.category import Category
 from app.models.transaction import Transaction, TransactionSplit
@@ -466,7 +467,10 @@ def auto_learn_rules_bulk(
     if not learned:
         return 0
 
-    applied = 0
+    # Same outcome as calling auto_learn_rule per entry in order, but with one
+    # category query and one rule query per chunk of patterns rather than two
+    # queries per entry.
+    entries: list[tuple[str, str, str]] = []
     for key, val in learned.items():
         raw_payee = key[0] if isinstance(key, tuple) else key
         if len(val) == 3:
@@ -474,14 +478,64 @@ def auto_learn_rules_bulk(
         else:
             category_id, normalized_payee = val
             notes = key[1] if isinstance(key, tuple) and len(key) > 1 else None
-        if auto_learn_rule(db, raw_payee, category_id, normalized_payee, notes=notes) is not None:
-            applied += 1
+        if not raw_payee or not category_id:
+            continue
+        extracted = extract_learnable_pattern(raw_payee, normalized_payee=normalized_payee, notes=notes)
+        if not extracted:
+            continue
+        pattern, norm = extracted
+        entries.append((category_id, pattern, norm))
+
+    if not entries:
+        return 0
+
+    category_ids = list({e[0] for e in entries})
+    valid_categories = {
+        row[0] for row in db.query(Category.id).filter(Category.id.in_(category_ids)).all()
+    }
+
+    patterns = list({e[1] for e in entries})
+    existing: dict[str, CategorizationRule] = {}
+    for i in range(0, len(patterns), 500):
+        for rule in (
+            db.query(CategorizationRule)
+            .filter(
+                CategorizationRule.pattern.in_(patterns[i : i + 500]),
+                CategorizationRule.is_active.is_(True),
+            )
+            .all()
+        ):
+            existing.setdefault(rule.pattern, rule)
+
+    applied = 0
+    for category_id, pattern, norm in entries:
+        if category_id not in valid_categories:
+            continue
+        rule = existing.get(pattern)
+        if rule is not None:
+            if rule.category_id != category_id:
+                rule.category_id = category_id
+                rule.normalized_payee_override = norm
+        else:
+            rule = CategorizationRule(
+                category_id=category_id,
+                priority=10,
+                pattern_type=RulePatternType.CONTAINS,
+                pattern=pattern,
+                normalized_payee_override=norm,
+                is_active=True,
+            )
+            db.add(rule)
+            existing[pattern] = rule
+        applied += 1
+
+    db.flush()
     return applied
 
 
 @router.get("", response_model=list[CategorizationRuleResponse])
 def list_rules(db: Session = Depends(get_db)):
-    seed_default_rules(db)
+    # Default rules are seeded at startup; a read must not write.
     return (
         db.query(CategorizationRule)
         .options(joinedload(CategorizationRule.category))
@@ -500,7 +554,6 @@ def create_rule(rule_in: CategorizationRuleCreate, db: Session = Depends(get_db)
     db.add(rule)
     db.commit()
     db.refresh(rule)
-    sync_db_if_configured()
     return rule
 
 
@@ -516,7 +569,6 @@ def update_rule(rule_id: str, rule_in: CategorizationRuleUpdate, db: Session = D
 
     db.commit()
     db.refresh(rule)
-    sync_db_if_configured()
     return rule
 
 
@@ -528,13 +580,11 @@ def delete_rule(rule_id: str, db: Session = Depends(get_db)):
 
     db.delete(rule)
     db.commit()
-    sync_db_if_configured()
     return None
 
 
 @router.post("/test", response_model=TestRuleMatchResponse)
 def test_rule_match(req: TestRuleMatchRequest, db: Session = Depends(get_db)):
-    seed_default_rules(db)
     match_result = evaluate_rules(db, req.raw_payee, req.amount, req.account_id)
     if not match_result.matched:
         return TestRuleMatchResponse(matched=False, suggested_payee=match_result.normalized_payee)
@@ -558,18 +608,22 @@ def apply_rules_batch(db: Session = Depends(get_db)):
     """
     from app.services.categorization.engine import ClassificationEngine
 
-    seed_default_rules(db)
-    all_txns = (
+    # Filter in SQL: only rows with no categorized split are loaded, instead of
+    # every transaction in the vault being materialized and filtered in Python.
+    has_category = (
+        select(TransactionSplit.id)
+        .where(
+            TransactionSplit.transaction_id == Transaction.id,
+            TransactionSplit.category_id.isnot(None),
+        )
+        .exists()
+    )
+    uncategorized_txns = (
         db.query(Transaction)
-        .options(joinedload(Transaction.splits), joinedload(Transaction.account))
+        .options(selectinload(Transaction.splits), joinedload(Transaction.account))
+        .filter(~has_category)
         .all()
     )
-
-    uncategorized_txns = [
-        txn
-        for txn in all_txns
-        if not txn.splits or all(s.category_id is None for s in txn.splits)
-    ]
 
     if not uncategorized_txns:
         return {"applied_count": 0}

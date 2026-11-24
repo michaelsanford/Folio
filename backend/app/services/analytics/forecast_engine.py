@@ -4,7 +4,7 @@ from app.core.money import from_cents
 from app.models.account import Account, AccountType
 from app.schemas.budget import CashFlowForecastPoint, CashFlowForecastResponse
 from app.services.loans.amortization import generate_amortization_schedule
-from app.services.analytics.engine import get_dashboard_analytics
+from app.services.analytics.engine import monthly_income_expense_cents
 
 
 LIQUID_ACCOUNT_TYPES = {
@@ -48,10 +48,12 @@ def project_cash_flow(
     starting_balance_cents = sum(a.current_balance_cents for a in liquid_accounts)
     current_running_balance = float(from_cents(starting_balance_cents))
 
+    # This month's income and spending, computed directly (one grouped query).
+    income_cents, expenses_cents = monthly_income_expense_cents(db)
+
     # 2. Estimate payroll if not provided
     if pay_amount is None or pay_amount <= 0:
-        dashboard = get_dashboard_analytics(db)
-        monthly_income = dashboard.monthly_cash_flow.total_income
+        monthly_income = float(from_cents(income_cents))
         if monthly_income > 0:
             if pay_cycle == "BI_WEEKLY":
                 pay_amount = round((monthly_income * 12.0) / 26.0, 2)
@@ -116,8 +118,7 @@ def project_cash_flow(
             continue
 
     # 4. Daily baseline non-debt expenses
-    dashboard = get_dashboard_analytics(db)
-    monthly_expenses = dashboard.monthly_cash_flow.total_expenses
+    monthly_expenses = float(from_cents(expenses_cents))
     daily_spend = round(monthly_expenses / 30.0, 2) if monthly_expenses > 0 else 0.0
 
     # 5. Project day-by-day
