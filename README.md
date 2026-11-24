@@ -401,6 +401,7 @@ Folio implements a defense-in-depth security model for hosting financial data:
 ## Data Handling
 
 - The vault is a single SQLite file that holds financial personal information: payees, amounts, dates, balances, account names and masked account numbers (`*XXXX`). Treat the database file, the S3 bucket and any backup copies accordingly.
+- Appearance settings (theme, light or dark mode, type style, number format and the collapsed sidebar) are stored per user in the vault, in the `user_preferences` table, so they follow you to any device or browser and are backed up with the vault. Each Cognito user has their own row, keyed by their Cognito user ID; the master passphrase owner has one. The browser also keeps a copy so the sign-in screen opens in your colours, and changes are saved about a second after you stop adjusting them.
 - On AWS, uploaded statements are parsed in memory and are not archived: `/tmp` is not synced to S3 and disappears with the instance. Only the parsed transactions are stored in the vault. Docker and local installs keep a copy of each uploaded statement in the uploads directory.
 - With Bedrock enabled, transactions that the local tiers cannot classify are sent to the configured Bedrock model: raw payee text, amount, currency, account type and date, plus your category names. A cross-region inference profile (for example `us.amazon.nova-micro-v1:0`) may process that data outside `ca-central-1`. If that matters to you, leave Bedrock off (the default) or choose a model that runs in your region.
 
