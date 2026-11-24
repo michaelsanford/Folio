@@ -6,8 +6,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from starlette.datastructures import MutableHeaders
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -37,6 +36,7 @@ from app.core.s3_sync import (  # noqa: E402
     sync_now,
 )
 from app.core.security_headers import build_csp, security_headers  # noqa: E402
+from app.core.spa import mount_spa  # noqa: E402
 from app.core.sync_scheduler import sync_scheduler  # noqa: E402
 import app.models  # noqa: F401,E402 - registers SQLAlchemy models with Base metadata
 
@@ -373,30 +373,4 @@ if not STATIC_DIR.exists():
 if not STATIC_DIR.exists():
     STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
-if STATIC_DIR.exists() and (STATIC_DIR / "index.html").exists():
-    assets_dir = STATIC_DIR / "assets"
-    if assets_dir.exists():
-        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
-
-    # Pre-indexed dictionary of safe root PWA files discovered on disk at startup
-    ROOT_PWA_FILES: dict[str, Path] = {}
-    for name in ["favicon.ico", "manifest.webmanifest", "registerSW.js", "sw.js"]:
-        fpath = STATIC_DIR / name
-        if fpath.is_file():
-            ROOT_PWA_FILES[name] = fpath
-    for fpath in STATIC_DIR.glob("workbox-*.js"):
-        if fpath.is_file():
-            ROOT_PWA_FILES[fpath.name] = fpath
-
-    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
-    async def serve_spa(full_path: str):
-        # Unknown API paths are API errors, not app routes: answer with a JSON 404
-        # instead of the SPA shell, so clients and probes see the real status.
-        if full_path == "api" or full_path.startswith("api/"):
-            raise HTTPException(status_code=404, detail="Not Found")
-        # Look up requested file in safe pre-indexed Path dictionary
-        target = ROOT_PWA_FILES.get(full_path.strip("/"))
-        if target is not None:
-            return FileResponse(target)
-        # All other application paths render the Single Page Application shell
-        return FileResponse(STATIC_DIR / "index.html")
+mount_spa(app, STATIC_DIR)
