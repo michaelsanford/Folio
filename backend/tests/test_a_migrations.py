@@ -157,3 +157,70 @@ print(json.dumps({"status": status, "upgrades": up.call_count,
     assert first["categories"] > 0 and first["rules"] > 0
     assert second["categories"] == first["categories"] and second["rules"] == first["rules"]
     assert first["sync_logger_disabled"] is False
+
+
+def _write_revision(directory, revision: str, down_revision: str, body: str) -> None:
+    (directory / f"{revision}_fake.py").write_text(
+        f'''"""Fake revision for the atomicity test."""
+import sqlalchemy as sa
+from alembic import op
+
+revision = "{revision}"
+down_revision = "{down_revision}"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+{body}
+
+
+def downgrade() -> None:
+    pass
+''',
+        encoding="utf-8",
+    )
+
+
+def test_a_failed_upgrade_rolls_back_every_revision_in_the_run(temp_db, tmp_path):
+    """The real env.py runs the whole upgrade as one transaction.
+
+    Two fake revisions on top of the real head: the first creates a table and
+    succeeds, the second creates a table and then fails. Neither table may
+    survive, and alembic_version must still name the real head.
+    """
+    import os
+
+    head, _ = _revisions()
+    cfg = migrations._alembic_config()
+    command.upgrade(cfg, "head")
+    assert migrations.current_revision(temp_db) == head
+
+    extra = tmp_path / "extra_versions"
+    extra.mkdir()
+    _write_revision(
+        extra, "zz_fake_ok", head,
+        '    op.create_table("atomicity_ok", sa.Column("id", sa.Integer, primary_key=True))',
+    )
+    _write_revision(
+        extra, "zz_fake_boom", "zz_fake_ok",
+        '    op.create_table("atomicity_partial", sa.Column("id", sa.Integer, primary_key=True))\n'
+        '    raise RuntimeError("migration failed halfway")',
+    )
+    real_versions = migrations.ALEMBIC_INI.parent / "migrations" / "versions"
+    # The real script directory (and so the real env.py), plus the fake revisions.
+    cfg.set_main_option("version_locations", os.pathsep.join([str(real_versions), str(extra)]))
+    assert ScriptDirectory.from_config(cfg).get_current_head() == "zz_fake_boom"
+
+    with pytest.raises(RuntimeError, match="migration failed halfway"):
+        command.upgrade(cfg, "head")
+
+    assert migrations.current_revision(temp_db) == head
+    conn = sqlite3.connect(str(temp_db))
+    try:
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    finally:
+        conn.close()
+    assert "atomicity_ok" not in tables
+    assert "atomicity_partial" not in tables
+    assert "accounts" in tables, "the schema from earlier revisions is untouched"

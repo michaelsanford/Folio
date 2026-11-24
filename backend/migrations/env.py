@@ -99,6 +99,11 @@ def run_migrations_online() -> None:
             target_metadata=target_metadata,
             # SQLite cannot ALTER COLUMN; batch mode rebuilds the table instead.
             render_as_batch=True,
+            # The SQLite dialect reports non-transactional DDL, so Alembic would
+            # commit after each revision. With the BEGIN recipe above the DDL is
+            # transactional: run the whole upgrade, alembic_version included, as
+            # one transaction so a failed revision rolls back completely.
+            transactional_ddl=True,
         )
         with context.begin_transaction():
             context.run_migrations()
