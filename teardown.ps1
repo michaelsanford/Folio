@@ -179,9 +179,15 @@ function Remove-CognitoUserPool {
     # Turns off deletion protection, then deletes the pool. UpdateUserPool resets every setting
     # it is not given, so the pool's current settings are sent back with the change. If the
     # update fails nothing has changed and the pool is preserved.
+    # Returns $false when the pool no longer exists (for example a stack whose template did not
+    # retain the pool deleted it together with the stack), $true when this call deleted it.
     param ([string]$PoolId)
 
-    $desc = Invoke-Aws -Arguments @("cognito-idp", "describe-user-pool", "--user-pool-id", $PoolId, "--output", "json")
+    $desc = Invoke-Aws -Arguments @("cognito-idp", "describe-user-pool", "--user-pool-id", $PoolId, "--output", "json") -AllowFailure
+    if ($desc.ExitCode -ne 0) {
+        if ("$($desc.Output)" -match "ResourceNotFoundException") { return $false }
+        throw "Could not read Cognito user pool '$PoolId' (preserved):`n$($desc.Output)"
+    }
     $pool = ($desc.Output | ConvertFrom-Json).UserPool
 
     if ($pool.DeletionProtection -eq "ACTIVE") {
@@ -217,6 +223,7 @@ function Remove-CognitoUserPool {
     if ($del.ExitCode -ne 0) {
         throw "Deletion protection on '$PoolId' was turned off but delete-user-pool failed. Review the pool's settings before reusing it:`n$($del.Output)"
     }
+    return $true
 }
 
 function Get-BucketVersionCounts {
@@ -818,8 +825,12 @@ $skippedPools = @()
 foreach ($p in $userPoolsToDelete) {
     Write-Host "Disabling deletion protection and deleting Cognito user pool '$($p.Id)'..." -ForegroundColor Gray
     try {
-        Remove-CognitoUserPool -PoolId $p.Id
-        $deletedItems += "Cognito user pool: $($p.Id) ($($p.Name))"
+        if (Remove-CognitoUserPool -PoolId $p.Id) {
+            $deletedItems += "Cognito user pool: $($p.Id) ($($p.Name))"
+        } else {
+            Write-Host "  Already gone: the stack deleted it (its template did not retain the pool)." -ForegroundColor DarkGray
+            $deletedItems += "Cognito user pool: $($p.Id) ($($p.Name)), deleted with the stack"
+        }
     } catch {
         Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
         $failedItems += "Cognito user pool $($p.Id) preserved"
