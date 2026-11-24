@@ -28,6 +28,8 @@ import type {
   ClassificationStatus,
   AutoClassifyResult,
   BootstrapResponse,
+  PreferencesResponse,
+  UiPreferences,
 } from "../types";
 import { emitVaultConflict, notify } from "./notifications";
 
@@ -224,6 +226,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   /** Accounts, categories, dashboard analytics, household members and server limits in one request. */
   getBootstrap: () => request<BootstrapResponse>("/bootstrap"),
+
+  /** Appearance settings stored with the signed-in user's profile. */
+  preferences: {
+    get: () => request<PreferencesResponse>("/me/preferences"),
+    put: (preferences: UiPreferences) =>
+      request<PreferencesResponse>("/me/preferences", {
+        method: "PUT",
+        body: JSON.stringify(preferences),
+      }),
+  },
 
   // Authentication
   auth: {

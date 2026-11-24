@@ -593,3 +593,28 @@ export interface CashFlowForecastResponse {
   daily_curve: ForecastDataPoint[];
   scheduled_events: ForecastEvent[];
 }
+
+/** Number format as stored server side (snake_case mirror of NumberFormatPrefs). */
+export interface NumberFormatPreferences {
+  preset: "en-CA" | "fr-CA" | "accounting" | "custom";
+  negative_style: "minus" | "parentheses";
+  /** The space option is a no-break space (U+00A0). */
+  group_separator: "," | "." | " " | "'" | "";
+  decimal_separator: "." | ",";
+  symbol_position: "before" | "after";
+  symbol_space: boolean;
+}
+
+/** Appearance settings kept with the user's profile (GET/PUT /me/preferences). */
+export interface UiPreferences {
+  theme?: string;
+  color_mode?: "light" | "dark" | "system";
+  type_style?: string;
+  number_format?: NumberFormatPreferences;
+  sidebar_collapsed?: boolean;
+}
+
+export interface PreferencesResponse {
+  preferences: UiPreferences;
+  updated_at: string | null;
+}

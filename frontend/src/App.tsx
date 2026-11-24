@@ -10,6 +10,7 @@ import { api, setOnUnauthorized } from "./services/api";
 import { onVaultConflict } from "./services/notifications";
 import { ArrowRight } from "lucide-react";
 import { usePwaUpdate } from "./hooks/usePwaUpdate";
+import { usePreferencesSync } from "./hooks/usePreferencesSync";
 import { takeInitialView } from "./utils/initialView";
 
 // Each view is its own chunk, so the first paint only downloads the shell and
@@ -88,6 +89,8 @@ function AppContent() {
   });
 
   const { updateReady, applyUpdate } = usePwaUpdate();
+  // Appearance settings follow the signed-in user (stored in their profile).
+  usePreferencesSync(!authStatus.is_loading && authStatus.authenticated);
   const isLocked = !authStatus.is_loading && authStatus.auth_required && !authStatus.authenticated;
   // On the lock screen there is nothing to lose, so take a waiting update at
   // once: nobody signs in to an outdated build.

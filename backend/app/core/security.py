@@ -251,3 +251,34 @@ def require_auth(request: Request) -> dict:
 
     return payload
 
+
+# user_preferences.user_key is String(128); "cognito:" + a Cognito uuid is 44.
+MAX_USER_KEY_LENGTH = 128
+
+
+def user_key_from_claims(claims: dict) -> str:
+    """Stable per-user key for verified token claims (from ``require_auth``).
+
+    Cognito tokens (they carry ``token_use`` / ``client_id``) map to
+    ``cognito:<sub>``; the local master-passphrase token, whose sub is always
+    ``owner``, maps to ``owner``. The prefix keeps the two namespaces apart.
+    """
+    sub = claims.get("sub")
+    if not isinstance(sub, str) or not sub.strip():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session token has no subject",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if "token_use" in claims or "client_id" in claims:
+        key = f"cognito:{sub}"
+    else:
+        # Local tokens are only ever issued with sub "owner" (api/auth.login).
+        key = sub
+    if len(key) > MAX_USER_KEY_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session token subject is too long",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return key

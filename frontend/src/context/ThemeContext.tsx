@@ -161,6 +161,9 @@ export interface ThemeContextType {
   typeStyle: TypeStyleId;
   setTypeStyle: (style: TypeStyleId) => void;
   activeTypeStyleDef: TypeStyleDefinition;
+  /** Desktop sidebar collapsed to icons; part of the synced appearance settings. */
+  sidebarCollapsed: boolean;
+  setSidebarCollapsed: (collapsed: boolean) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -168,6 +171,24 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 const THEME_STORAGE_KEY = "folio-theme";
 const MODE_STORAGE_KEY = "folio-color-mode";
 const TYPE_STORAGE_KEY = "folio-type-style";
+const SIDEBAR_STORAGE_KEY = "folio-sidebar-collapsed";
+
+/** localStorage can be missing or throw (private windows, blocked storage). */
+const readStored = (key: string): string | null => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const writeStored = (key: string, value: string): void => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* storage unavailable: the setting lasts for this session only */
+  }
+};
 
 interface ThemeProviderProps {
   children: React.ReactNode;
@@ -182,7 +203,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
 }) => {
   const [theme, setThemeState] = useState<ThemeId>(() => {
     if (defaultTheme) return defaultTheme;
-    const stored = localStorage.getItem(THEME_STORAGE_KEY) as ThemeId;
+    const stored = readStored(THEME_STORAGE_KEY) as ThemeId;
     if (stored && THEMES.some((t) => t.id === stored)) {
       return stored;
     }
@@ -191,7 +212,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
 
   const [mode, setModeState] = useState<ColorMode>(() => {
     if (defaultMode) return defaultMode;
-    const stored = localStorage.getItem(MODE_STORAGE_KEY) as ColorMode;
+    const stored = readStored(MODE_STORAGE_KEY) as ColorMode;
     if (stored && (stored === "light" || stored === "dark" || stored === "system")) {
       return stored;
     }
@@ -199,14 +220,14 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
   });
 
   const [typeStyle, setTypeStyleState] = useState<TypeStyleId>(() => {
-    try {
-      const stored = localStorage.getItem(TYPE_STORAGE_KEY) as TypeStyleId;
-      if (stored && TYPE_STYLES.some((t) => t.id === stored)) return stored;
-    } catch {
-      /* storage unavailable */
-    }
+    const stored = readStored(TYPE_STORAGE_KEY) as TypeStyleId;
+    if (stored && TYPE_STYLES.some((t) => t.id === stored)) return stored;
     return "broadsheet";
   });
+
+  const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(
+    () => readStored(SIDEBAR_STORAGE_KEY) === "true"
+  );
 
   const [systemIsDark, setSystemIsDark] = useState<boolean>(() => {
     if (typeof window !== "undefined" && window.matchMedia) {
@@ -253,21 +274,22 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
 
   const setTypeStyle = (style: TypeStyleId) => {
     setTypeStyleState(style);
-    try {
-      localStorage.setItem(TYPE_STORAGE_KEY, style);
-    } catch {
-      /* storage unavailable: lasts for this session only */
-    }
+    writeStored(TYPE_STORAGE_KEY, style);
   };
 
   const setTheme = (newTheme: ThemeId) => {
     setThemeState(newTheme);
-    localStorage.setItem(THEME_STORAGE_KEY, newTheme);
+    writeStored(THEME_STORAGE_KEY, newTheme);
   };
 
   const setMode = (newMode: ColorMode) => {
     setModeState(newMode);
-    localStorage.setItem(MODE_STORAGE_KEY, newMode);
+    writeStored(MODE_STORAGE_KEY, newMode);
+  };
+
+  const setSidebarCollapsed = (collapsed: boolean) => {
+    setSidebarCollapsedState(collapsed);
+    writeStored(SIDEBAR_STORAGE_KEY, String(collapsed));
   };
 
   const toggleMode = () => {
@@ -294,6 +316,8 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
         typeStyle,
         setTypeStyle,
         activeTypeStyleDef,
+        sidebarCollapsed,
+        setSidebarCollapsed,
       }}
     >
       {children}

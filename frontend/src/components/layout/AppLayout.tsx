@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   LayoutDashboard,
   ReceiptText,
@@ -53,8 +53,6 @@ interface AppLayoutProps {
   children: React.ReactNode;
 }
 
-const SIDEBAR_COLLAPSED_STORAGE_KEY = "folio-sidebar-collapsed";
-
 const iconButton =
   "h-9 w-9 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer";
 
@@ -99,22 +97,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
-    } catch {
-      return false;
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(sidebarCollapsed));
-    } catch {
-      /* storage unavailable */
-    }
-  }, [sidebarCollapsed]);
-  const { resolvedMode, toggleMode, activeThemeDef } = useTheme();
+  const { resolvedMode, toggleMode, activeThemeDef, sidebarCollapsed, setSidebarCollapsed } = useTheme();
   // Views call formatMoney directly (chart axes, tooltips); remount them when number formats change.
   const formatPrefs = useFormatPrefs();
   const formatKey = JSON.stringify(formatPrefs);

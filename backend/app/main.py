@@ -54,6 +54,7 @@ from app.api.investments import router as investments_router  # noqa: E402
 from app.api.household import router as household_router  # noqa: E402
 from app.api.goals import router as goals_router  # noqa: E402
 from app.api.classification import router as classification_router  # noqa: E402
+from app.api.preferences import router as preferences_router  # noqa: E402
 
 logger = logging.getLogger("folio.app")
 
@@ -347,6 +348,7 @@ app.include_router(household_router, prefix=settings.API_V1_STR, dependencies=[D
 app.include_router(goals_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
 app.include_router(classification_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
 app.include_router(bootstrap_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
+app.include_router(preferences_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
 
 
 @app.api_route("/api/health", methods=["GET", "HEAD"], tags=["Health"])
