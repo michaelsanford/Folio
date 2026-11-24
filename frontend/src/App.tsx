@@ -9,6 +9,8 @@ import type { Account, Category, DashboardAnalyticsResponse, HouseholdMember, Se
 import { api, setOnUnauthorized } from "./services/api";
 import { onVaultConflict } from "./services/notifications";
 import { ArrowRight } from "lucide-react";
+import { usePwaUpdate } from "./hooks/usePwaUpdate";
+import { takeInitialView } from "./utils/initialView";
 
 // Each view is its own chunk, so the first paint only downloads the shell and
 // the view the user is looking at.
@@ -61,7 +63,7 @@ const ViewFallback: React.FC = () => (
 );
 
 function AppContent() {
-  const [activeTab, setActiveTab] = useState<NavTab>("dashboard");
+  const [activeTab, setActiveTab] = useState<NavTab>(takeInitialView);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
@@ -84,6 +86,14 @@ function AppContent() {
     auth_mode: "master_password",
     is_loading: true,
   });
+
+  const { updateReady, applyUpdate } = usePwaUpdate();
+  const isLocked = !authStatus.is_loading && authStatus.auth_required && !authStatus.authenticated;
+  // On the lock screen there is nothing to lose, so take a waiting update at
+  // once: nobody signs in to an outdated build.
+  useEffect(() => {
+    if (updateReady && isLocked) applyUpdate();
+  }, [updateReady, isLocked, applyUpdate]);
 
   const checkAuth = async () => {
     try {
@@ -234,6 +244,8 @@ function AppContent() {
       householdMembers={householdMembers}
       onManageHousehold={() => setIsHouseholdModalOpen(true)}
       onSignOut={authStatus.auth_required ? handleSignOut : undefined}
+      updateReady={updateReady}
+      onApplyUpdate={applyUpdate}
     >
       {/* Empty State Banner if no accounts configured */}
       {accounts.length === 0 && !isLoading && activeTab !== "ingestion" && (

@@ -239,6 +239,12 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
       root.classList.add("light");
       root.classList.remove("dark");
     }
+
+    // The browser and installed-app title bar take their colour from
+    // theme-color; match it to this theme's sidebar.
+    const sidebar = getComputedStyle(root).getPropertyValue("--bg-sidebar").trim();
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (meta && sidebar) meta.content = sidebar;
   }, [theme, resolvedMode]);
 
   useEffect(() => {

@@ -3,34 +3,53 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { fileURLToPath } from 'node:url'
 
 export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      // 'prompt': a new build waits until the user reloads from the
+      // "Update available" item in the navigation (usePwaUpdate). The hook
+      // registers the worker itself, so no registerSW.js script is injected.
+      registerType: 'prompt',
+      injectRegister: false,
+      // Icons are rendered from the SVG sources by `npm run generate-icons`
+      // and committed; see scripts/generate-icons.mjs.
+      includeAssets: [
+        'favicon.ico',
+        'folio-icon.svg',
+        'apple-touch-icon-180x180.png',
+      ],
       manifest: {
+        id: '/',
         name: 'Folio Personal Finance',
         short_name: 'Folio',
-        description: 'Self-hosted personal finance tracking and expense budgeting',
-        theme_color: '#0f172a',
-        background_color: '#0f172a',
+        description: 'Ledger, budget and net worth for your household',
+        start_url: '/',
+        scope: '/',
         display: 'standalone',
-        orientation: 'portrait-primary',
-        // The previous entries pointed at PNGs that were never added to the
-        // repository, so an install prompt had no icon to show. favicon.svg is
-        // the one icon that actually exists; 'any maskable' at size 'any' is the
-        // correct declaration for a scalable source.
+        theme_color: '#141110',
+        background_color: '#1a1715',
+        categories: ['finance'],
         icons: [
-          {
-            src: '/favicon.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
-            purpose: 'any maskable'
-          }
-        ]
-      }
+          { src: '/pwa-64x64.png', sizes: '64x64', type: 'image/png' },
+          { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/maskable-icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+        // Long-press / right-click shortcuts on the installed app. App.tsx
+        // reads ?view= once to pick the starting tab.
+        shortcuts: [
+          { name: 'Ledger', url: '/?view=ledger', icons: [{ src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' }] },
+          { name: 'Budget', url: '/?view=budgeting', icons: [{ src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' }] },
+          { name: 'Import', url: '/?view=ingestion', icons: [{ src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' }] },
+        ],
+      },
+      workbox: {
+        // API calls always go to the network; never answer one with the app shell.
+        navigateFallbackDenylist: [/^\/api(\/|$)/],
+      },
     })
   ],
   build: {
@@ -43,6 +62,9 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     globals: true,
+    alias: {
+      'virtual:pwa-register/react': fileURLToPath(new URL('./src/test/pwaRegisterStub.ts', import.meta.url)),
+    },
   },
   server: {
     port: 5173,
