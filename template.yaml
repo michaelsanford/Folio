@@ -141,18 +141,21 @@ Resources:
         Status: Enabled
       LifecycleConfiguration:
         Rules:
-          # Point-in-time recovery for the vault: previous versions of
-          # database/folio.db are kept for 30 days.
+          # Short-term backstop for the vault: every write uploads a new
+          # version, and previous versions of database/folio.db are kept for
+          # 5 days. Long enough to notice and roll back a bad write, short
+          # enough that version storage stays small.
           - Id: ExpireOldSnapshots
             Status: Enabled
             Prefix: database/
             NoncurrentVersionExpiration:
-              NoncurrentDays: 30
-          # Pre-migration snapshots written by the app.
+              NoncurrentDays: 5
+          # Pre-migration snapshots written by the app, only when a deploy
+          # changes the schema; a week covers checking a deploy.
           - Id: ExpirePreMigrationBackups
             Status: Enabled
             Prefix: backups/
-            ExpirationInDays: 30
+            ExpirationInDays: 7
             NoncurrentVersionExpiration:
               NoncurrentDays: 1
           - Id: CleanUpIncompleteUploadsAndDeleteMarkers
@@ -574,7 +577,9 @@ Resources:
           # Lambda's filesystem is read-only outside /tmp; statement uploads must land there.
           FOLIO_UPLOAD_DIR: "/tmp/uploads"
           # Function URLs cap request payloads at 6 MB (including multipart overhead).
-          FOLIO_MAX_UPLOAD_MB: "5"
+          # Function URL requests are capped at 6 MB and multipart bodies are
+          # base64-encoded in the event (+~33%), so 4 MB is the safe ceiling.
+          FOLIO_MAX_UPLOAD_MB: "4"
           S3_BUCKET_NAME: !If [CreateVaultBucket, !Ref FolioStorageVault, !Ref ExistingVaultBucketName]
           FOLIO_SESSION_SECRET_ARN: !Ref FolioSessionSecret
           FOLIO_ORIGIN_SECRET_ARN: !Ref FolioOriginSecret
