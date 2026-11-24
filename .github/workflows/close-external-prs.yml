@@ -4,6 +4,9 @@ on:
   pull_request_target:
     types: [opened, reopened]
 
+permissions:
+  contents: read
+
 jobs:
   close-pr:
     name: Close External PR
@@ -14,7 +17,7 @@ jobs:
       issues: write
     steps:
       - name: Close and comment on external PR
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             await github.rest.issues.createComment({

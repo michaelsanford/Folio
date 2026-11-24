@@ -30,3 +30,11 @@ updates:
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 3
+
+  # Dockerfile base images (node, python, uv, Lambda Web Adapter)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3

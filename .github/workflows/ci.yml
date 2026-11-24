@@ -7,6 +7,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+# Least privilege for every job; jobs that need more declare it themselves.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -17,7 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
@@ -39,10 +45,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Set up Node.js 24
-        uses: actions/setup-node@v7
+      - name: Set up Node.js 26
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26
           cache: "npm"
@@ -59,3 +67,58 @@ jobs:
       - name: Build & Typecheck
         working-directory: frontend
         run: npm run build
+
+  infra:
+    name: Infrastructure Lint (SAM, cfn-lint, Checkov)
+    runs-on: ubuntu-latest
+    env:
+      # sam validate needs a region but no credentials when --lint is used.
+      AWS_DEFAULT_REGION: ca-central-1
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install Tooling
+        run: python -m pip install --upgrade aws-sam-cli cfn-lint checkov
+
+      - name: SAM Validate (with cfn-lint)
+        run: sam validate --lint -t template.yaml
+
+      - name: cfn-lint
+        run: cfn-lint template.yaml
+
+      # Accepted findings are skipped per resource in template.yaml
+      # (Metadata.checkov.skip, each with a justification comment).
+      - name: Checkov
+        run: checkov -f template.yaml --quiet --compact
+
+  docker-build:
+    name: Docker Image Build (linux/arm64)
+    # Native arm64 runner: matches the Lambda architecture without QEMU emulation.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build Image (no push)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/arm64
+          push: false
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
