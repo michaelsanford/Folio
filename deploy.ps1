@@ -30,7 +30,17 @@
     building or deploying. The next deploy publishes a new version and moves the alias forward
     again. A version carries its own environment variables and settings as well as its image.
 
-    Supports -WhatIf and -Confirm.
+    -Preview builds the image and creates a CloudFormation change set with the same settings a
+    deploy would use, prints every resource it would add, modify or remove (flagging
+    replacements and removals of stateful resources such as the Cognito user pool, the vault
+    bucket, the CloudFront distribution and the secrets), then deletes the change set without
+    executing it. The stack and samconfig.toml are left unchanged. It is not side-effect free:
+    the image is pushed to ECR and build artifacts are uploaded to the SAM managed bucket. On a
+    first deploy the empty placeholder stack CloudFormation creates for the change set is
+    deleted again.
+
+    Supports -WhatIf and -Confirm. -WhatIf only prints the effective parameters and stops before
+    building; use -Preview to see the CloudFormation changes.
 
 .PARAMETER Region
     AWS region. Defaults to the stored value for the environment, else ca-central-1.
@@ -83,6 +93,10 @@
 .PARAMETER RollbackToVersion
     Point the "live" alias at this published Lambda version number and exit.
 
+.PARAMETER Preview
+    Build, create a change set, show what the deploy would change, delete the change set, and
+    exit without deploying. Cannot be combined with -RollbackToVersion or -OwnerEmail.
+
 .EXAMPLE
     .\deploy.ps1 -Region ca-central-1 -StackName folio-prod -OwnerEmail you@example.com -AlarmEmail you@example.com
 
@@ -97,6 +111,9 @@
 
 .EXAMPLE
     .\deploy.ps1 -Environment prod -RollbackToVersion 7
+
+.EXAMPLE
+    .\deploy.ps1 -Environment prod -Preview
 
 .EXAMPLE
     .\deploy.ps1 -Environment prod -WhatIf
@@ -119,10 +136,112 @@ param (
     [ValidateRange(1, 100000)]
     [int]$MonthlyBudgetUsd = 5,
     [ValidateRange(1, [int]::MaxValue)]
-    [int]$RollbackToVersion
+    [int]$RollbackToVersion,
+    [switch]$Preview
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($Preview -and $PSBoundParameters.ContainsKey("RollbackToVersion")) {
+    throw "-Preview cannot be combined with -RollbackToVersion."
+}
+if ($Preview -and $OwnerEmail) {
+    throw "-Preview does not invite users; run without -OwnerEmail."
+}
+
+# Resource types whose replacement or removal loses state or changes the URL users visit.
+$StatefulResourceTypes = @(
+    "AWS::Cognito::UserPool",
+    "AWS::Cognito::UserPoolClient",
+    "AWS::S3::Bucket",
+    "AWS::CloudFront::Distribution",
+    "AWS::SecretsManager::Secret",
+    "AWS::Logs::LogGroup",
+    "AWS::Lambda::Url"
+)
+
+function Show-ChangeSetPreview {
+    <#
+    .SYNOPSIS
+        Print the latest SAM change set for a stack, flag risky changes, then delete it.
+    #>
+    param (
+        [string]$Name,
+        [string]$AwsRegion,
+        [bool]$StackExistedBefore
+    )
+
+    $listJson = aws cloudformation list-change-sets --stack-name "$Name" --region "$AwsRegion" --output json 2>$null
+    $summaries = if ($LASTEXITCODE -eq 0 -and $listJson) { @(($listJson | ConvertFrom-Json).Summaries) } else { @() }
+    $changeSet = $summaries |
+        Where-Object { $_.ChangeSetName -like "samcli-deploy*" } |
+        Sort-Object CreationTime -Descending |
+        Select-Object -First 1
+
+    try {
+        if (-not $changeSet -or $changeSet.Status -ne "CREATE_COMPLETE") {
+            $reason = if ($changeSet) { $changeSet.StatusReason } else { "no change set was created" }
+            Write-Host "`nNo changes to deploy ($reason)." -ForegroundColor Green
+            return
+        }
+
+        $changes = @()
+        $token = $null
+        do {
+            $pageArgs = @("cloudformation", "describe-change-set", "--stack-name", $Name,
+                "--change-set-name", $changeSet.ChangeSetName, "--region", $AwsRegion, "--output", "json")
+            if ($token) { $pageArgs += @("--next-token", $token) }
+            $page = (& aws @pageArgs) | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw "Could not describe change set '$($changeSet.ChangeSetName)'." }
+            $changes += @($page.Changes)
+            $token = $page.NextToken
+        } while ($token)
+
+        Write-Host "`nChange set preview for stack '$Name' ($($changes.Count) resource changes):" -ForegroundColor Cyan
+        $rows = foreach ($c in $changes) {
+            $rc = $c.ResourceChange
+            [pscustomobject]@{
+                Action      = $rc.Action
+                Resource    = $rc.LogicalResourceId
+                Type        = $rc.ResourceType
+                Replacement = if ($rc.Action -eq "Modify") { $rc.Replacement } else { "" }
+            }
+        }
+        $rows | Sort-Object Action, Type, Resource | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
+
+        $risky = @($rows | Where-Object {
+            $_.Type -in $StatefulResourceTypes -and
+            ($_.Action -eq "Remove" -or $_.Replacement -in @("True", "Conditional"))
+        })
+        if ($risky.Count -gt 0) {
+            Write-Host "Review before deploying: these changes replace or remove stateful resources." -ForegroundColor Red
+            foreach ($r in $risky) {
+                $what = if ($r.Action -eq "Remove") { "removed" } else { "replaced ($($r.Replacement))" }
+                Write-Host ("  {0} ({1}) would be {2}" -f $r.Resource, $r.Type, $what) -ForegroundColor Red
+            }
+            Write-Host "  Retained resources (vault bucket, user pool) are orphaned rather than deleted when removed." -ForegroundColor DarkGray
+        } else {
+            Write-Host "No stateful resource (user pool, vault bucket, distribution, secrets) is replaced or removed." -ForegroundColor Green
+        }
+    } finally {
+        if ($changeSet) {
+            aws cloudformation delete-change-set --stack-name "$Name" --change-set-name $changeSet.ChangeSetName --region "$AwsRegion" | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Could not delete change set '$($changeSet.ChangeSetName)'; delete it in the CloudFormation console."
+            }
+        }
+        if (-not $StackExistedBefore) {
+            # A change set on a new stack leaves an empty REVIEW_IN_PROGRESS stack behind.
+            aws cloudformation delete-stack --stack-name "$Name" --region "$AwsRegion" | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Could not delete the placeholder stack '$Name' (REVIEW_IN_PROGRESS); delete it in the CloudFormation console."
+            } else {
+                Write-Host "Removed the empty placeholder stack '$Name' created for the preview." -ForegroundColor DarkGray
+            }
+        }
+        Write-Host "Preview only: nothing was deployed and samconfig.toml is unchanged." -ForegroundColor Cyan
+    }
+}
 
 $SamConfigPath = Join-Path $PSScriptRoot "samconfig.toml"
 # Template parameters removed in favour of Secrets Manager; dropped from stored settings.
@@ -379,7 +498,8 @@ if ($MasterPassword) {
     Write-Host ("  {0,-24} {1}" -f "MasterPasswordHash", "(new hash from -MasterPassword)") -ForegroundColor Gray
 }
 
-if (-not $PSCmdlet.ShouldProcess("CloudFormation stack '$StackName' in $Region", "Build and deploy Folio")) {
+$Action = if ($Preview) { "Build and preview the change set (no deploy)" } else { "Build and deploy Folio" }
+if (-not $PSCmdlet.ShouldProcess("CloudFormation stack '$StackName' in $Region", $Action)) {
     return
 }
 
@@ -443,7 +563,8 @@ try {
     }
 
     # 3. SAM Deploy (settings come from samconfig.toml so the hash never hits the process list)
-    Write-Host "`n[3/5] Deploying SAM Stack ($StackName)..." -ForegroundColor Yellow
+    $Step3 = if ($Preview) { "Creating change set for preview" } else { "Deploying SAM Stack" }
+    Write-Host "`n[3/5] $Step3 ($StackName)..." -ForegroundColor Yellow
     $OverrideString = ($Overrides.Keys | ForEach-Object { "$_=`"$($Overrides[$_])`"" }) -join " "
     $TagString = "app=`"folio`" env=`"$Environment`""
     Write-SamConfigSection -Path $SamConfigPath -ConfigEnv $Environment -BodyLines @(
@@ -457,6 +578,23 @@ try {
         "parameter_overrides = $(ConvertTo-TomlString $OverrideString)",
         "tags = $(ConvertTo-TomlString $TagString)"
     )
+
+    if ($Preview) {
+        # Create the change set without executing it; the finally block below restores
+        # samconfig.toml because $DeploySucceeded stays false.
+        aws cloudformation describe-stacks --stack-name "$StackName" --region "$Region" --output json 2>$null | Out-Null
+        $StackExisted = ($LASTEXITCODE -eq 0)
+        sam deploy `
+            --config-file "$SamConfigPath" `
+            --config-env "$Environment" `
+            --tags "app=folio" "env=$Environment" `
+            --no-execute-changeset
+        if ($LASTEXITCODE -ne 0) {
+            throw "SAM change set creation failed with exit code $LASTEXITCODE."
+        }
+        Show-ChangeSetPreview -Name $StackName -AwsRegion $Region -StackExistedBefore $StackExisted
+        return
+    }
 
     sam deploy `
         --config-file "$SamConfigPath" `
