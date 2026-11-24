@@ -728,6 +728,49 @@ Resources:
         QueryStringsConfig:
           QueryStringBehavior: all
 
+  # Security headers backstop. backend/app/core/security_headers.py is the
+  # source of truth and sets these on every app response; CloudFront adds HSTS
+  # everywhere (Override) and fills the others only where the app did not answer
+  # (edge errors, cached responses missing them). The CSP stays app-only because
+  # it depends on the Cognito region. Keep the values in sync with that module.
+  FolioSecurityHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub '${AWS::StackName}-security-headers'
+        Comment: Folio security headers (HSTS enforced; app values take precedence for the rest)
+        SecurityHeadersConfig:
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 63072000
+            IncludeSubdomains: true
+            Preload: false
+            Override: true
+          ContentTypeOptions:
+            Override: false
+          FrameOptions:
+            FrameOption: DENY
+            Override: false
+          ReferrerPolicy:
+            ReferrerPolicy: strict-origin-when-cross-origin
+            Override: false
+          XSSProtection:
+            Protection: false
+            Override: false
+        CustomHeadersConfig:
+          Items:
+            - Header: Permissions-Policy
+              Value: 'accelerometer=(), autoplay=(), bluetooth=(), browsing-topics=(), camera=(), display-capture=(), encrypted-media=(), fullscreen=(), geolocation=(), gyroscope=(), hid=(), idle-detection=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), usb=(), xr-spatial-tracking=(), clipboard-write=(self)'
+              Override: false
+            - Header: Cross-Origin-Opener-Policy
+              Value: same-origin
+              Override: false
+            - Header: Cross-Origin-Resource-Policy
+              Value: same-origin
+              Override: false
+            - Header: X-Permitted-Cross-Domain-Policies
+              Value: none
+              Override: false
+
   FolioDistribution:
     Type: AWS::CloudFront::Distribution
     Metadata:
@@ -766,6 +809,7 @@ Resources:
           CachedMethods: [GET, HEAD]
           CachePolicyId: !Ref FolioNoCachePolicy
           OriginRequestPolicyId: !Ref FolioOriginRequestPolicy
+          ResponseHeadersPolicyId: !Ref FolioSecurityHeadersPolicy
         CacheBehaviors:
           - PathPattern: /api/*
             TargetOriginId: FolioFunctionUrl
@@ -775,6 +819,7 @@ Resources:
             CachedMethods: [GET, HEAD]
             CachePolicyId: !Ref FolioNoCachePolicy
             OriginRequestPolicyId: !Ref FolioOriginRequestPolicy
+            ResponseHeadersPolicyId: !Ref FolioSecurityHeadersPolicy
           # Vite emits content-hashed file names under /assets, so they are
           # safe to cache at the edge (managed CachingOptimized policy).
           - PathPattern: /assets/*
@@ -784,6 +829,7 @@ Resources:
             AllowedMethods: [GET, HEAD]
             CachedMethods: [GET, HEAD]
             CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+            ResponseHeadersPolicyId: !Ref FolioSecurityHeadersPolicy
       Tags:
         - Key: app
           Value: folio

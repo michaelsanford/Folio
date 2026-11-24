@@ -8,6 +8,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import MutableHeaders
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
@@ -35,6 +36,7 @@ from app.core.s3_sync import (  # noqa: E402
     startup_restore,
     sync_now,
 )
+from app.core.security_headers import build_csp, security_headers  # noqa: E402
 from app.core.sync_scheduler import sync_scheduler  # noqa: E402
 import app.models  # noqa: F401,E402 - registers SQLAlchemy models with Base metadata
 
@@ -95,6 +97,8 @@ def seeding_needed(db: Session) -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Re-apply in case a server reconfigured logging after the app was imported.
+    configure_logging()
     # Lambda: restore the vault from S3, failing closed on anything but "absent".
     # Docker / local never sync to S3; a bucket set there is ignored (with a warning).
     warn_ignored_s3_bucket()
@@ -195,33 +199,18 @@ async def handle_unhandled_exception(request: Request, exc: Exception):
         method=request.method,
         path=request.url.path,
     )
-    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+    # Starlette sends this response from its outermost middleware, past
+    # SecurityHeadersMiddleware, so the headers are set here.
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+        headers=security_headers(request.url.path),
+    )
 
 
 def _build_csp() -> str:
-    """Content-Security-Policy, with the Cognito hosts resolved for this region."""
-    connect_src = ["'self'"]
-    if settings.is_cognito_enabled:
-        region = settings.COGNITO_REGION
-        connect_src.append(f"https://cognito-idp.{region}.amazonaws.com")
-        connect_src.append(f"https://cognito-identity.{region}.amazonaws.com")
-    cognito_connect_src = "connect-src " + " ".join(connect_src)
-
-    return "; ".join([
-        "default-src 'self'",
-        "script-src 'self'",
-        # index.html loads Plus Jakarta Sans and JetBrains Mono from Google Fonts.
-        # Without these two hosts the policy blocks the stylesheet and the font
-        # files, and production silently falls back to the system sans-serif.
-        # Self-hosting the two families would let both entries be dropped.
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "font-src 'self' data: https://fonts.gstatic.com",
-        "img-src 'self' data: https:",
-        cognito_connect_src,
-        "frame-ancestors 'none'",
-        "base-uri 'self'",
-        "form-action 'self'",
-    ])
+    """Content-Security-Policy for the current settings (see core/security_headers)."""
+    return build_csp()
 
 
 @app.middleware("http")
@@ -249,18 +238,34 @@ async def flush_vault_on_lambda(request: Request, call_next):
     return response
 
 
-@app.middleware("http")
-async def add_security_headers(request: Request, call_next):
-    """Injects comprehensive defense-in-depth security headers into every response."""
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
+class SecurityHeadersMiddleware:
+    """Set the security headers from core/security_headers on every response.
 
-    response.headers["Content-Security-Policy"] = _build_csp()
-    return response
+    Pure ASGI and added outside the origin gate and CORS, so their own 403 and
+    preflight responses carry the headers too. Cache-Control is set on /api/*
+    only when the route did not set its own.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        values = security_headers(scope.get("path", ""))
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                message["headers"] = list(message.get("headers", []))
+                headers = MutableHeaders(scope=message)
+                for name, value in values.items():
+                    if name == "Cache-Control" and "cache-control" in headers:
+                        continue
+                    headers[name] = value
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
 
 
 def _is_loopback(host: str | None) -> bool:
@@ -319,8 +324,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=["*"],
 )
-# Added last = outermost: the request id is bound first, then the origin gate.
+# Added last = outermost: the request id is bound (and the request logged)
+# first, then the security headers, then the origin gate.
 app.add_middleware(OriginVerifyMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestContextMiddleware)
 
 # Public Auth router
@@ -342,7 +349,7 @@ app.include_router(classification_router, prefix=settings.API_V1_STR, dependenci
 app.include_router(bootstrap_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
 
 
-@app.get("/api/health", tags=["Health"])
+@app.api_route("/api/health", methods=["GET", "HEAD"], tags=["Health"])
 def health_check(db: Session = Depends(get_db)):
     """Liveness/readiness: the database must answer a trivial query.
 
@@ -381,7 +388,7 @@ if STATIC_DIR.exists() and (STATIC_DIR / "index.html").exists():
         if fpath.is_file():
             ROOT_PWA_FILES[fpath.name] = fpath
 
-    @app.get("/{full_path:path}", include_in_schema=False)
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     async def serve_spa(full_path: str):
         # Unknown API paths are API errors, not app routes: answer with a JSON 404
         # instead of the SPA shell, so clients and probes see the real status.
