@@ -10,7 +10,7 @@ from app.core.cognito import (
     cognito_refresh_session,
     cognito_respond_challenge,
 )
-from app.core.config import settings
+from app.core.config import master_hash_file, persist_master_hash, settings
 from app.core.rate_limit import client_key, login_limiter
 from app.core.security import (
     COOKIE_NAME,
@@ -34,7 +34,6 @@ def _is_secure_request(request: Request) -> bool:
         forwarded_proto == "https"
         or request.url.scheme == "https"
         or settings.is_production
-        or settings.ENVIRONMENT.lower() == "prod"
     )
 
 
@@ -406,12 +405,13 @@ def logout(request: Request, response: Response):
 
 @router.post("/setup")
 def setup_password(request_data: SetupPasswordRequest, request: Request):
-    """Set an initial master passphrase. Development only.
+    """Set an initial master passphrase. Development / Docker only.
 
-    This mutates the in-process settings object, so the value is neither persisted
-    nor shared between Lambda instances -- behaviour would differ per cold start.
-    Allowing it in production would be a way to configure auth on one instance and
-    believe the whole deployment was protected.
+    The bcrypt hash is written to the data directory (``.folio_master_hash``,
+    mode 0600, created exclusively) and loaded at startup when
+    FOLIO_MASTER_PASSWORD_HASH is unset, so a restart does not reopen setup.
+    Production refuses it: on Lambda the data directory is per-container /tmp,
+    so the passphrase would exist on one instance only.
     """
     verify_edge_origin(request)
 
@@ -436,6 +436,21 @@ def setup_password(request_data: SetupPasswordRequest, request: Request):
             detail="Password must be at least 8 characters",
         )
 
-    settings.FOLIO_MASTER_PASSWORD_HASH = hash_password(request_data.password)
+    password_hash = hash_password(request_data.password)
+    try:
+        created = persist_master_hash(master_hash_file(settings.SQLITE_DB_PATH), password_hash)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not persist the master passphrase to the data directory.",
+        ) from exc
+    if not created:
+        # Another worker finished setup first; its hash is the one on disk.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Master password is already configured",
+        )
+
+    settings.FOLIO_MASTER_PASSWORD_HASH = password_hash
     return {"message": "Master passphrase configured successfully"}
 

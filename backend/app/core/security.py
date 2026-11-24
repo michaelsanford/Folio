@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 import jwt
 from jwt import PyJWKClient
+from jwt.exceptions import PyJWKClientConnectionError
 from fastapi import Request, HTTPException, status
 from app.core.config import settings
 
@@ -11,6 +12,11 @@ logger = logging.getLogger("folio.security")
 
 COOKIE_NAME = "folio_session"
 REFRESH_COOKIE_NAME = "folio_refresh"
+LOCAL_TOKEN_ISSUER = "folio-vault"
+
+# Bound the JWKS fetch: PyJWKClient defaults to 30 s, which would hold a
+# request (and a Lambda invocation) for the whole outage.
+JWKS_TIMEOUT_SECONDS = 5
 
 # Cached JWKS client instance for Cognito
 _jwk_client: PyJWKClient | None = None
@@ -25,7 +31,9 @@ def get_jwk_client() -> PyJWKClient | None:
     jwks_url = settings.cognito_jwks_url
     if _jwk_client is None or _jwk_client_url != jwks_url:
         try:
-            _jwk_client = PyJWKClient(jwks_url, cache_keys=True, max_cached_keys=16)
+            _jwk_client = PyJWKClient(
+                jwks_url, cache_keys=True, max_cached_keys=16, timeout=JWKS_TIMEOUT_SECONDS
+            )
             _jwk_client_url = jwks_url
         except Exception as e:
             logger.error(f"Failed to initialize Cognito JWKS client: {e}")
@@ -80,7 +88,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     to_encode.update({
         "exp": expire,
         "iat": datetime.now(timezone.utc),
-        "iss": "folio-vault",
+        "iss": LOCAL_TOKEN_ISSUER,
     })
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
@@ -95,6 +103,12 @@ def decode_cognito_token(token: str) -> dict | None:
         return None
 
     try:
+        # Reject anything that is not an RS256 token before any
+        # network round trip: a locally signed HS256 token (or garbage) must not
+        # trigger a JWKS fetch, nor turn a JWKS outage into a 503 for it.
+        header = jwt.get_unverified_header(token)
+        if header.get("alg") != "RS256":
+            return None
         signing_key = jwk_client.get_signing_key_from_jwt(token)
         payload = jwt.decode(
             token,
@@ -119,6 +133,15 @@ def decode_cognito_token(token: str) -> dict | None:
             return None
 
         return payload
+    except PyJWKClientConnectionError as e:
+        # The token may be perfectly valid; we just cannot check it. Answering
+        # 401 would log the user out over a transient Cognito/network outage.
+        logger.error(f"Cognito JWKS endpoint unreachable: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Identity provider is temporarily unreachable. Try again shortly.",
+            headers={"Retry-After": "5"},
+        ) from e
     except jwt.PyJWTError as e:
         logger.debug(f"Cognito JWT validation failed: {e}")
         return None
@@ -145,7 +168,8 @@ def decode_access_token(token: str) -> dict | None:
             token,
             settings.SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM],
-            options={"verify_exp": True},
+            issuer=LOCAL_TOKEN_ISSUER,
+            options={"verify_exp": True, "require": ["exp", "iss", "sub"]},
         )
         return payload
     except (jwt.PyJWTError, Exception):
@@ -165,25 +189,36 @@ def get_token_from_request(request: Request) -> str | None:
     return None
 
 
+ORIGIN_VERIFY_HEADER = "X-Folio-Origin-Verify"
+ORIGIN_FORBIDDEN_DETAIL = "Direct access to function URL forbidden"
+
+
+def origin_header_valid(headers) -> bool:
+    """True when no origin secret is configured or the header carries it."""
+    expected = settings.FOLIO_ORIGIN_VERIFY_SECRET
+    if not expected:
+        return True
+    incoming = headers.get(ORIGIN_VERIFY_HEADER, "") or ""
+    return secrets.compare_digest(incoming.encode("utf-8"), expected.encode("utf-8"))
+
+
 def verify_edge_origin(request: Request) -> None:
     """
-    Verifies that the request originates from our CloudFront / WAF edge
-    if an origin verification secret is configured.
+    Verifies that the request originates from our CloudFront edge if an origin
+    verification secret is configured. The global middleware in app.main
+    enforces the same check for every path; this stays for direct callers.
     """
-    if not settings.FOLIO_ORIGIN_VERIFY_SECRET:
-        return
-
-    incoming_secret = request.headers.get("X-Folio-Origin-Verify", "")
-    if not secrets.compare_digest(incoming_secret, settings.FOLIO_ORIGIN_VERIFY_SECRET):
+    if not origin_header_valid(request.headers):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Direct access to function URL forbidden",
+            detail=ORIGIN_FORBIDDEN_DETAIL,
         )
 
 
-async def require_auth(request: Request) -> dict:
+def require_auth(request: Request) -> dict:
     """
-    FastAPI dependency to protect endpoints.
+    FastAPI dependency to protect endpoints. Plain ``def`` so FastAPI runs it in
+    the threadpool: a JWKS fetch must not block the event loop.
     Enforces FAIL-CLOSED authentication: requests without valid credentials are strictly rejected.
     """
     # 1. Edge origin check

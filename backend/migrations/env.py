@@ -1,6 +1,6 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, event, pool
 
 from alembic import context
 
@@ -14,8 +14,11 @@ config = context.config
 # so migrations follow SQLITE_DB_PATH in every environment (local, Docker, Lambda /tmp).
 config.set_main_option("sqlalchemy.url", settings.SQLALCHEMY_DATABASE_URI)
 
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+# The application runs migrations with configure_logger=False: its JSON logging
+# is already set up and fileConfig would replace it. From the alembic CLI the
+# ini's logging applies, without disabling loggers that already exist.
+if config.config_file_name is not None and config.attributes.get("configure_logger", True):
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 
@@ -72,6 +75,21 @@ def run_migrations_online() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
+
+    if connectable.dialect.name == "sqlite":
+        # pysqlite only opens a transaction before DML, so DDL ran in autocommit
+        # and a failed migration left a half-altered schema. The documented
+        # SQLAlchemy recipe: disable the driver's own transaction handling and
+        # emit BEGIN ourselves, making the whole upgrade one transaction.
+        # Applied to this migration engine only. PRAGMAs issued through the raw
+        # cursor before begin_transaction() still run outside any transaction.
+        @event.listens_for(connectable, "connect")
+        def _disable_pysqlite_transactions(dbapi_connection, connection_record):
+            dbapi_connection.isolation_level = None
+
+        @event.listens_for(connectable, "begin")
+        def _emit_begin(conn):
+            conn.exec_driver_sql("BEGIN")
 
     with connectable.connect() as connection:
         _set_sqlite_foreign_keys(connection, False)

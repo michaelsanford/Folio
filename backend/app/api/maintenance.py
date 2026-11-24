@@ -3,16 +3,34 @@
 These backfill data that older versions never recorded: balance history (so the
 net worth chart has a real series) and transfer pairing (so historical
 credit-card payments stop counting as both income and expense).
+
+Production guard: endpoints that overwrite or wipe data in bulk
+(seed-demo-data, which can wipe the vault with force=true, and
+backfill-snapshots, which overwrites recorded balance history with
+reconstructed values) return 403 when FOLIO_ENV is prod/production.
+detect-transfers stays available: it only links unpaired offsetting
+transactions, never deletes or overwrites data, and is the supported way to
+repair transfer pairing on an existing vault.
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.services.categorization.transfer_matcher import link_offsetting_transfers
 from app.services.snapshots.balance_history import backfill_all
 
 router = APIRouter(prefix="/maintenance", tags=["Maintenance"])
+
+
+def forbid_in_production() -> None:
+    """Dependency: refuse destructive bulk operations on a production vault."""
+    if settings.is_production:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This maintenance operation is disabled in production.",
+        )
 
 
 class BackfillSnapshotsResponse(BaseModel):
@@ -25,7 +43,11 @@ class DetectTransfersResponse(BaseModel):
     transactions_scanned: int
 
 
-@router.post("/backfill-snapshots", response_model=BackfillSnapshotsResponse)
+@router.post(
+    "/backfill-snapshots",
+    response_model=BackfillSnapshotsResponse,
+    dependencies=[Depends(forbid_in_production)],
+)
 def backfill_snapshots(
     months: int = Query(24, ge=1, le=120, description="How many months of history to reconstruct"),
     db: Session = Depends(get_db),
@@ -55,7 +77,11 @@ class SeedDemoDataResponse(BaseModel):
     snapshots_count: int
 
 
-@router.post("/seed-demo-data", response_model=SeedDemoDataResponse)
+@router.post(
+    "/seed-demo-data",
+    response_model=SeedDemoDataResponse,
+    dependencies=[Depends(forbid_in_production)],
+)
 def seed_demo_data(
     force: bool = Query(False, description="Wipe and recreate demo data even if data exists"),
     db: Session = Depends(get_db),

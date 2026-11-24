@@ -143,9 +143,9 @@ def test_cognito_config_endpoint():
     assert data["client_id"] == "client_abc456"
 
 
-def test_security_headers():
-    client = TestClient(app)
-    response = client.get("/api/health")
+def test_security_headers(unauthenticated_client):
+    # /api/health now queries the database, so use the isolated test DB.
+    response = unauthenticated_client.get("/api/health")
     assert response.status_code == 200
     assert response.headers.get("X-Content-Type-Options") == "nosniff"
     assert response.headers.get("X-Frame-Options") == "DENY"

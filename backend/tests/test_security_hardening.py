@@ -4,7 +4,7 @@ import pytest
 
 from app.core.config import (
     Settings,
-    development_secret_key,
+    generated_secret_key,
     validate_production_settings,
 )
 from app.core.rate_limit import SlidingWindowLimiter
@@ -14,15 +14,46 @@ from app.services.categorization.rules_engine import safe_regex_search
 
 # ----------------------------------------------------------- production config
 
-def test_development_tolerates_the_placeholder_secret():
-    dev = Settings(ENVIRONMENT="development", SECRET_KEY=development_secret_key())
+def test_development_tolerates_the_generated_secret():
+    dev = Settings(ENVIRONMENT="development", SECRET_KEY=generated_secret_key())
     assert validate_production_settings(dev) == []
 
 
-def test_production_rejects_the_placeholder_secret():
-    prod = Settings(ENVIRONMENT="production", SECRET_KEY=development_secret_key())
+@pytest.mark.parametrize("env", ["production", "prod", "PROD"])
+def test_production_rejects_the_generated_secret(env):
+    prod = Settings(ENVIRONMENT=env, SECRET_KEY=generated_secret_key())
     problems = validate_production_settings(prod)
     assert any("FOLIO_SECRET_KEY" in p for p in problems)
+
+
+def test_generated_secret_is_random_and_persisted(tmp_path):
+    from app.core.config import _load_or_create_key
+
+    key_file = tmp_path / "data" / ".folio_secret_key"
+    first = _load_or_create_key(key_file)
+    assert len(first) == 64
+    assert key_file.read_text().strip() == first
+    assert _load_or_create_key(key_file) == first
+    assert _load_or_create_key(tmp_path / "other" / ".folio_secret_key") != first
+
+
+def test_forged_token_with_wrong_issuer_is_rejected():
+    import jwt
+    from datetime import datetime, timedelta, timezone
+    from app.core.config import settings
+    from app.core.security import decode_access_token, create_access_token
+
+    original = settings.FOLIO_MASTER_PASSWORD_HASH
+    settings.FOLIO_MASTER_PASSWORD_HASH = hash_password("TheRightPassword1!")
+    try:
+        exp = datetime.now(timezone.utc) + timedelta(hours=1)
+        no_iss = jwt.encode({"sub": "owner", "exp": exp}, settings.SECRET_KEY, "HS256")
+        assert decode_access_token(no_iss) is None
+        bad_iss = jwt.encode({"sub": "owner", "exp": exp, "iss": "x"}, settings.SECRET_KEY, "HS256")
+        assert decode_access_token(bad_iss) is None
+        assert decode_access_token(create_access_token({"sub": "owner"}))["sub"] == "owner"
+    finally:
+        settings.FOLIO_MASTER_PASSWORD_HASH = original
 
 
 def test_production_rejects_a_plaintext_master_password():
