@@ -171,7 +171,7 @@ Folio provides statutory tracking for Canadian tax-advantaged accounts:
   - Filters out duplicate rows across overlapping statement imports.
   - Identical rows within one statement (two coffees on the same day for the same amount) are kept as separate transactions: the second and later occurrences get an occurrence number appended to the fingerprint, and the first keeps the original fingerprint so earlier imports still de-duplicate.
 - **Unreadable Rows**: Rows whose date or amount cannot be read are skipped and listed in the import preview ("N rows skipped because they couldn't be read") instead of being imported with a guessed date.
-- **Upload Size**: Statement files are limited to `FOLIO_MAX_UPLOAD_MB` (25 MB by default, 5 MB on AWS). The limit is shown in the upload screen. See [Limits](#limits).
+- **Upload Size**: Statement files are limited to `FOLIO_MAX_UPLOAD_MB` (25 MB by default, 4 MB on AWS). The limit is shown in the upload screen. See [Limits](#limits).
 
 ---
 
@@ -278,7 +278,7 @@ To generate a bcrypt hash manually:
 "your passphrase" | uv run --directory backend python scripts\hash_password.py
 ```
 
-If the backend starts with no passphrase configured (for example a fresh Docker container), the web app offers a one-time setup through `POST /api/auth/setup`. The bcrypt hash is written to `data/.folio_master_hash` (mode 0600) next to the database and loaded on later starts while `FOLIO_MASTER_PASSWORD_HASH` is unset, so a restart does not reopen setup. Setup is refused when `FOLIO_ENV` is `prod` or `production`.
+If the backend starts with no passphrase configured (for example a fresh Docker container), the web app offers a one-time setup through `POST /api/auth/setup`. The bcrypt hash is written to `data/.folio_master_hash` (mode 0600) next to the database and loaded on later starts while `FOLIO_MASTER_PASSWORD_HASH` is unset, so a restart does not reopen setup. Setup is refused in production mode (on AWS Lambda, or when `FOLIO_ENV` is `prod` or `production`).
 
 The session signing key works the same way: when `FOLIO_SECRET_KEY` is unset, a random key is generated once into `data/.folio_secret_key`, so sessions survive restarts. Production mode refuses to start on a generated key when local (non-Cognito) sign-in is in use.
 
@@ -287,7 +287,7 @@ The session signing key works the same way: when `FOLIO_SECRET_KEY` is unset, a 
 The schema is managed by Alembic and upgraded automatically on startup.
 
 - When the database is already at the latest revision, Alembic is not invoked at all.
-- Before a real upgrade, the database is copied with the SQLite backup API to `<db>.pre-migrate-<rev>-<timestamp>.bak` next to the database file (the 3 most recent copies are kept). When an S3 vault is configured, the copy is also uploaded to `backups/pre-migrate-<rev>-<timestamp>.db`, where it expires after 30 days.
+- Before a real upgrade, the database is copied with the SQLite backup API to `<db>.pre-migrate-<rev>-<timestamp>.bak` next to the database file (the 3 most recent copies are kept). On AWS, the copy is also uploaded to `backups/pre-migrate-<rev>-<timestamp>.db`, where it expires after 7 days.
 - If the database is at a revision this build does not know (a newer build already migrated it), the app logs a warning and skips migrating rather than attempting a downgrade.
 
 ```powershell
@@ -304,7 +304,7 @@ POST /api/maintenance/backfill-snapshots?months=24   # Reconstruct net worth his
 POST /api/maintenance/detect-transfers               # Pair historical transfers
 ```
 
-`seed-demo-data` and `backfill-snapshots` overwrite or reconstruct data, so they return `403` when `FOLIO_ENV` is `prod` or `production`.
+`seed-demo-data` and `backfill-snapshots` overwrite or reconstruct data, so they return `403` in production mode (on AWS Lambda, or when `FOLIO_ENV` is `prod` or `production`).
 
 ---
 
@@ -327,9 +327,10 @@ Folio includes automated GitHub Actions workflows. Every third-party action is p
   - Frontend: Vitest suite, `tsc -b`, and the Vite production build.
   - Infrastructure: `sam validate --lint`, `cfn-lint`, and Checkov against `template.yaml`.
   - Container: builds the Docker image for `linux/arm64` (the Lambda architecture) without pushing it.
-- **CodeQL Security Analysis ([`.github/workflows/codeql.yml`](.github/workflows/codeql.yml))**: Static application security testing (SAST) for Python and TypeScript.
-- **Gitleaks Secret Scanner ([`.github/workflows/secret-scan.yml`](.github/workflows/secret-scan.yml))**: Scans commits for exposed secrets, tokens, or private keys.
-- **Dependabot ([`.github/dependabot.yml`](.github/dependabot.yml))**: Grouped weekly updates for `uv` and `npm`, weekly updates for Dockerfile base images (`docker`), and monthly updates for GitHub Actions.
+- **CodeQL Security Analysis ([`.github/workflows/codeql.yml`](.github/workflows/codeql.yml))**: Static application security testing (SAST) for Python and TypeScript, on pushes and pull requests to `main` and weekly.
+- **Gitleaks Secret Scanner ([`.github/workflows/secret-scan.yml`](.github/workflows/secret-scan.yml))**: Scans commits for exposed secrets, tokens, or private keys. Reviewed false positives are listed by fingerprint in [`.gitleaksignore`](.gitleaksignore).
+- **Dependabot ([`.github/dependabot.yml`](.github/dependabot.yml))**: Grouped weekly updates for `uv` and `npm`, weekly updates for Dockerfile base images (`docker`), and monthly updates for GitHub Actions. Python minor upgrades of the base image and python-dateutil major upgrades (which botocore rejects) are ignored and taken deliberately.
+- **Branch rules**: `main` requires a pull request and five passing checks: Backend Tests, Frontend Tests & Typecheck, Infrastructure Lint, Docker Image Build and Gitleaks. Repository admins can bypass.
 
 ---
 
@@ -348,7 +349,7 @@ Access the application at `http://localhost:8000`.
 - **Authentication**: Set `FOLIO_MASTER_PASSWORD_HASH` (for example in a `.env` file next to `docker-compose.yml`), or leave it unset and use the one-time setup screen.
 - **Session key**: `FOLIO_SECRET_KEY` is optional in development; a random key is generated into `backend/data/.folio_secret_key`. It is required when `FOLIO_ENV` is `prod` or `production`.
 - **Origin check**: `FOLIO_ORIGIN_VERIFY_SECRET` is optional. Set it only if a reverse proxy in front of the container injects a matching `X-Folio-Origin-Verify` header; every request without it is then rejected with `403`.
-- **Optional S3 vault**: Set `S3_BUCKET_NAME` and AWS credentials to keep a copy in S3. The container restores `database/folio.db` from S3 only when the local database file is missing, so `./backend/data` stays the working copy across restarts. Changes are uploaded in the background a few seconds after the last edit, using the same conditional writes as Lambda: if another instance changed the vault first, the upload is rejected and the local copy is reloaded from S3 instead of overwriting it.
+- **Local development only**: Docker Compose is for running Folio on your own machine. The vault lives only in `./backend/data` and is never synced to AWS. S3 sync runs only in the Lambda deployment; if `S3_BUCKET_NAME` is set outside Lambda it is ignored and a warning is logged. This keeps a local copy from ever overwriting the cloud vault.
 - **Health**: The image defines a `HEALTHCHECK`, and Compose a matching `healthcheck`, that calls `GET /api/health` every 30 seconds. The endpoint runs a trivial database query and returns `503` when the database does not answer.
 
 ---
@@ -362,7 +363,7 @@ Folio implements a defense-in-depth security model for hosting financial data:
   - **Cognito threat protection**: The pool is on the Plus tier with threat protection enforced. Sign-ins and password changes using known-compromised credentials are blocked. Medium- and high-risk sign-ins are escalated to MFA rather than blocked, because sign-in is proxied through Lambda and Cognito therefore sees AWS IP addresses rather than the user's; a block action could lock the owner out. The pool has deletion protection on and is retained when the stack is deleted.
   - **Master Passphrase Vault (Local / Docker / `-DisableCognito`)**: Protected by bcrypt hashing, constant-time comparisons (`secrets.compare_digest`), and signed `HttpOnly`, `SameSite=Lax`, `Secure` HS256 JWT session cookies.
 - **Secrets in Secrets Manager**: On AWS the session signing key and the origin-verify value are generated by the template in AWS Secrets Manager. Lambda's environment holds only their ARNs (`FOLIO_SESSION_SECRET_ARN`, `FOLIO_ORIGIN_SECRET_ARN`) and the app reads the values at startup, failing to start if it cannot. The master passphrase is only ever sent as a bcrypt hash (`MasterPasswordHash`, a `NoEcho` parameter).
-- **Fail-Fast Production Validation**: When `FOLIO_ENV` is `prod` or `production`, the app refuses to start with a generated session key (when local sign-in is enabled) or a plaintext `FOLIO_MASTER_PASSWORD`.
+- **Fail-Fast Production Validation**: In production mode (every AWS Lambda stack, including `qa` or `staging`, and any install with `FOLIO_ENV` set to `prod` or `production`), the app refuses to start with a generated session key (when local sign-in is enabled) or a plaintext `FOLIO_MASTER_PASSWORD`.
 - **Production Hardening**: In production mode the OpenAPI schema and the Swagger/ReDoc pages are not served, CORS allows no origins unless `FOLIO_CORS_ORIGINS` (`AllowedOrigin`) is set, `/api/auth/setup` is refused, and the destructive maintenance endpoints (`seed-demo-data`, `backfill-snapshots`) return `403`. The default CloudFront deployment is same-origin and needs no CORS.
 - **Login & MFA Rate Limiting**: Sliding-window rate limiter (8 failed attempts per 5 minutes per client) across `/api/auth/login`, `/api/auth/cognito/login`, and `/api/auth/cognito/challenge`. Behind CloudFront the client is identified by the `CloudFront-Viewer-Address` header; `X-Forwarded-For` is never trusted. The counters are held per instance, so with several Lambda instances the effective ceiling is multiplied by the instance count. This is an accepted limitation: Cognito has its own throttling and threat protection, and the budget alarm bounds cost.
 - **Bounded User-Supplied Regex**: Categorization rules accepting regular expressions are length-limited and screened for nested quantifiers to prevent ReDoS (catastrophic backtracking).
@@ -384,7 +385,8 @@ Folio implements a defense-in-depth security model for hosting financial data:
 
 ## Limits
 
-- **Upload size**: `FOLIO_MAX_UPLOAD_MB`, 25 MB by default. The SAM template sets it to 5 MB because a Lambda Function URL rejects request payloads above 6 MB. The upload screen shows the active limit.
+- **Upload size**: `FOLIO_MAX_UPLOAD_MB`, 25 MB by default. The SAM template sets it to 4 MB because a Lambda Function URL rejects request payloads above 6 MB and multipart uploads are base64-encoded in the Lambda event, which adds about a third. The upload screen shows the active limit.
+- **Bedrock classification time**: Bedrock gets at most 20 seconds per request (12-second read timeout, no retries), so a request stays inside the 30-second Lambda and CloudFront limit. Rows Bedrock hasn't answered by then stay uncategorised instead of failing the request.
 - **Cognito email**: The pool uses Cognito's default email sender, which is limited to 50 emails per day. That is plenty for household invitations; configure Amazon SES on the user pool if you need more.
 - **Statement rows**: Rows that cannot be read are reported in the preview and skipped rather than imported with a guessed date. Identical same-day rows within one statement are kept as separate transactions.
 - **Login rate limit**: Per instance, as described under [Security](#security--zero-trust-architecture).
@@ -501,6 +503,7 @@ You can sign out and lock the session at any time using the **Sign out** button 
    - Every database commit that changes data marks the vault as changed. On Lambda, a mutating request (`POST`, `PUT`, `PATCH`, `DELETE`) uploads the vault before its response is returned, because Lambda freezes the instance as soon as it responds.
    - Snapshots are taken with SQLite's online backup API, so a concurrent write cannot produce a torn file.
    - Uploads are S3 conditional writes (`If-Match` on the ETag the instance last saw). If another instance changed the vault first, S3 rejects the upload; the request returns `409` with code `vault_conflict`, the instance reloads the current vault from S3, and the web app shows a notice asking the user to retry the change.
+   - If the upload fails for any other reason (for example S3 is unreachable), the change is discarded and the request returns `503` with code `vault_sync_failed`; the web app shows "Your change wasn't saved. Please try again." A save is therefore either stored in S3 or visibly rejected, never silently kept only in one instance. If the instance can't reload the vault either, it answers `503` until S3 is reachable again. These failures are logged as `s3_sync_failed` and raise the sync-failure alarm.
    - Before opening a database session, an instance checks the S3 ETag (at most once per second, and not while it has unsynced changes) and reloads the vault if another instance has written a newer one.
    - Default categories and rules use deterministic UUIDv5 IDs, so separate instances seeding a fresh vault agree on them.
    - The bucket (`folio-vault-${EnvironmentName}-${AWS::AccountId}-${AWS::Region}`) has `DeletionPolicy: Retain` and `UpdateReplacePolicy: Retain`. Reattach a retained bucket with `-ExistingVaultBucket`.
@@ -532,7 +535,7 @@ For a single household the deployment typically costs a few dollars a month:
 - **Baseline, roughly $0-3/month**: Lambda and S3 usage for a household fits within or close to the free tiers, CloudFront stays within its always-free allowance, and the 6 alarms fit within CloudWatch's 10 free alarms unless your account already uses them (each extra alarm is about $0.10/month).
 - **Secrets Manager, about $0.80/month**: two secrets at about $0.40 each.
 - **Cognito Plus**: billed per monthly active user, roughly $0.02 per MAU at the time of writing. Cognito's free tier applies to the Lite and Essentials tiers, not Plus, so check current Cognito pricing. A `-DisableCognito` deployment has no Cognito cost.
-- **S3 versions**: Noncurrent vault versions are kept for 30 days, so storage grows with database size multiplied by the number of writes in 30 days. For a small vault this is cents.
+- **S3 versions**: Every write uploads the whole vault, and noncurrent versions are kept for 5 days, so storage is roughly database size × writes in 5 days. Even a heavy day of 500 edits on a 20 MB vault is about 50 GB at most, around $1/month.
 - **Bounded storage**: The ECR lifecycle policy keeps at most 5 images, and logs are kept for 90 days.
 
 ### Tearing Down
@@ -563,8 +566,8 @@ For a single household the deployment typically costs a few dollars a month:
 
 **What exists**:
 
-- **S3 versions** (AWS, and Docker with `S3_BUCKET_NAME`): the vault bucket keeps every previous version of `database/folio.db` for 30 days.
-- **Pre-migration copies**: `<db>.pre-migrate-<rev>-<timestamp>.bak` next to the database (last 3 kept), and in S3 `backups/pre-migrate-<rev>-<timestamp>.db` (expire after 30 days). On Lambda the local copies live in `/tmp` and disappear with the instance, so use the S3 copies.
+- **S3 versions** (AWS only): the vault bucket keeps every previous version of `database/folio.db` for 5 days. This is a short-term backstop for noticing and undoing a bad write, not an archive.
+- **Pre-migration copies**: `<db>.pre-migrate-<rev>-<timestamp>.bak` next to the database (last 3 kept), and in S3 `backups/pre-migrate-<rev>-<timestamp>.db` (expire after 7 days). On Lambda the local copies live in `/tmp` and disappear with the instance, so use the S3 copies.
 - **Teardown backups**: `folio-vault-backup-<bucket>-<timestamp>.db` files written by `teardown.ps1`.
 
 **Restore a previous version on AWS**:
@@ -581,7 +584,7 @@ For a single household the deployment typically costs a few dollars a month:
    aws s3api get-object --bucket <bucket> --key database/folio.db --version-id <id> folio-restore.db
    ```
 
-3. Copy that version over the current object. This creates a new current version; the version it replaces stays available for 30 days, so the restore itself can be undone.
+3. Copy that version over the current object. This creates a new current version; the version it replaces stays available for 5 days, so the restore itself can be undone.
 
    ```powershell
    aws s3api copy-object --bucket <bucket> --key database/folio.db --copy-source "<bucket>/database/folio.db?versionId=<id>"
@@ -597,7 +600,7 @@ For a single household the deployment typically costs a few dollars a month:
 
 To restore a pre-migration copy, upload it over `database/folio.db` the same way (`aws s3 cp <file> s3://<bucket>/database/folio.db`) and force new instances.
 
-**Restore on Docker**: Stop the container, copy a `.bak` file or a downloaded S3 version over `backend/data/folio.db`, delete `backend/data/folio.db-wal` and `backend/data/folio.db-shm` if they exist, and start the container again. With an S3 bucket configured, the container keeps the local file (it only restores from S3 when the file is missing) and uploads it as the new current version on the next change.
+**Restore on Docker**: Stop the container, copy a `.bak` file over `backend/data/folio.db`, delete `backend/data/folio.db-wal` and `backend/data/folio.db-shm` if they exist, and start the container again. To debug locally with a copy of the cloud vault, download an S3 version with `aws s3api get-object` and copy it in the same way; Docker never uploads it back.
 
 ---
 
@@ -619,7 +622,7 @@ The script lists the function's published versions (marking the one `live` serve
 
 | Environment Variable | SAM Parameter | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `FOLIO_ENV` | `EnvironmentName` | `development` (`prod` in SAM) | Runtime mode and resource naming (`[a-z0-9-]`). `prod` or `production` enables production mode: API docs hidden, CORS closed by default, setup and destructive maintenance endpoints disabled, generated session key refused |
+| `FOLIO_ENV` | `EnvironmentName` | `development` (`prod` in SAM) | Runtime mode and resource naming (`[a-z0-9-]`). `prod` or `production` enables production mode, which is always on in AWS Lambda regardless of this value: API docs hidden, CORS closed by default, setup and destructive maintenance endpoints disabled, generated session key refused |
 | `FOLIO_DEFAULT_CURRENCY` | — | `CAD` | Default currency for new accounts and transactions |
 | — | `EnableCognito` (`-DisableCognito`) | `true` | Provision invite-only AWS Cognito User Pool (Plus tier, threat protection) + TOTP MFA (`false` for Master Passphrase mode) |
 | `FOLIO_SECRET_KEY` | — | Random, generated once into `data/.folio_secret_key` | HS256 session signing key for Docker / local installs. Required in production mode when local sign-in is used. Ignored when `FOLIO_SESSION_SECRET_ARN` is set |
@@ -631,14 +634,14 @@ The script lists the function's published versions (marking the one `live` serve
 | `FOLIO_BEDROCK_MODEL_ID` | `BedrockModelId` | `amazon.nova-micro-v1:0` | Bedrock model ID or inference profile ID (e.g. `us.amazon.nova-micro-v1:0`) |
 | `FOLIO_BEDROCK_REGION` | — | `AWS_DEFAULT_REGION`, else `ca-central-1` | AWS region for Bedrock Converse API calls |
 | `FOLIO_CLASSIFICATION_THRESHOLD`| — | `0.75` | Minimum confidence score for automatic category assignment |
-| `FOLIO_MAX_UPLOAD_MB` | — (template sets `5`) | `25` | Maximum statement upload size in MB, shown in the upload screen |
+| `FOLIO_MAX_UPLOAD_MB` | — (template sets `4`) | `25` | Maximum statement upload size in MB, shown in the upload screen |
 | `SQLITE_DB_PATH` | — (template sets `/tmp/folio.db`) | `backend/data/folio.db` | SQLite database path |
 | `FOLIO_UPLOAD_DIR` | — (template sets `/tmp/uploads`) | `backend/data/uploads` | Directory for uploaded statements |
 | `COGNITO_USER_POOL_ID` | Output from SAM (`-OwnerEmail` invites users) | `""` | AWS Cognito User Pool ID |
 | `COGNITO_CLIENT_ID` | Output from SAM | `""` | AWS Cognito App Client ID |
 | `COGNITO_REGION` | `AWS::Region` (`-Region`) | `ca-central-1` | AWS region for Cognito IDP / JWKS verification |
 | `AWS_REGION` / `AWS_DEFAULT_REGION` | `AWS::Region` (`-Region`) | `ca-central-1` | AWS region for S3 vault sync and Secrets Manager |
-| `S3_BUCKET_NAME` | `ExistingVaultBucketName` (`-ExistingVaultBucket`) | Auto-created (`folio-vault-<env>-<acct>-<region>`) | Private S3 vault bucket (reuse an existing bucket or let SAM create one) |
+| `S3_BUCKET_NAME` | `ExistingVaultBucketName` (`-ExistingVaultBucket`) | Auto-created (`folio-vault-<env>-<acct>-<region>`) | Private S3 vault bucket (reuse an existing bucket or let SAM create one). Used only on AWS Lambda; ignored by Docker and local installs |
 | `FOLIO_CORS_ORIGINS` | `AllowedOrigin` (`-AllowedOrigin`) | `""` | Comma-separated allowed CORS origins. When empty: the localhost dev-server origins in development, and no origins in production mode. The CloudFront deployment is same-origin and needs none |
 | — | `ReservedConcurrency` (`-ReservedConcurrency`) | `0` | Optional Lambda reserved concurrency as a spend cap. Requests beyond it get `429`; not needed for data safety |
 | — | `AlarmEmail` (`-AlarmEmail`) | `""` | Email for CloudWatch alarm (SNS) and AWS Budgets notifications; confirm the SNS subscription email |
