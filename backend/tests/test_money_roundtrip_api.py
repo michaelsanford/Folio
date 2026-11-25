@@ -102,7 +102,7 @@ def test_amounts_are_stored_as_integers_not_reals(db_session, sample_checking_ac
     db_session.commit()
 
     typ = db_session.execute(
-        sqlalchemy.text("SELECT typeof(amount_cents) FROM transactions WHERE id = :i"),
+        sqlalchemy.text("SELECT pg_typeof(amount_cents)::text FROM transactions WHERE id = :i"),
         {"i": txn.id},
     ).scalar()
     assert typ == "integer", f"amount_cents stored as {typ}"

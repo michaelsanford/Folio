@@ -39,7 +39,7 @@ class Transaction(AttributedMixin, Base):
     # Looked up only together with account_id (see the composite indexes below).
     import_hash = Column(String(64), nullable=True)
     
-    status = Column(Enum(TransactionStatus), nullable=False, default=TransactionStatus.CLEARED)
+    status = Column(Enum(TransactionStatus, native_enum=False), nullable=False, default=TransactionStatus.CLEARED)
     notes = Column(String(500), nullable=True)
     
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
@@ -56,14 +56,13 @@ class Transaction(AttributedMixin, Base):
         Index("ix_transactions_account_date", "account_id", "transaction_date"),
         # Deduplication looks up (account, hash) on every imported row.
         Index("ix_transactions_account_import_hash", "account_id", "import_hash"),
-        # The database refuses a second copy of an imported row. Migration 0005
-        # skips this on vaults that already contain duplicates.
+        # The database refuses a second copy of an imported row. NULLs are
+        # distinct in a unique index, so manual rows (no hash) never collide.
         Index(
             "uq_transactions_account_import_hash",
             "account_id",
             "import_hash",
             unique=True,
-            sqlite_where=text("import_hash IS NOT NULL"),
         ),
         # Transfer matching probes opposite amounts inside a date window.
         Index("ix_transactions_amount_date", "amount_cents", "transaction_date"),

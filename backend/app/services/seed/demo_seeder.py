@@ -3,6 +3,8 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
+from app.core.batching import delete_in_batches, update_in_batches
+
 from app.core.config import settings
 from app.core.money import to_cents
 from app.models.account import Account, AccountType, LoanCompounding
@@ -10,7 +12,8 @@ from app.models.budget import Budget, BudgetItem
 from app.models.category import Category
 from app.models.goal import Goal, GoalType
 from app.models.household import HouseholdMember
-from app.models.investment import AssetClass, Holding, Lot, PriceQuote, Security
+from app.models.app_user import AppUser
+from app.models.investment import AssetClass, Holding, InvestmentActivity, Lot, PriceQuote, Security
 from app.models.rule import CategorizationRule
 from app.models.snapshot import AccountBalanceSnapshot
 from app.models.transaction import Transaction, TransactionSplit, TransactionStatus
@@ -58,20 +61,30 @@ def seed_canadian_demo_dataset(db: Session, force: bool = False) -> dict:
         }
 
     if force:
-        # Clear existing data in child -> parent order
-        db.query(TransactionSplit).delete()
-        db.query(Transaction).delete()
-        db.query(AccountBalanceSnapshot).delete()
-        db.query(BudgetItem).delete()
-        db.query(Budget).delete()
-        db.query(Lot).delete()
-        db.query(Holding).delete()
-        db.query(PriceQuote).delete()
-        db.query(Security).delete()
-        db.query(Goal).delete()
-        db.query(Account).delete()
-        db.query(HouseholdMember).delete()
+        # Clear existing data in child -> parent order, in bounded transactions.
+        update_in_batches(
+            db, Transaction, {"transfer_transaction_id": None}, Transaction.transfer_transaction_id.isnot(None)
+        )
+        db.query(AppUser).filter(AppUser.member_id.isnot(None)).update(
+            {AppUser.member_id: None}, synchronize_session=False
+        )
         db.commit()
+        for model in (
+            TransactionSplit,
+            Transaction,
+            AccountBalanceSnapshot,
+            BudgetItem,
+            Budget,
+            Lot,
+            InvestmentActivity,
+            Holding,
+            PriceQuote,
+            Security,
+            Goal,
+            Account,
+            HouseholdMember,
+        ):
+            delete_in_batches(db, model)
 
     now = datetime.now(timezone.utc)
     today = now.date()

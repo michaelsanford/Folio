@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.datastructures import MutableHeaders
 from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings, validate_production_settings, warn_ignored_s3_bucket
@@ -22,26 +23,15 @@ from app.core.logging import (
 configure_logging()
 
 from app.core.database import SessionLocal, get_db  # noqa: E402
+from app.core.db_retry import DbRetryMiddleware, is_write_conflict, write_conflict_response  # noqa: E402
 from app.core.migrations import run_migrations  # noqa: E402
 from app.core.security import (  # noqa: E402
     ORIGIN_FORBIDDEN_DETAIL,
     origin_header_valid,
 )
 from app.core.actor import authorize  # noqa: E402 - also registers the attribution listener
-from app.core.s3_sync import (  # noqa: E402
-    VaultConflictError,
-    VaultSyncFailedError,
-    startup_restore,
-    sync_now,
-)
 from app.core.security_headers import build_csp, security_headers  # noqa: E402
 from app.core.spa import mount_spa  # noqa: E402
-from app.core.sync_scheduler import sync_scheduler  # noqa: E402
-from app.core.vault_middleware import (  # noqa: E402
-    VaultSyncMiddleware,
-    vault_conflict_response,
-    vault_sync_failed_response,
-)
 import app.models  # noqa: F401,E402 - registers SQLAlchemy models with Base metadata
 
 from app.api.auth import router as auth_router  # noqa: E402
@@ -71,8 +61,8 @@ def seeding_needed(db: Session) -> bool:
     """Cheap check whether the default categories/rules seeders have work to do.
 
     Mirrors the seeders' own idempotency keys (category slug; upper-cased rule
-    pattern whose category exists) with two single-column queries, so a warm
-    vault does not load every category and rule as ORM objects on cold start.
+    pattern whose category exists) with two single-column queries, so a seeded
+    database does not load every category and rule as ORM objects on startup.
     """
     try:
         from app.api.categories import DEFAULT_CATEGORIES
@@ -101,11 +91,8 @@ def seeding_needed(db: Session) -> bool:
 async def lifespan(app: FastAPI):
     # Re-apply in case a server reconfigured logging after the app was imported.
     configure_logging()
-    # Lambda: restore the vault from S3, failing closed on anything but "absent".
-    # Docker / local never sync to S3; a bucket set there is ignored (with a warning).
+    # Docker / local keep archives on disk; a bucket set there is ignored (with a warning).
     warn_ignored_s3_bucket()
-    if settings.s3_sync_enabled:
-        startup_restore(settings.SQLITE_DB_PATH, settings.S3_BUCKET_NAME, settings.AWS_REGION)
 
     # Refuse to serve production traffic with development-grade secrets.
     problems = validate_production_settings()
@@ -116,38 +103,29 @@ async def lifespan(app: FastAPI):
         )
 
     if not settings.SKIP_STARTUP_TASKS:
-        # Bring the schema up to head (skipped when already there).
-        migrated = run_migrations()
+        # Local and Docker: bring the schema up to head. On AWS the deploy step
+        # migrates and seeds; startup only refuses a database that is behind.
+        run_migrations()
 
-        db = SessionLocal()
-        try:
-            if seeding_needed(db):
-                seed_default_categories(db)
-                seed_default_rules(db)
-        finally:
-            db.close()
-
-        # Upload a migrated or freshly seeded vault now rather than at the next
-        # write: leaving it dirty would suspend this container's freshness
-        # check, and nothing flushes until a mutating request.
-        if settings.s3_sync_enabled and (migrated or sync_scheduler.has_pending_changes()):
-            try:
-                sync_now()
-            except VaultConflictError:
-                logger.warning("Another container replaced the vault during startup; reloaded it.")
-            except VaultSyncFailedError:
-                logger.warning("Uploading the migrated or seeded vault failed; reloaded the S3 copy.")
+        if not settings.is_dsql:
+            seed_defaults()
 
     yield
 
-    # Every mutating request is flushed before it returns, so normally nothing
-    # is pending here; upload anything that slipped through (e.g. a write made
-    # by a GET) rather than lose it with the container.
-    if settings.s3_sync_enabled and sync_scheduler.has_pending_changes():
-        try:
-            sync_now()
-        except (VaultConflictError, VaultSyncFailedError):
-            logger.warning("Shutdown flush failed; local changes were discarded.")
+
+def seed_defaults_with(db: Session) -> None:
+    """Add the default categories and rules that are missing (idempotent)."""
+    if seeding_needed(db):
+        seed_default_categories(db)
+        seed_default_rules(db)
+
+
+def seed_defaults() -> None:
+    db = SessionLocal()
+    try:
+        seed_defaults_with(db)
+    finally:
+        db.close()
 
 
 # In production mode, disable public Swagger docs to prevent API surface scanning
@@ -164,11 +142,13 @@ app = FastAPI(
 )
 
 
-@app.exception_handler(VaultConflictError)
-async def handle_vault_conflict(request: Request, exc: VaultConflictError):
-    # A handler that uploaded by itself lost a race: VaultSyncMiddleware replays it.
-    request.state.vault_conflict = True
-    return vault_conflict_response()
+@app.exception_handler(DBAPIError)
+async def handle_database_error(request: Request, exc: DBAPIError):
+    if is_write_conflict(exc):
+        # Lost a race with another session: DbRetryMiddleware replays the request.
+        request.state.db_conflict = True
+        return write_conflict_response()
+    return await handle_unhandled_exception(request, exc)
 
 
 @app.exception_handler(PeriodClosedError)
@@ -177,11 +157,6 @@ async def handle_period_closed(request: Request, exc: PeriodClosedError):
         status_code=409,
         content={"detail": {"code": "period_closed", "message": str(exc), "year": exc.year}},
     )
-
-
-@app.exception_handler(VaultSyncFailedError)
-async def handle_vault_sync_failed(request: Request, exc: VaultSyncFailedError):
-    return vault_sync_failed_response()
 
 
 @app.exception_handler(Exception)
@@ -291,9 +266,9 @@ class OriginVerifyMiddleware:
         await response(scope, receive, send)
 
 
-# Innermost: holds each response until the vault is uploaded, replaying a
-# write that lost a race with another container (core/vault_middleware.py).
-app.add_middleware(VaultSyncMiddleware)
+# Innermost: replays a request whose write lost a race with another session
+# (core/db_retry.py).
+app.add_middleware(DbRetryMiddleware)
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
@@ -344,7 +319,11 @@ def health_check(db: Session = Depends(get_db)):
             status_code=503,
             content={"status": "unhealthy", "service": settings.PROJECT_NAME, "database": "unavailable"},
         )
-    return {"status": "healthy", "service": settings.PROJECT_NAME, "database": "sqlite_wal"}
+    return {
+        "status": "healthy",
+        "service": settings.PROJECT_NAME,
+        "database": "dsql" if settings.is_dsql else "postgres",
+    }
 
 
 # Static SPA mounting for production single-container deployment

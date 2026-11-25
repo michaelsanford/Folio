@@ -80,7 +80,7 @@ def calculate_rollovers_cents(
     end = _month_start(year, month)
 
     kind = split_kind_case().label("kind")
-    ym = func.strftime("%Y-%m", Transaction.transaction_date)
+    ym = func.to_char(Transaction.transaction_date, "YYYY-MM")
     spend_rows = (
         db.query(
             TransactionSplit.category_id,

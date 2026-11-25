@@ -22,7 +22,7 @@ class CategorizationRule(AttributedMixin, Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     category_id = Column(String(36), ForeignKey("categories.id", ondelete="CASCADE"), nullable=False, index=True)
     priority = Column(Integer, nullable=False, default=10)  # Lower number = higher priority
-    pattern_type = Column(Enum(RulePatternType), nullable=False, default=RulePatternType.CONTAINS)
+    pattern_type = Column(Enum(RulePatternType, native_enum=False), nullable=False, default=RulePatternType.CONTAINS)
     pattern = Column(String(255), nullable=False, index=True)
     
     # Optional constraints

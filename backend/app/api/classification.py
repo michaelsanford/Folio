@@ -3,8 +3,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.config import settings
+from app.core.batching import batched_commits
 from app.core.database import get_db
-from app.core.s3_sync import sync_now
 from app.models.rule import CategorizationRule
 from app.core.period_lock import open_period
 from app.models.transaction import Transaction, TransactionSplit
@@ -164,27 +164,27 @@ def auto_classify_uncategorized(
             min_confidence=req.threshold,
         )
 
-        for txn, res in zip(uncategorized_txns, results):
-            tier_counts[res.tier.value] = tier_counts.get(res.tier.value, 0) + 1
-            if res.matched and res.category_id:
-                classified_count += 1
-                if not req.dry_run:
-                    if res.normalized_payee:
-                        txn.normalized_payee = res.normalized_payee
+        with batched_commits(db) as batch:
+            for txn, res in zip(uncategorized_txns, results):
+                tier_counts[res.tier.value] = tier_counts.get(res.tier.value, 0) + 1
+                if res.matched and res.category_id:
+                    classified_count += 1
+                    if not req.dry_run:
+                        if res.normalized_payee:
+                            txn.normalized_payee = res.normalized_payee
 
-                    if txn.splits:
-                        txn.splits[0].category_id = res.category_id
-                    else:
-                        txn.splits.append(
-                            TransactionSplit(
-                                category_id=res.category_id,
-                                amount=txn.amount,
+                        if txn.splits:
+                            txn.splits[0].category_id = res.category_id
+                        else:
+                            txn.splits.append(
+                                TransactionSplit(
+                                    category_id=res.category_id,
+                                    amount=txn.amount,
+                                )
                             )
-                        )
-
-        if not req.dry_run and classified_count > 0:
-            db.commit()
-            sync_now()
+                        batch.changed(2)
+            if req.dry_run:
+                db.rollback()  # a dry run never saves, not even learned rules
 
     return AutoClassifyUncategorizedResponse(
         total_uncategorized=len(uncategorized_txns),

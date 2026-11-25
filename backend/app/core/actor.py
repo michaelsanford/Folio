@@ -201,8 +201,6 @@ async def authorize(
 ) -> Actor:
     """Router dependency: verified session + known, enabled person + role check."""
     actor = await run_in_threadpool(resolve_actor, db, claims)
-    if actor.wrote:
-        request.state.vault_write = True
     if actor.status == AppUserStatus.DISABLED.value:
         raise _forbidden("account_disabled", "This account has been disabled. Ask the household owner.")
     if (

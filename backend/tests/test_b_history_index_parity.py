@@ -97,7 +97,7 @@ def legacy_find_historical_category(db, raw_payee, normalized_payee=None, accoun
         .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
         .join(Category, TransactionSplit.category_id == Category.id)
         .filter(TransactionSplit.category_id.isnot(None), or_(*cand_conditions))
-        .order_by(literal_column("transactions.rowid"))
+        .order_by(Transaction.created_at, Transaction.id)
     )
     candidate_rows = []
     if account_id:

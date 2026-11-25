@@ -36,7 +36,7 @@ def restore_settings():
             "FOLIO_MASTER_PASSWORD_HASH",
             "COGNITO_USER_POOL_ID",
             "COGNITO_CLIENT_ID",
-            "SQLITE_DB_PATH",
+            "DATA_DIR",
         )
     }
     security._jwk_client = None
@@ -257,12 +257,12 @@ def test_json_formatter_includes_event_and_fields():
     handler = Capture()
     record_logger.addHandler(handler)
     try:
-        log_event(record_logger, logging.ERROR, "s3_sync_failed", "boom", bucket="b")
+        log_event(record_logger, logging.ERROR, "write_conflict", "boom", path="/x")
     finally:
         record_logger.removeHandler(handler)
     payload = json.loads(captured[0])
-    assert payload["event"] == "s3_sync_failed"
-    assert payload["bucket"] == "b"
+    assert payload["event"] == "write_conflict"
+    assert payload["path"] == "/x"
     assert payload["level"] == "ERROR"
     assert payload["message"] == "boom"
 
@@ -384,7 +384,7 @@ def test_setup_persists_the_hash_so_restarts_stay_configured(unauthenticated_cli
     settings.FOLIO_MASTER_PASSWORD_HASH = ""
     settings.COGNITO_USER_POOL_ID = ""
     settings.COGNITO_CLIENT_ID = ""
-    settings.SQLITE_DB_PATH = tmp_path / "folio.db"
+    settings.DATA_DIR = tmp_path
 
     resp = unauthenticated_client.post("/api/auth/setup", json={"password": "CorrectHorse42!"})
     assert resp.status_code == 200, resp.text
@@ -394,7 +394,7 @@ def test_setup_persists_the_hash_so_restarts_stay_configured(unauthenticated_cli
     assert stored.startswith("$2") and stored == settings.FOLIO_MASTER_PASSWORD_HASH
 
     # A "restart": fresh settings with no hash in the environment pick it up.
-    restarted = Settings(SQLITE_DB_PATH=tmp_path / "folio.db", FOLIO_MASTER_PASSWORD_HASH="", FOLIO_MASTER_PASSWORD="")
+    restarted = Settings(DATA_DIR=tmp_path, FOLIO_MASTER_PASSWORD_HASH="", FOLIO_MASTER_PASSWORD="")
     assert restarted.FOLIO_MASTER_PASSWORD_HASH == stored
 
     # Setup cannot be re-run, even if this process forgot the hash.

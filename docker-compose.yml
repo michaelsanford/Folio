@@ -1,6 +1,27 @@
 name: folio
 
 services:
+  db:
+    # Matches the Postgres level of the serverless database used on AWS.
+    image: postgres:16-alpine
+    container_name: folio-db
+    environment:
+      - POSTGRES_USER=folio
+      - POSTGRES_PASSWORD=${FOLIO_DB_PASSWORD:-folio}
+      - POSTGRES_DB=folio
+    ports:
+      # Loopback only. 5433 avoids clashing with a Postgres already on 5432.
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - folio-db:/var/lib/postgresql/data
+      - ./backend/scripts/db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U folio -d folio"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
   folio:
     build:
       context: .
@@ -9,10 +30,14 @@ services:
     ports:
       # Loopback only by default; change to "8000:8000" to expose on the LAN.
       - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - ./backend/data:/app/data
     environment:
-      - SQLITE_DB_PATH=/app/data/folio.db
+      - DATABASE_URL=postgresql+psycopg://folio:${FOLIO_DB_PASSWORD:-folio}@db:5432/folio
+      - FOLIO_DATA_DIR=/app/data
       - FOLIO_UPLOAD_DIR=/app/data/uploads
       - FOLIO_ENV=${FOLIO_ENV:-development}
       # Authentication is fail-closed: without one of these the app starts but
@@ -26,8 +51,8 @@ services:
       # Optional: when set, every request must carry this value in the
       # X-Folio-Origin-Verify header (use it behind a reverse proxy that adds it).
       - FOLIO_ORIGIN_VERIFY_SECRET=${FOLIO_ORIGIN_VERIFY_SECRET:-}
-      # Docker is for local development: the vault lives only in ./backend/data
-      # and is never synced to AWS. S3 sync runs only in the Lambda deployment.
+      # Docker is for local development: the vault lives in the db service's
+      # volume and closed-year archives in ./backend/data/archives.
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/health"]
       interval: 30s
@@ -35,3 +60,6 @@ services:
       start_period: 30s
       retries: 3
     restart: unless-stopped
+
+volumes:
+  folio-db:

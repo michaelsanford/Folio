@@ -75,7 +75,7 @@ class Security(Base):
     name = Column(String(200), nullable=True)
     exchange = Column(String(32), nullable=True)
     currency = Column(String(3), nullable=False, default="CAD")
-    asset_class = Column(Enum(AssetClass), nullable=False, default=AssetClass.EQUITY)
+    asset_class = Column(Enum(AssetClass, native_enum=False), nullable=False, default=AssetClass.EQUITY)
     # The listing that actually answered a quote request (``XEQT`` typed in a
     # CAD account resolves to ``XEQT.TO``), so it is looked up only once.
     quote_symbol = Column(String(32), nullable=True)
@@ -186,7 +186,7 @@ class InvestmentActivity(AttributedMixin, Base):
     account_id = Column(String(36), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True)
     security_id = Column(String(36), ForeignKey("securities.id", ondelete="SET NULL"), nullable=True, index=True)
 
-    type = Column(Enum(InvestmentActivityType), nullable=False)
+    type = Column(Enum(InvestmentActivityType, native_enum=False), nullable=False)
     trade_date = Column(Date, nullable=False, index=True)
     quantity = Column(QUANTITY, nullable=True)
     # Signed in account terms: money into the account is positive.

@@ -10,7 +10,9 @@ def count_queries(db):
     statements: list[str] = []
 
     def _record(conn, cursor, statement, *args):
-        statements.append(statement)
+        # The test fixture's savepoints are bookkeeping, not the code's queries.
+        if not statement.lstrip().upper().startswith(("SAVEPOINT", "RELEASE SAVEPOINT", "ROLLBACK TO SAVEPOINT")):
+            statements.append(statement)
 
     event.listen(engine, "before_cursor_execute", _record)
     try:

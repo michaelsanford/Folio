@@ -9,7 +9,7 @@ import type {
   TransactionStatus,
 } from "../../types";
 import { api } from "../../services/api";
-import { onVaultConflict } from "../../services/notifications";
+import { onWriteConflict } from "../../services/notifications";
 import { DESKTOP_MEDIA_QUERY, useMediaQuery } from "../../hooks/useMediaQuery";
 import { Money } from "../common/Money";
 import { NumberField } from "../common/NumberField";
@@ -272,12 +272,12 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
     };
   }, [selectedAccountId, selectedCategoryId, selectedMemberId, searchQuery, page]);
 
-  // Reload after a vault conflict (the server has the newer data) and abort any
+  // Reload after a write conflict (the server has the newer data) and abort any
   // in-flight request on unmount. The ref keeps the handler on the latest filters.
   const loadTransactionsRef = useRef(loadTransactions);
   loadTransactionsRef.current = loadTransactions;
   useEffect(() => {
-    const unsubscribe = onVaultConflict(() => void loadTransactionsRef.current());
+    const unsubscribe = onWriteConflict(() => void loadTransactionsRef.current());
     return () => {
       unsubscribe();
       loadControllerRef.current?.abort();

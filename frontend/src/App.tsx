@@ -7,7 +7,7 @@ import { NotificationRegion } from "./components/common/NotificationRegion";
 import type { LedgerRefreshScope } from "./components/ledger/LedgerWorkspace";
 import type { Account, Category, DashboardAnalyticsResponse, HouseholdMember, ServerLimits } from "./types";
 import { api, setOnUnauthorized } from "./services/api";
-import { onVaultConflict } from "./services/notifications";
+import { onWriteConflict } from "./services/notifications";
 import { ArrowRight } from "lucide-react";
 import { usePwaUpdate } from "./hooks/usePwaUpdate";
 import { usePreferencesSync } from "./hooks/usePreferencesSync";
@@ -204,8 +204,8 @@ function AppContent() {
     checkAuth();
   }, []);
 
-  // The server has already reloaded the vault; bring every dataset up to date.
-  useEffect(() => onVaultConflict(() => void loadAllData()), [loadAllData]);
+  // A save lost a race with another session; bring every dataset up to date.
+  useEffect(() => onWriteConflict(() => void loadAllData()), [loadAllData]);
 
   // Quick starter seeder for initial Canadian user demo with complete ledger history
   const handleSeedDemoData = async () => {

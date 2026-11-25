@@ -15,8 +15,8 @@ CURRENT = date.today().year
 
 @pytest.fixture(autouse=True)
 def archive_dir(tmp_path, monkeypatch):
-    # Archives land next to the database: keep them out of the developer's data dir.
-    monkeypatch.setattr(settings, "SQLITE_DB_PATH", tmp_path / "folio.db")
+    # Keep archives out of the developer's data dir.
+    monkeypatch.setattr(settings, "DATA_DIR", tmp_path)
     return tmp_path / "archives"
 
 

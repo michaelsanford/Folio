@@ -3,7 +3,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { App } from "./App";
 import { api } from "./services/api";
-import { emitVaultConflict, notify } from "./services/notifications";
+import { emitWriteConflict, notify } from "./services/notifications";
 import type { BootstrapResponse } from "./types";
 
 vi.mock("./components/common/LazyChart", () => ({
@@ -81,7 +81,7 @@ describe("App data loading", () => {
 
     act(() => {
       notify("The vault was changed elsewhere.", "warning");
-      emitVaultConflict();
+      emitWriteConflict();
     });
 
     await waitFor(() => expect(api.getBootstrap).toHaveBeenCalledTimes(2));

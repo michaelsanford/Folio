@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.categories import seed_default_categories
@@ -17,8 +17,8 @@ from app.api.rules import auto_learn_rules_bulk, seed_default_rules
 from app.api.transactions import recalculate_account_balances
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.db_retry import is_write_conflict, retry_on_conflict
 from app.core.period_lock import locked_before
-from app.core.s3_sync import VaultConflictError, VaultSyncFailedError, sync_now
 from app.models.account import Account, AccountType, LoanCompounding
 from app.models.category import Category
 from app.models.rule import CategorizationRule
@@ -192,7 +192,7 @@ def upload_statement_preview(
 
     try:
         preview = _parse_statement(db, ext, resolved_account_id, content, safe_filename)
-    except (HTTPException, VaultConflictError, VaultSyncFailedError):
+    except HTTPException:
         raise
     except (ValueError, UnicodeDecodeError, csv.Error) as e:
         logger.info("Statement %s could not be parsed: %s", safe_filename, e)
@@ -266,6 +266,12 @@ def _resolve_category(
     return cat.id if cat else None
 
 
+# Rows saved per database transaction. Each row is a transaction plus its split,
+# so a batch stays well under the serverless database's 3,000-row limit.
+IMPORT_BATCH_ROWS = 1000
+TRANSACTION_ROW_BUDGET = 2500
+
+
 @router.post("/commit", response_model=IngestionCommitResponse)
 def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(get_db)):
     top_level_account: Account | None = None
@@ -316,6 +322,15 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
 
     learned: dict[tuple[str, str | None], tuple[str, str | None, str | None]] = {}
     committed_count = 0
+    saved_count = 0  # rows already committed by earlier batches
+
+    def _partial_note() -> str:
+        if not saved_count:
+            return ""
+        return (
+            f" {saved_count} rows were already saved; import the file again to add the rest"
+            " (rows already saved are skipped)."
+        )
 
     try:
         # 1. Resolve or stage new accounts for keys actually referenced by items
@@ -466,11 +481,20 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
             new_transaction_ids.append(txn_id)
             committed_count += 1
             committed_per_account[target_account.id] += 1
+            if committed_count % IMPORT_BATCH_ROWS == 0:
+                # A large statement lands in batches. If a later batch fails,
+                # importing the file again skips the rows already saved.
+                db.commit()
+                saved_count = committed_count
 
             if cat_id:
                 note_key = (item.notes or "").strip() or None
                 learned[(raw_name, note_key)] = (cat_id, norm_name, note_key)
 
+        if (committed_count - saved_count) * 2 + len(learned) > TRANSACTION_ROW_BUDGET:
+            # Keep the learned rules out of a transaction that is already full.
+            db.commit()
+            saved_count = committed_count
         auto_learn_rules_bulk(db, learned)
 
         if stmt_file_id:
@@ -484,61 +508,61 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
     except HTTPException:
         db.rollback()
         raise
-    except (VaultConflictError, VaultSyncFailedError):
+    except DBAPIError as exc:
         db.rollback()
-        raise
-    except IntegrityError:
-        db.rollback()
-        logger.warning("Import rejected by a database constraint", exc_info=True)
+        if is_write_conflict(exc):
+            raise  # replayed by DbRetryMiddleware
+        if isinstance(exc, IntegrityError):
+            logger.warning("Import rejected by a database constraint", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Some transactions conflict with existing records (likely already imported). "
+                "Refresh the preview and try again." + _partial_note(),
+            )
+        logger.exception("Failed to commit statement import")
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Some transactions conflict with existing records (likely already imported). Refresh the preview and try again.",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to commit transactions." + _partial_note(),
         )
     except Exception:
         db.rollback()
         logger.exception("Failed to commit statement import")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to commit transactions.",
+            detail="Failed to commit transactions." + _partial_note(),
         )
 
     if top_level_account and top_level_account.id not in touched_account_order:
         touched_account_order.insert(0, top_level_account.id)
         committed_per_account.setdefault(top_level_account.id, 0)
 
-    # The rows are committed. Balances and transfer links are derived data:
-    # whatever happens to them, the import itself must still reach S3, so the
-    # flush runs in ``finally``. On Lambda sync_now never reports success
-    # without an upload: a conflict raises VaultConflictError (409) and any
-    # other failure discards the import locally and raises VaultSyncFailedError
-    # (503 vault_sync_failed). Elsewhere it is a no-op.
+    # The rows are committed. Balances and transfer links are derived data,
+    # recomputed below in their own commits.
     summaries: list[CommittedAccountSummary] = []
     transfers_linked = 0
-    try:
-        balances = recalculate_account_balances(db, touched_account_order)
-        accounts_by_id = {
-            a.id: a for a in db.query(Account).filter(Account.id.in_(touched_account_order)).all()
-        } if touched_account_order else {}
-        for acc_id in touched_account_order:
-            acc_obj = accounts_by_id.get(acc_id)
-            if acc_obj:
-                summaries.append(
-                    CommittedAccountSummary(
-                        account_id=acc_obj.id,
-                        account_name=acc_obj.name,
-                        account_type=acc_obj.type,
-                        created=acc_obj.id in created_account_ids,
-                        committed_count=committed_per_account.get(acc_obj.id, 0),
-                        new_account_balance=float(balances.get(acc_obj.id, acc_obj.current_balance)),
-                    )
+    balances = retry_on_conflict(db, lambda: recalculate_account_balances(db, touched_account_order))
+    accounts_by_id = {
+        a.id: a for a in db.query(Account).filter(Account.id.in_(touched_account_order)).all()
+    } if touched_account_order else {}
+    for acc_id in touched_account_order:
+        acc_obj = accounts_by_id.get(acc_id)
+        if acc_obj:
+            summaries.append(
+                CommittedAccountSummary(
+                    account_id=acc_obj.id,
+                    account_name=acc_obj.name,
+                    account_type=acc_obj.type,
+                    created=acc_obj.id in created_account_ids,
+                    committed_count=committed_per_account.get(acc_obj.id, 0),
+                    new_account_balance=float(balances.get(acc_obj.id, acc_obj.current_balance)),
                 )
-
-        if req.auto_detect_transfers and new_transaction_ids:
-            transfers_linked, _ = link_offsetting_transfers(
-                db, window_days=3, transaction_ids=new_transaction_ids
             )
-    finally:
-        sync_now()
+
+    if req.auto_detect_transfers and new_transaction_ids:
+        transfers_linked, _ = retry_on_conflict(
+            db,
+            lambda: link_offsetting_transfers(db, window_days=3, transaction_ids=new_transaction_ids),
+        )
 
     primary_account_id = (
         top_level_account.id

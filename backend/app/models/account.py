@@ -99,7 +99,7 @@ class Account(AttributedMixin, Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String(100), nullable=False)
-    type = Column(Enum(AccountType), nullable=False)
+    type = Column(Enum(AccountType, native_enum=False), nullable=False)
     institution = Column(String(100), nullable=True)
     account_number_mask = Column(String(20), nullable=True)
     icon = Column(String(50), nullable=True)
@@ -121,7 +121,7 @@ class Account(AttributedMixin, Base):
     # balance. NULL means the minimum is interest-only.
     minimum_payment_percent = Column(Float, nullable=True)
     compounding = Column(
-        Enum(LoanCompounding), nullable=False, default=LoanCompounding.MONTHLY
+        Enum(LoanCompounding, native_enum=False), nullable=False, default=LoanCompounding.MONTHLY
     )
     
     owner_member_id = Column(String(36), ForeignKey("household_members.id", ondelete="SET NULL"), nullable=True)

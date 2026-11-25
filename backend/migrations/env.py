@@ -1,18 +1,15 @@
+import os
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, event, pool
+from sqlalchemy import pool
 
 from alembic import context
 
 from app.core.config import settings
-from app.core.database import Base
-import app.models  # noqa: F401 - registers every model with Base.metadata
+from app.core.database import Base, build_engine
+import app.models  # noqa: F401 - registers every model with Base metadata
 
 config = context.config
-
-# Connection URL always comes from application settings, never from alembic.ini,
-# so migrations follow SQLITE_DB_PATH in every environment (local, Docker, Lambda /tmp).
-config.set_main_option("sqlalchemy.url", settings.SQLALCHEMY_DATABASE_URI)
 
 # The application runs migrations with configure_logger=False: its JSON logging
 # is already set up and fileConfig would replace it. From the alembic CLI the
@@ -22,94 +19,58 @@ if config.config_file_name is not None and config.attributes.get("configure_logg
 
 target_metadata = Base.metadata
 
-
-def _set_sqlite_foreign_keys(connection, enabled: bool) -> None:
-    """Toggle FK enforcement on the raw DBAPI connection.
-
-    Batch mode rebuilds a table by copying it and dropping the original. With
-    foreign keys enforced, dropping the old table fires ON DELETE CASCADE and
-    wipes dependent rows -- migrating `accounts` would silently delete every
-    transaction and split.
-
-    Issued through the raw DBAPI cursor on purpose: `PRAGMA foreign_keys` is a
-    no-op inside a transaction, and going through the SQLAlchemy connection would
-    implicitly open one, which would also swallow the migration's own commit.
-    """
-    if connection.dialect.name != "sqlite":
-        return
-    cursor = connection.connection.cursor()
-    try:
-        cursor.execute(f"PRAGMA foreign_keys={'ON' if enabled else 'OFF'}")
-    finally:
-        cursor.close()
+# Schema changes on the serverless database are made as its admin role, which
+# owns the tables; the app's own role only reads and writes rows.
+DSQL_MIGRATION_USER = os.getenv("DSQL_MIGRATION_USER", "admin")
 
 
-def _assert_no_dangling_references(connection) -> None:
-    """Fail loudly if a rebuild left orphaned rows behind."""
-    if connection.dialect.name != "sqlite":
-        return
-    cursor = connection.connection.cursor()
-    try:
-        violations = cursor.execute("PRAGMA foreign_key_check").fetchall()
-    finally:
-        cursor.close()
-    if violations:
-        raise RuntimeError(f"Migration left dangling references: {violations[:5]}")
+def _url() -> str | None:
+    """An explicit URL (tests, the CLI's -x url=...) wins over settings."""
+    return (
+        config.attributes.get("url")
+        or context.get_x_argument(as_dictionary=True).get("url")
+        or (None if settings.is_dsql else settings.DATABASE_URL)
+    )
 
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=config.get_main_option("sqlalchemy.url"),
+        url=_url() or settings.DATABASE_URL,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        render_as_batch=True,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def run_migrations_online() -> None:
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    url = _url()
+    if url is None:
+        from aurora_dsql_sqlalchemy import create_dsql_engine
 
-    if connectable.dialect.name == "sqlite":
-        # pysqlite only opens a transaction before DML, so DDL ran in autocommit
-        # and a failed migration left a half-altered schema. The documented
-        # SQLAlchemy recipe: disable the driver's own transaction handling and
-        # emit BEGIN ourselves, making the whole upgrade one transaction.
-        # Applied to this migration engine only. PRAGMAs issued through the raw
-        # cursor before begin_transaction() still run outside any transaction.
-        @event.listens_for(connectable, "connect")
-        def _disable_pysqlite_transactions(dbapi_connection, connection_record):
-            dbapi_connection.isolation_level = None
-
-        @event.listens_for(connectable, "begin")
-        def _emit_begin(conn):
-            conn.exec_driver_sql("BEGIN")
+        connectable = create_dsql_engine(
+            host=settings.DSQL_ENDPOINT,
+            user=DSQL_MIGRATION_USER,
+            application_name="folio-migrate",
+            pool_size=1,
+            max_overflow=0,
+            connect_args={"region": settings.AWS_REGION},
+        )
+    else:
+        connectable = build_engine(url, poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
-        _set_sqlite_foreign_keys(connection, False)
-
+        # The serverless dialect commits after every DDL statement (one DDL per
+        # transaction is all it allows), so each revision commits on its own;
+        # Postgres runs each revision as one transaction.
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            # SQLite cannot ALTER COLUMN; batch mode rebuilds the table instead.
-            render_as_batch=True,
-            # The SQLite dialect reports non-transactional DDL, so Alembic would
-            # commit after each revision. With the BEGIN recipe above the DDL is
-            # transactional: run the whole upgrade, alembic_version included, as
-            # one transaction so a failed revision rolls back completely.
-            transactional_ddl=True,
+            transaction_per_migration=True,
         )
         with context.begin_transaction():
             context.run_migrations()
-
-        _assert_no_dangling_references(connection)
-        _set_sqlite_foreign_keys(connection, True)
 
 
 if context.is_offline_mode():

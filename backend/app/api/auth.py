@@ -469,7 +469,7 @@ def setup_password(request_data: SetupPasswordRequest, request: Request):
 
     password_hash = hash_password(request_data.password)
     try:
-        created = persist_master_hash(master_hash_file(settings.SQLITE_DB_PATH), password_hash)
+        created = persist_master_hash(master_hash_file(settings.DATA_DIR), password_hash)
     except OSError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

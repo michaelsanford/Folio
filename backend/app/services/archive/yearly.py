@@ -24,7 +24,7 @@ from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, 
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.s3_sync import ARCHIVE_PREFIX, compress_file, download_archive, upload_archive
+from app.core.archive_store import ARCHIVE_PREFIX, compress_file, download_archive, upload_archive
 from app.models.account import Account
 from app.models.budget import Budget, BudgetItem
 from app.models.category import Category
@@ -111,7 +111,7 @@ def build_archive_file(db: Session, year: int, closed_by: str | None, dest: Path
 
 
 def _local_archive_dir() -> Path:
-    return settings.SQLITE_DB_PATH.parent / "archives"
+    return settings.DATA_DIR / "archives"
 
 
 def create_year_archive(db: Session, year: int, closed_by: str | None) -> ArchiveResult:
@@ -126,7 +126,7 @@ def create_year_archive(db: Session, year: int, closed_by: str | None) -> Archiv
         compress_file(plain, packed)
         data = packed.read_bytes()
         digest = hashlib.sha256(data).hexdigest()
-        if settings.s3_sync_enabled:
+        if settings.archives_in_s3:
             upload_archive(packed, key, settings.S3_BUCKET_NAME, settings.AWS_REGION)
         else:
             target = _local_archive_dir() / str(year) / name
@@ -139,6 +139,6 @@ def read_year_archive(key: str) -> bytes:
     """Stored (compressed) bytes of an archive."""
     if not key.startswith(ARCHIVE_PREFIX) or ".." in key:
         raise ValueError("Not an archive key")
-    if settings.s3_sync_enabled:
+    if settings.archives_in_s3:
         return download_archive(key, settings.S3_BUCKET_NAME, settings.AWS_REGION)
     return (_local_archive_dir() / key.removeprefix(ARCHIVE_PREFIX)).read_bytes()

@@ -65,8 +65,8 @@ def generated_secret_key(key_file: Path | None = None) -> str:
 def is_lambda_runtime() -> bool:
     """True when running inside AWS Lambda (the runtime always sets this variable).
 
-    Only Lambda syncs the vault with S3 (see Settings.s3_sync_enabled): Docker
-    and local runs are for development and never talk to AWS storage.
+    Only Lambda keeps archives in S3 (see Settings.archives_in_s3): Docker and
+    local runs are for development and never talk to AWS storage.
     """
     return bool(os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
 
@@ -103,9 +103,9 @@ def fetch_secret_string(secret_arn: str, region: str | None = None) -> str:
     return value
 
 
-def master_hash_file(db_path: Path) -> Path:
-    """Where /api/auth/setup persists the master passphrase hash (next to the DB)."""
-    return Path(db_path).parent / MASTER_HASH_FILENAME
+def master_hash_file(data_dir: Path) -> Path:
+    """Where /api/auth/setup persists the master passphrase hash."""
+    return Path(data_dir) / MASTER_HASH_FILENAME
 
 
 def load_persisted_master_hash(hash_file: Path) -> str:
@@ -139,14 +139,23 @@ class Settings(BaseSettings):
     # Base directory
     BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
     
-    # SQLite Database
-    SQLITE_DB_PATH: Path = Path(os.getenv("SQLITE_DB_PATH", str(BASE_DIR / "data" / "folio.db")))
-    
+    # Local files: the generated signing key, the master passphrase hash, and
+    # closed-year archives on Docker and local installs.
+    DATA_DIR: Path = Path(os.getenv("FOLIO_DATA_DIR", str(_DEFAULT_DATA_DIR)))
+
+    # Database. Local, Docker and tests use Postgres through DATABASE_URL; the AWS
+    # deployment sets DSQL_ENDPOINT and connects with short-lived IAM tokens.
+    DATABASE_URL: str = os.getenv(
+        "DATABASE_URL", "postgresql+psycopg://folio:folio@127.0.0.1:5433/folio"
+    )
+    DSQL_ENDPOINT: str = os.getenv("DSQL_ENDPOINT", "")
+    # Database role the app signs in as. The deploy step maps it to the Lambda
+    # role; migrations sign in as "admin".
+    DSQL_USER: str = os.getenv("DSQL_USER", "folio_app")
+
     @property
-    def SQLALCHEMY_DATABASE_URI(self) -> str:
-        # Ensure data directory exists
-        self.SQLITE_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        return f"sqlite:///{self.SQLITE_DB_PATH.as_posix()}"
+    def is_dsql(self) -> bool:
+        return bool(self.DSQL_ENDPOINT)
 
     # Environment & Mode
     ENVIRONMENT: str = os.getenv("FOLIO_ENV", "development")
@@ -157,7 +166,7 @@ class Settings(BaseSettings):
     DEFAULT_CURRENCY: str = os.getenv("FOLIO_DEFAULT_CURRENCY", "CAD")
 
     # Skip migration + seeding on app startup. Set by the test suite, which builds
-    # its own in-memory schema and must not touch the developer database.
+    # its own schema in the test database and must not touch the developer one.
     SKIP_STARTUP_TASKS: bool = os.getenv("FOLIO_SKIP_STARTUP_TASKS", "").lower() in ("1", "true", "yes")
     
     # Document / statement upload directory & limits.
@@ -169,7 +178,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_MB: int = _max_upload_mb()
     MAX_UPLOAD_SIZE_BYTES: int = _max_upload_mb() * 1024 * 1024
     
-    # AWS S3 vault persistence. Honoured only on Lambda; see s3_sync_enabled.
+    # Bucket for closed-year archives. Honoured only on Lambda; see archives_in_s3.
     S3_BUCKET_NAME: str = os.getenv("S3_BUCKET_NAME", "")
     AWS_REGION: str = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "ca-central-1"))
     
@@ -177,7 +186,7 @@ class Settings(BaseSettings):
     # `or` rather than a getenv default: an env var present but empty (a common
     # docker-compose pattern) must not leave the signing key blank.
     SECRET_KEY: str = os.getenv("FOLIO_SECRET_KEY") or generated_secret_key(
-        SQLITE_DB_PATH.parent / SECRET_KEY_FILENAME
+        DATA_DIR / SECRET_KEY_FILENAME
     )
     FOLIO_MASTER_PASSWORD: str = os.getenv("FOLIO_MASTER_PASSWORD", "")
     FOLIO_MASTER_PASSWORD_HASH: str = os.getenv("FOLIO_MASTER_PASSWORD_HASH", "")
@@ -247,7 +256,7 @@ class Settings(BaseSettings):
         # A passphrase set through /api/auth/setup survives restarts.
         if not self.FOLIO_MASTER_PASSWORD_HASH and not self.FOLIO_MASTER_PASSWORD:
             self.FOLIO_MASTER_PASSWORD_HASH = load_persisted_master_hash(
-                master_hash_file(self.SQLITE_DB_PATH)
+                master_hash_file(self.DATA_DIR)
             )
         return self
 
@@ -256,12 +265,12 @@ class Settings(BaseSettings):
         return is_lambda_runtime()
 
     @property
-    def s3_sync_enabled(self) -> bool:
-        """Sync the vault with S3 only on Lambda, and only when a bucket is set.
+    def archives_in_s3(self) -> bool:
+        """Keep closed-year archives in S3 only on Lambda, and only when a bucket is set.
 
-        Docker and local runs are development environments: they keep the vault
-        on local disk and never read from or write to S3, even when
-        S3_BUCKET_NAME happens to be set (warn_ignored_s3_bucket logs that once).
+        Docker and local runs keep them under DATA_DIR/archives and never write to
+        S3, even when S3_BUCKET_NAME happens to be set (warn_ignored_s3_bucket
+        logs that once).
         """
         return bool(self.S3_BUCKET_NAME) and is_lambda_runtime()
 
@@ -289,8 +298,8 @@ def warn_ignored_s3_bucket(current: Settings = settings) -> bool:
         return False
     _s3_ignored_warned = True
     logging.getLogger("folio.config").warning(
-        "S3_BUCKET_NAME is set but ignored: S3 vault sync runs only on AWS Lambda. "
-        "Docker and local runs are for development and never sync to AWS."
+        "S3_BUCKET_NAME is set but ignored: archives go to S3 only on AWS Lambda. "
+        "Docker and local runs keep them in the data directory."
     )
     return True
 

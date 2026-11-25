@@ -492,7 +492,7 @@ NEWFILEUID:NONE
 
 
 
-def test_deterministic_seeded_category_and_rule_ids_across_fresh_dbs():
+def test_deterministic_seeded_category_and_rule_ids_across_fresh_dbs(tmp_path_factory):
     from sqlalchemy.orm import sessionmaker
     from app.api.categories import seed_default_categories
     from app.api.rules import seed_default_rules
@@ -500,9 +500,11 @@ def test_deterministic_seeded_category_and_rule_ids_across_fresh_dbs():
     from app.models.category import Category
     from app.models.rule import CategorizationRule
 
+    from tests.conftest import new_scratch_database
+
     snapshots = []
     for _ in range(2):
-        eng = create_engine("sqlite:///:memory:")
+        eng, drop = new_scratch_database()
         Base.metadata.create_all(bind=eng)
         SessionMaker = sessionmaker(bind=eng)
         sess = SessionMaker()
@@ -514,7 +516,7 @@ def test_deterministic_seeded_category_and_rule_ids_across_fresh_dbs():
             snapshots.append((cat_map, rule_map))
         finally:
             sess.close()
-            eng.dispose()
+            drop()
 
     assert len(snapshots[0][0]) > 0
     assert len(snapshots[0][1]) > 0

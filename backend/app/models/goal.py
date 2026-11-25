@@ -23,7 +23,7 @@ class Goal(AttributedMixin, Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String(100), nullable=False)
-    type = Column(Enum(GoalType), nullable=False, default=GoalType.SAVINGS)
+    type = Column(Enum(GoalType, native_enum=False), nullable=False, default=GoalType.SAVINGS)
     target_amount_cents = Column(Integer, nullable=False, default=0)
     current_amount_cents = Column(Integer, nullable=True)
     target_date = Column(Date, nullable=True)

@@ -13,7 +13,7 @@ from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import extract, func, select
 from sqlalchemy.orm import Session
 
 from app.core.actor import Actor, attribution_labels, require_owner
@@ -70,7 +70,7 @@ def _closure_response(row: PeriodClosure, labels: dict[str, str]) -> ClosureResp
 
 def _transaction_years(db: Session) -> list[int]:
     years = db.scalars(
-        select(func.distinct(func.strftime("%Y", Transaction.transaction_date)))
+        select(func.distinct(extract("year", Transaction.transaction_date)))
     ).all()
     return sorted(int(y) for y in years if y)
 

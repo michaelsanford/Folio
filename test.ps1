@@ -14,6 +14,10 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     throw "uv is not installed. Install via: winget install astral-sh.uv"
 }
 
+# The suite runs against the local Postgres (docker-compose.yml service "db").
+& docker compose -f (Join-Path $RootPath "docker-compose.yml") up -d --wait db
+if ($LASTEXITCODE -ne 0) { throw "Could not start the test database. Is Docker running?" }
+
 Push-Location $BackendPath
 try {
     & uv run pytest

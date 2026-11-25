@@ -20,32 +20,29 @@ memory. Groups are loaded in one of two ways, with identical answers:
 A group's membership in any lookup depends only on its payee strings, so both
 modes see exactly the groups the legacy SQL would have counted.
 
-SQLite semantics are reproduced exactly: its ``lower()``/``upper()`` and
-``LIKE`` case-folding only touch ASCII letters, so the in-memory comparisons do
-the same rather than using Python's Unicode-aware ``str.lower()``.
+The in-memory comparisons fold case with Python's Unicode-aware
+``str.lower()``/``str.upper()``, matching the database's ``lower()``/``upper()``.
 """
 from __future__ import annotations
 
 import re
-import string
+from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Callable, Generic, Iterable, TypeVar
 
-from sqlalchemy import func, literal_column
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.category import Category
 from app.models.transaction import Transaction, TransactionSplit
 from app.services.categorization.normalizer import normalize_payee
 
-# SQLite's implicit rowid follows insertion order; used only to iterate groups
-# in the order the legacy row-by-row scan would have met them.
-_TXN_ROWID = literal_column("transactions.rowid")
+# Insertion order (creation time); used only to iterate groups in the order the
+# legacy row-by-row scan would have met them.
+_TXN_ORDER = Transaction.created_at
 
 TOKEN_RE = re.compile(r"[\wÀ-ſ]+")
 
-_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
-_ASCII_UPPER = str.maketrans(string.ascii_lowercase, string.ascii_uppercase)
 
 # When a batch's candidate payees exceed this many raw-payee strings, one full
 # GROUP BY is cheaper than fetching them in IN-list chunks.
@@ -55,25 +52,25 @@ _IN_CHUNK = 500
 T = TypeVar("T")
 
 
-def sqlite_lower(value: str) -> str:
-    """SQLite's built-in lower(): ASCII letters only."""
-    return value.translate(_ASCII_LOWER)
+def db_lower(value: str) -> str:
+    """The database's lower(): Unicode-aware, like Python's."""
+    return value.lower()
 
 
-def sqlite_upper(value: str) -> str:
-    """SQLite's built-in upper(): ASCII letters only."""
-    return value.translate(_ASCII_UPPER)
+def db_upper(value: str) -> str:
+    """The database's upper(): Unicode-aware, like Python's."""
+    return value.upper()
 
 
 def _like_matcher(pattern: str) -> Callable[[str], bool]:
-    """Compile a SQLite LIKE pattern (no ESCAPE clause) for already-lowered values.
+    """Compile a LIKE pattern (no ESCAPE clause) for already-lowered values.
 
-    Both sides are folded with :func:`sqlite_lower`, reproducing LIKE's
-    ASCII-only case-insensitivity. ``prefix%`` and ``%token%`` (the only shapes
+    Both sides are folded with :func:`db_lower`, matching the SQL side, which
+    compares ``lower(column) LIKE lower(pattern)``. ``prefix%`` and ``%token%`` (the only shapes
     the matchers build) use plain string operations unless they contain a
     wildcard character; anything else falls back to a regex.
     """
-    lowered = sqlite_lower(pattern)
+    lowered = db_lower(pattern)
     core = lowered.strip("%")
     if "%" not in core and "_" not in core:
         if lowered == f"%{core}%":
@@ -158,12 +155,12 @@ class _PayeeMaps(Generic[T]):
     def add(self, normalized_payee: str | None, raw_payee: str | None, item: T) -> None:
         if normalized_payee is not None:
             self.np_exact.setdefault(normalized_payee, []).append(item)
-            self.np_lower.setdefault(sqlite_lower(normalized_payee), []).append(item)
-            self.np_upper.setdefault(sqlite_upper(normalized_payee), []).append(item)
+            self.np_lower.setdefault(db_lower(normalized_payee), []).append(item)
+            self.np_upper.setdefault(db_upper(normalized_payee), []).append(item)
         if raw_payee is not None:
             self.raw_exact.setdefault(raw_payee, []).append(item)
-            self.raw_lower.setdefault(sqlite_lower(raw_payee), []).append(item)
-            self.raw_upper.setdefault(sqlite_upper(raw_payee), []).append(item)
+            self.raw_lower.setdefault(db_lower(raw_payee), []).append(item)
+            self.raw_upper.setdefault(db_upper(raw_payee), []).append(item)
 
     def exact(self, spec: PayeeLookupSpec) -> list[T]:
         """``lower(np) = :norm_lower OR lower(raw) = :raw_lower OR np = :norm OR raw = :raw``."""
@@ -208,7 +205,7 @@ class HistoryGroup:
     category_name: str | None
     category_color: str | None
     count: int
-    order: int  # smallest transaction rowid: stable, insertion-ordered iteration
+    order: datetime  # earliest transaction creation: stable, insertion-ordered iteration
 
 
 @dataclass
@@ -217,7 +214,7 @@ class NoteGroup:
     account_id: str
     category_id: str
     count: int
-    order: int
+    order: datetime
 
 
 @dataclass
@@ -256,7 +253,7 @@ class HistoryIndex:
                 Category.name.label("category_name"),
                 Category.color.label("category_color"),
                 func.count(TransactionSplit.id).label("cnt"),
-                func.min(_TXN_ROWID).label("first_rowid"),
+                func.min(_TXN_ORDER).label("first_seen"),
             )
             .join(Transaction, TransactionSplit.transaction_id == Transaction.id)
             .outerjoin(Category, TransactionSplit.category_id == Category.id)
@@ -289,7 +286,7 @@ class HistoryIndex:
                 category_name=r.category_name,
                 category_color=r.category_color,
                 count=int(r.cnt),
-                order=r.first_rowid if isinstance(r.first_rowid, int) else 0,
+                order=r.first_seen or datetime.min,
             )
             self._groups[key] = group
             self._maps.add(group.normalized_payee, group.raw_payee, group)
@@ -353,7 +350,7 @@ class HistoryIndex:
                 Transaction.account_id,
                 TransactionSplit.category_id,
                 func.count(TransactionSplit.id).label("cnt"),
-                func.min(_TXN_ROWID).label("first_rowid"),
+                func.min(_TXN_ORDER).label("first_seen"),
             )
             .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
             .filter(
@@ -372,7 +369,7 @@ class HistoryIndex:
                 account_id=r.account_id,
                 category_id=r.category_id,
                 count=int(r.cnt),
-                order=r.first_rowid if isinstance(r.first_rowid, int) else 0,
+                order=r.first_seen or datetime.min,
             )
 
     def load_all_notes(self) -> None:
@@ -438,6 +435,6 @@ class HistoryIndex:
         self.ensure_notes(anchor)
         match = _like_matcher(f"%{anchor.lower()}%")
         return sorted(
-            (g for g in self._notes_groups.values() if match(sqlite_lower(g.notes))),
+            (g for g in self._notes_groups.values() if match(db_lower(g.notes))),
             key=lambda g: g.order,
         )

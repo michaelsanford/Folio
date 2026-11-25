@@ -1,6 +1,5 @@
 """GET/PUT /me/preferences: per-user rows, validation, size limit, lenient reads."""
 import json
-import sqlite3
 from datetime import datetime, timezone
 
 import pytest
@@ -172,12 +171,3 @@ def test_corrupt_stored_json_reads_as_empty(client, db_session, data):
 def test_requires_auth(unauthenticated_client):
     assert unauthenticated_client.get(URL).status_code == 401
     assert unauthenticated_client.put(URL, json={"theme": "nord"}).status_code == 401
-
-
-
-def _tables(db_path) -> set[str]:
-    conn = sqlite3.connect(str(db_path))
-    try:
-        return {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    finally:
-        conn.close()

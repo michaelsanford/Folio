@@ -71,7 +71,11 @@ def load_active_rules(db: Session) -> list[CategorizationRule]:
         db.query(CategorizationRule)
         .options(selectinload(CategorizationRule.category))
         .filter(CategorizationRule.is_active.is_(True))
-        .order_by(CategorizationRule.priority.asc())
+        .order_by(
+            CategorizationRule.priority.asc(),
+            CategorizationRule.created_at.asc(),
+            CategorizationRule.id.asc(),
+        )
         .all()
     )
 

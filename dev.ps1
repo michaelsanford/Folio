@@ -92,8 +92,8 @@ function Stop-ProcessTree {
 
         .DESCRIPTION
         uvicorn --reload runs the app in a child process. Stopping only the parent
-        leaves that child alive, still holding port 8000 and an open handle on
-        folio.db -- which then makes the next -Clean fail.
+        leaves that child alive, still holding port 8000 and its database
+        connections.
     #>
     param([int]$ProcessId)
 
@@ -113,8 +113,7 @@ foreach ($check in @(@{ Port = 8000; Name = "backend" }, @{ Port = 5173; Name = 
         throw @"
 Port $($check.Port) is already in use by $($owner.ProcessName) (PID $($owner.Id)), started $($owner.StartTime).
 
-Folio's $($check.Name) cannot start while that process holds the port, and a stale
-instance also keeps a lock on the database that blocks -Clean. Stop it first:
+Folio's $($check.Name) cannot start while that process holds the port. Stop it first:
 
   Stop-Process -Id $($owner.Id) -Force
 
@@ -123,30 +122,29 @@ An earlier run that was interrupted rather than closed with Ctrl+C is the usual 
     }
 }
 
-# 1. Handle -Clean Flag (Reinitialize DB & Uploads)
+# 1. Start the local database (Postgres in Docker, docker-compose.yml service "db")
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    throw "Docker is required for the local database. Install Docker Desktop, then run this again."
+}
+Write-Host "Starting the local database (docker compose service 'db')..." -ForegroundColor Yellow
+& docker compose -f (Join-Path $RootPath "docker-compose.yml") up -d db
+if ($LASTEXITCODE -ne 0) { throw "Could not start the database container. Is Docker running?" }
+$deadline = (Get-Date).AddSeconds(60)
+do {
+    $health = (& docker inspect -f "{{.State.Health.Status}}" folio-db 2>$null)
+    if ($health -eq "healthy") { break }
+    Start-Sleep -Seconds 1
+} while ((Get-Date) -lt $deadline)
+if ($health -ne "healthy") { throw "The database container did not become healthy within 60 seconds (status: $health)." }
+
+# -Clean: wipe the database and uploads
 if ($Clean) {
-    Write-Host "`n[-Clean] Reinitializing SQLite Database & Clearing Uploads..." -ForegroundColor Magenta
+    Write-Host "`n[-Clean] Wiping the local database & clearing uploads..." -ForegroundColor Magenta
 
-    Remove-Item -Force -Recurse (Join-Path $DataPath "folio.db*") -ErrorAction SilentlyContinue
+    & docker exec folio-db psql -U folio -d folio -v ON_ERROR_STOP=1 -q -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+    if ($LASTEXITCODE -ne 0) { throw "-Clean could not wipe the database. Nothing was wiped." }
     Remove-Item -Force -Recurse (Join-Path $DataPath "uploads\*") -ErrorAction SilentlyContinue
-
-    # Verify rather than announce. Remove-Item fails silently on a file another
-    # process holds open, and reporting a wipe that did not happen sends you on to
-    # test against the data you meant to discard.
-    $survivors = @(Get-ChildItem (Join-Path $DataPath "folio.db*") -ErrorAction SilentlyContinue)
-    if ($survivors.Count -gt 0) {
-        throw @"
--Clean could not delete the database: $($survivors.Name -join ', ')
-
-Something still holds the file open. The ports were free, so it is not a running
-Folio server -- check for a DB browser, an IDE data source, or an orphaned python
-process:
-
-  Get-Process python | Select-Object Id, StartTime
-
-Nothing was wiped.
-"@
-    }
+    Remove-Item -Force -Recurse (Join-Path $DataPath "archives") -ErrorAction SilentlyContinue
 
     Write-Host "Database wiped. A clean database will be initialized on boot." -ForegroundColor Green
     Write-Host "Your master passphrase is configuration, not data, and is unaffected." -ForegroundColor Gray

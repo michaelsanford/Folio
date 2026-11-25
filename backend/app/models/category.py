@@ -21,7 +21,7 @@ class Category(Base):
     slug = Column(String(100), nullable=False, unique=True)
     icon = Column(String(50), nullable=True, default="tag")
     color = Column(String(20), nullable=True, default="#6366F1")
-    type = Column(Enum(CategoryType), nullable=False, default=CategoryType.EXPENSE)
+    type = Column(Enum(CategoryType, native_enum=False), nullable=False, default=CategoryType.EXPENSE)
     is_budgeted = Column(Boolean, nullable=False, default=True)
     is_rollover = Column(Boolean, nullable=False, default=False)
     sort_order = Column(Integer, nullable=False, default=0)

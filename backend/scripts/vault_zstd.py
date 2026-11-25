@@ -1,12 +1,12 @@
-"""Compress or decompress a Folio vault file (zstd), for backups and restores.
+"""Compress or decompress a Folio export (zstd-compressed SQLite).
 
-The cloud vault is stored as ``database/folio.db.zst``: a SQLite file
-compressed with zstd. Use this to open a downloaded copy locally, or to turn a
-plain ``.db`` (a pre-migration or teardown backup) into an object you can
-upload over the vault.
+Exports (``python -m app.cli export``), teardown backups and closed-year
+archives are SQLite files compressed with zstd. Use this to open one in a
+SQLite tool, or to turn a plain ``.db`` (a vault file from a release that kept
+the database in SQLite) into a file ``python -m app.cli import`` accepts.
 
-    uv run python scripts/vault_zstd.py decompress folio-restore.db.zst folio-restore.db
-    uv run python scripts/vault_zstd.py compress folio.db.pre-migrate-0010.bak folio.db.zst
+    uv run python scripts/vault_zstd.py decompress folio-backup.db.zst folio-backup.db
+    uv run python scripts/vault_zstd.py compress folio.db folio.db.zst
 """
 import shutil
 import sqlite3
@@ -14,7 +14,7 @@ import sys
 from compression import zstd
 from pathlib import Path
 
-# Same settings as app.core.s3_sync; standalone so it runs without the app's config.
+# Same settings as app.core.archive_store; standalone so it runs without the app's config.
 ZSTD_LEVEL = 3
 CHUNK = 1024 * 1024
 

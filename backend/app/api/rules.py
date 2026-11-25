@@ -3,8 +3,8 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
+from app.core.batching import batched_commits
 from app.core.database import get_db
-from app.core.s3_sync import sync_now
 from app.models.rule import CategorizationRule, RulePatternType
 from app.models.category import Category
 from app.core.period_lock import open_period
@@ -647,21 +647,21 @@ def apply_rules_batch(db: Session = Depends(get_db)):
     results = ClassificationEngine.classify_batch(db, items, enable_bedrock=False)
 
     applied_count = 0
-    for txn, match in zip(uncategorized_txns, results):
-        if not match.matched or not match.category_id:
-            continue
-        if match.normalized_payee:
-            txn.normalized_payee = match.normalized_payee
+    # Rules the classifier learned are pending in the session; they go out with
+    # the first batch.
+    with batched_commits(db) as batch:
+        for txn, match in zip(uncategorized_txns, results):
+            if not match.matched or not match.category_id:
+                continue
+            if match.normalized_payee:
+                txn.normalized_payee = match.normalized_payee
 
-        if txn.splits:
-            txn.splits[0].category_id = match.category_id
-        else:
-            txn.splits.append(TransactionSplit(category_id=match.category_id, amount=txn.amount))
+            if txn.splits:
+                txn.splits[0].category_id = match.category_id
+            else:
+                txn.splits.append(TransactionSplit(category_id=match.category_id, amount=txn.amount))
 
-        applied_count += 1
-
-    if applied_count > 0:
-        db.commit()
-        sync_now()
+            applied_count += 1
+            batch.changed(2)
 
     return {"applied_count": applied_count}

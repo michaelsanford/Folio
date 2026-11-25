@@ -2,6 +2,8 @@ from datetime import datetime, timedelta
 from typing import Any
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, aliased
+
+from app.core.batching import batched_commits
 from app.core.period_lock import locked_before
 from app.models.transaction import Transaction
 from app.models.account import Account
@@ -72,9 +74,9 @@ def _candidate_pairs(db: Session, window_days: int, anchor_ids: list[str] | None
     """Offsetting (outflow, inflow) candidates from one self-join per id chunk.
 
     Matches opposite ``amount_cents`` in a *different* account where both sides
-    are still unpaired. SQLite stores datetimes as text, so the join uses a
-    window one day wider than requested (cheap, index-friendly) and the exact
-    +/- ``window_days`` check is applied in Python on real datetimes.
+    are still unpaired. The join uses a window one day wider than requested
+    (cheap, index-friendly) and the exact +/- ``window_days`` check is applied
+    in Python on real datetimes.
     """
     a = aliased(Transaction)
     b = aliased(Transaction)
@@ -90,8 +92,8 @@ def _candidate_pairs(db: Session, window_days: int, anchor_ids: list[str] | None
                 b.amount_cents == -a.amount_cents,
                 b.account_id != a.account_id,
                 b.transfer_transaction_id.is_(None),
-                b.transaction_date >= func.datetime(a.transaction_date, f"-{slack} days"),
-                b.transaction_date <= func.datetime(a.transaction_date, f"+{slack} days"),
+                b.transaction_date >= a.transaction_date - timedelta(days=slack),
+                b.transaction_date <= a.transaction_date + timedelta(days=slack),
             ),
         )
         .filter(a.transfer_transaction_id.is_(None), a.amount_cents != 0, *_open_dates(db, a, b))
@@ -168,18 +170,17 @@ def link_offsetting_transfers(
             by_id[txn.id] = txn
 
     linked = 0
-    for out_id, in_id in chosen:
-        out_txn, in_txn = by_id.get(out_id), by_id.get(in_id)
-        if out_txn is None or in_txn is None:
-            continue
-        if out_txn.transfer_transaction_id or in_txn.transfer_transaction_id:
-            continue
-        out_txn.transfer_transaction_id = in_txn.id
-        in_txn.transfer_transaction_id = out_txn.id
-        linked += 1
-
-    if linked > 0:
-        db.commit()
+    with batched_commits(db) as batch:
+        for out_id, in_id in chosen:
+            out_txn, in_txn = by_id.get(out_id), by_id.get(in_id)
+            if out_txn is None or in_txn is None:
+                continue
+            if out_txn.transfer_transaction_id or in_txn.transfer_transaction_id:
+                continue
+            out_txn.transfer_transaction_id = in_txn.id
+            in_txn.transfer_transaction_id = out_txn.id
+            linked += 1
+            batch.changed(2)
 
     return linked, scanned
 

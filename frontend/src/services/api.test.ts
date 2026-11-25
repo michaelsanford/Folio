@@ -6,9 +6,9 @@ import {
   retryPolicy,
   setStoredToken,
   setOnUnauthorized,
-  VAULT_CONFLICT_MESSAGE,
+  WRITE_CONFLICT_MESSAGE,
 } from "./api";
-import { onVaultConflict, subscribeToNotifications } from "./notifications";
+import { onWriteConflict, subscribeToNotifications } from "./notifications";
 
 describe("API Service Auth and Storage Helpers", () => {
   beforeEach(() => {
@@ -112,7 +112,7 @@ describe("request retry policy", () => {
   });
 });
 
-describe("vault conflict handling", () => {
+describe("write conflict handling", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
   });
@@ -121,21 +121,21 @@ describe("vault conflict handling", () => {
     vi.unstubAllGlobals();
   });
 
-  it("publishes a notice and a reload event on 409 vault_conflict", async () => {
+  it("publishes a notice and a reload event on 409 write_conflict", async () => {
     vi.mocked(fetch).mockResolvedValue(
-      jsonResponse(409, { detail: { code: "vault_conflict", message: "Vault changed" } })
+      jsonResponse(409, { detail: { code: "write_conflict", message: "Someone else saved" } })
     );
     const notices: string[] = [];
     const reload = vi.fn();
     const unsubscribeNotices = subscribeToNotifications((n) => notices.push(n.message));
-    const unsubscribeConflict = onVaultConflict(reload);
+    const unsubscribeConflict = onWriteConflict(reload);
 
     try {
       const error = await api.updateAccount("acc-1", { name: "Renamed" }).catch((e) => e);
       expect(error).toBeInstanceOf(ApiError);
-      expect(error).toMatchObject({ status: 409, code: "vault_conflict" });
-      expect(error.message).toBe(VAULT_CONFLICT_MESSAGE);
-      expect(notices).toEqual([VAULT_CONFLICT_MESSAGE]);
+      expect(error).toMatchObject({ status: 409, code: "write_conflict" });
+      expect(error.message).toBe(WRITE_CONFLICT_MESSAGE);
+      expect(notices).toEqual([WRITE_CONFLICT_MESSAGE]);
       expect(reload).toHaveBeenCalledTimes(1);
       // A conflict is not transient: the request is not retried
       expect(fetch).toHaveBeenCalledTimes(1);
@@ -148,7 +148,7 @@ describe("vault conflict handling", () => {
   it("treats other 409 responses as ordinary errors", async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse(409, { detail: "Duplicate name" }));
     const reload = vi.fn();
-    const unsubscribe = onVaultConflict(reload);
+    const unsubscribe = onWriteConflict(reload);
 
     try {
       await expect(api.createCategory({ name: "Food" })).rejects.toMatchObject({
@@ -162,38 +162,13 @@ describe("vault conflict handling", () => {
   });
 });
 
-describe("vault sync failure handling", () => {
+describe("503 handling", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
-  });
-
-  it("shows the server's message for 503 vault_sync_failed and does not retry the write", async () => {
-    const serverMessage = "Your change wasn't saved. Please try again.";
-    vi.mocked(fetch).mockResolvedValue(
-      jsonResponse(503, { detail: { code: "vault_sync_failed", message: serverMessage } })
-    );
-    const notices: { message: string; tone: string }[] = [];
-    const reload = vi.fn();
-    const unsubscribeNotices = subscribeToNotifications((n) =>
-      notices.push({ message: n.message, tone: n.tone })
-    );
-    const unsubscribeConflict = onVaultConflict(reload);
-
-    try {
-      const error = await api.updateAccount("acc-1", { name: "Renamed" }).catch((e) => e);
-      expect(error).toBeInstanceOf(ApiError);
-      expect(error).toMatchObject({ status: 503, code: "vault_sync_failed", message: serverMessage });
-      expect(notices).toEqual([{ message: serverMessage, tone: "error" }]);
-      expect(reload).not.toHaveBeenCalled();
-      expect(fetch).toHaveBeenCalledTimes(1);
-    } finally {
-      unsubscribeNotices();
-      unsubscribeConflict();
-    }
   });
 
   it("does not raise a notice for an ordinary 503", async () => {

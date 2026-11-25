@@ -8,7 +8,7 @@ import { useHiddenAccounts } from "./useHiddenAccounts";
 import { setHiddenAccounts } from "../utils/dashboardFilter";
 import type { NumberFormatPreferences, UiPreferences } from "../types";
 
-/** Quiet time after the last change before it is saved (one vault sync per burst). */
+/** Quiet time after the last change before it is saved (one save per burst). */
 export const PREFERENCES_SAVE_DELAY_MS = 800;
 
 const toServerFormat = (p: NumberFormatPrefs): NumberFormatPreferences => ({

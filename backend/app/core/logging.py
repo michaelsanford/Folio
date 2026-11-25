@@ -4,12 +4,10 @@ Every record is one JSON object per line on stdout, which Lambda's JSON log
 format and CloudWatch metric filters can match on directly. Operational events
 that alarms depend on carry a stable ``event`` field:
 
-- ``s3_sync_failed``    a snapshot upload failed or was refused
-- ``s3_sync_conflict``  S3 rejected an upload because another writer won (412)
-- ``s3_restore_failed`` the vault could not be downloaded at startup
+- ``write_conflict``    a save lost every retry against concurrent writers
 - ``http_5xx``          a request ended in a server error
 
-Emit them with ``log_event(logger, logging.ERROR, "s3_sync_failed", "...")``.
+Emit them with ``log_event(logger, logging.WARNING, "write_conflict", "...")``.
 
 Access log: ``RequestContextMiddleware`` writes one INFO record per request on
 the ``folio.access`` logger with ``method``, ``path`` (never the query string,
@@ -28,9 +26,7 @@ import uuid
 from contextvars import ContextVar
 from datetime import datetime, timezone
 
-EVENT_S3_SYNC_FAILED = "s3_sync_failed"
-EVENT_S3_SYNC_CONFLICT = "s3_sync_conflict"
-EVENT_S3_RESTORE_FAILED = "s3_restore_failed"
+EVENT_WRITE_CONFLICT = "write_conflict"
 EVENT_HTTP_5XX = "http_5xx"
 
 request_id_var: ContextVar[str | None] = ContextVar("folio_request_id", default=None)

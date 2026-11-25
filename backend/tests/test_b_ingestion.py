@@ -279,10 +279,7 @@ def test_preview_never_persists_bedrock_rules(client, db_session, sample_checkin
 # ------------------------------------------------------------------ error handling
 
 
-def test_post_commit_failure_still_syncs(client, db_session, sample_checking_account, monkeypatch):
-    calls = []
-    monkeypatch.setattr(ingestion_api, "sync_now", lambda: calls.append(1) or True)
-
+def test_post_commit_failure_keeps_the_committed_import(client, db_session, sample_checking_account, monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("linking exploded")
 
@@ -295,25 +292,7 @@ def test_post_commit_failure_still_syncs(client, db_session, sample_checking_acc
                 "amount": -1.0, "import_hash": "h-sync",
             }],
         })
-    assert calls == [1], "the committed import must still be flushed to S3"
     assert db_session.query(Transaction).count() == 1
-
-
-def test_vault_conflict_propagates_from_commit(client, db_session, sample_checking_account, monkeypatch):
-    from app.core.s3_sync import VaultConflictError
-
-    def conflict():
-        raise VaultConflictError("changed elsewhere")
-
-    monkeypatch.setattr(ingestion_api, "sync_now", conflict)
-    resp = client.post("/api/ingestion/commit", json={
-        "account_id": sample_checking_account.id,
-        "items": [{
-            "transaction_date": "2026-03-01", "raw_payee": "X", "normalized_payee": "X",
-            "amount": -1.0, "import_hash": "h-conflict",
-        }],
-    })
-    assert resp.status_code == 409
 
 
 def test_corrupt_pdf_is_a_400_not_a_500(client, sample_checking_account):

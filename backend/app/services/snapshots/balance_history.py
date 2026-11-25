@@ -78,7 +78,7 @@ def backfill_all(db: Session, months: int = 24) -> int:
     total = 0
     for account in db.query(Account).all():
         total += backfill_account_history(db, account, months)
-    db.commit()
+        db.commit()  # one account per transaction keeps each well under the row limit
     return total
 
 
@@ -114,7 +114,7 @@ def net_worth_series(
     # One grouped query: the last snapshot of every (account, calendar month) up
     # to the final month end. This used to be one query per account per month
     # (12 x accounts) on every dashboard load.
-    month_key = func.strftime("%Y-%m", AccountBalanceSnapshot.as_of_date)
+    month_key = func.to_char(AccountBalanceSnapshot.as_of_date, "YYYY-MM")
     latest_per_month = (
         db.query(
             AccountBalanceSnapshot.account_id.label("account_id"),

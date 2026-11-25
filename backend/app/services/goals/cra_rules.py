@@ -65,7 +65,7 @@ def calculate_emergency_fund(
             Transaction.transaction_date <= datetime.now(),
             Transaction.transfer_transaction_id.is_(None),  # Exclude transfers
         )
-        .group_by(TransactionSplit.category_id)
+        .group_by(TransactionSplit.category_id, Category.name, Category.color, Category.type)
     )
 
     rows = query.all()
