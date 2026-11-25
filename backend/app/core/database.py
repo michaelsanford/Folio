@@ -23,23 +23,35 @@ def build_engine(url: str | None = None, **kwargs) -> Engine:
     """
     options = {"pool_pre_ping": True, "pool_recycle": POOL_RECYCLE_SECONDS, **kwargs}
     if url is None and settings.is_dsql:
-        from aurora_dsql_sqlalchemy import create_dsql_engine
-
-        engine = create_dsql_engine(
-            host=settings.DSQL_ENDPOINT,
-            user=settings.DSQL_USER,
-            application_name="folio",
-            # One Lambda container serves one request at a time.
-            pool_size=options.pop("pool_size", 2),
-            max_overflow=options.pop("max_overflow", 2),
-            connect_args={"region": settings.AWS_REGION},
-            **options,
-        )
+        # One Lambda container serves one request at a time.
+        options.setdefault("pool_size", 2)
+        options.setdefault("max_overflow", 2)
+        engine = dsql_engine(settings.DSQL_USER, "folio", **options)
     else:
         options.setdefault("isolation_level", ISOLATION_LEVEL)
         engine = create_engine(url or settings.DATABASE_URL, **options)
     _use_utc_sessions(engine)
     return engine
+
+
+def dsql_engine(user: str, application_name: str, **options) -> Engine:
+    """Engine for the serverless database, signing in as ``user`` with IAM tokens.
+
+    TLS is verified against certifi's CA bundle (which carries the Amazon root
+    CAs) rather than the operating system's store: psycopg's bundled libpq has
+    no system store on Windows, where deploy.ps1 runs migrations.
+    """
+    import certifi
+    from aurora_dsql_sqlalchemy import create_dsql_engine
+
+    return create_dsql_engine(
+        host=settings.DSQL_ENDPOINT,
+        user=user,
+        application_name=application_name,
+        sslrootcert=certifi.where(),
+        connect_args={"region": settings.AWS_REGION},
+        **options,
+    )
 
 
 def _use_utc_sessions(engine: Engine) -> None:

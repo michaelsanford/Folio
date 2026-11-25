@@ -12,6 +12,7 @@ import logging
 
 from alembic import command
 from alembic.config import Config
+from alembic.ddl.postgresql import PostgresqlImpl
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from pathlib import Path
@@ -19,6 +20,19 @@ from pathlib import Path
 from app.core.config import settings
 
 logger = logging.getLogger("folio.migrations")
+
+
+class AuroraDSQLImpl(PostgresqlImpl):
+    """Alembic's Postgres operations for the serverless database's dialect.
+
+    Defining the subclass registers it for the "auroradsql" dialect name, for
+    both migrations (env.py) and the startup revision check. DDL is not
+    transactional there: the dialect commits after every statement.
+    """
+
+    __dialect__ = "auroradsql"
+    transactional_ddl = False
+
 
 ALEMBIC_INI = Path(__file__).resolve().parent.parent.parent / "alembic.ini"
 

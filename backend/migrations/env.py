@@ -6,7 +6,8 @@ from sqlalchemy import pool
 from alembic import context
 
 from app.core.config import settings
-from app.core.database import Base, build_engine
+from app.core.database import Base, build_engine, dsql_engine
+import app.core.migrations  # noqa: F401 - registers Alembic's serverless-database dialect
 import app.models  # noqa: F401 - registers every model with Base metadata
 
 config = context.config
@@ -18,6 +19,7 @@ if config.config_file_name is not None and config.attributes.get("configure_logg
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
+
 
 # Schema changes on the serverless database are made as its admin role, which
 # owns the tables; the app's own role only reads and writes rows.
@@ -47,16 +49,7 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     url = _url()
     if url is None:
-        from aurora_dsql_sqlalchemy import create_dsql_engine
-
-        connectable = create_dsql_engine(
-            host=settings.DSQL_ENDPOINT,
-            user=DSQL_MIGRATION_USER,
-            application_name="folio-migrate",
-            pool_size=1,
-            max_overflow=0,
-            connect_args={"region": settings.AWS_REGION},
-        )
+        connectable = dsql_engine(DSQL_MIGRATION_USER, "folio-migrate", pool_size=1, max_overflow=0)
     else:
         connectable = build_engine(url, poolclass=pool.NullPool)
 

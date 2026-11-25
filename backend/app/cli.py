@@ -41,16 +41,9 @@ def _admin_engine():
         from app.core.database import build_engine
 
         return build_engine(settings.DATABASE_URL)
-    from aurora_dsql_sqlalchemy import create_dsql_engine
+    from app.core.database import dsql_engine
 
-    return create_dsql_engine(
-        host=settings.DSQL_ENDPOINT,
-        user=os.getenv("DSQL_MIGRATION_USER", "admin"),
-        application_name="folio-migrate",
-        pool_size=1,
-        max_overflow=0,
-        connect_args={"region": settings.AWS_REGION},
-    )
+    return dsql_engine(os.getenv("DSQL_MIGRATION_USER", "admin"), "folio-migrate", pool_size=1, max_overflow=0)
 
 
 def ensure_app_role(engine, role: str, iam_role_arn: str | None) -> None:
@@ -68,8 +61,15 @@ def ensure_app_role(engine, role: str, iam_role_arn: str | None) -> None:
         if not exists:
             conn.execute(text(f"CREATE ROLE {role} WITH LOGIN"))
             logger.info("Created database role %s", role)
-        conn.execute(text(f"GRANT USAGE ON SCHEMA public TO {role}"))
-        conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {role}"))
+        # Every role may use the public schema already (it is a system entity
+        # there and cannot be granted on); grant row access table by table.
+        tables = conn.execute(
+            text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+        ).scalars().all()
+        for table in tables:
+            if not _ROLE_RE.match(table):
+                continue
+            conn.execute(text(f'GRANT SELECT, INSERT, UPDATE, DELETE ON public."{table}" TO {role}'))
         if iam_role_arn:
             mapped = conn.execute(
                 text("SELECT 1 FROM sys.iam_pg_role_mappings WHERE pg_role_name = :r AND arn = :a"),
@@ -80,11 +80,26 @@ def ensure_app_role(engine, role: str, iam_role_arn: str | None) -> None:
                 logger.info("Mapped database role %s to %s", role, iam_role_arn)
 
 
-def seed(engine) -> None:
-    from app.main import seed_defaults_with
+def seed(engine, attempts: int = 5) -> None:
+    """Seed default categories and rules, retrying a conflict (idempotent).
 
-    with Session(engine) as db:
-        seed_defaults_with(db)
+    After schema changes a pooled connection's catalog can be stale (OC001);
+    a retry on a fresh connection picks up the new catalog.
+    """
+    from app.core.db_retry import is_write_conflict
+    from app.main import seed_defaults_with
+    from sqlalchemy.exc import DBAPIError
+
+    for attempt in range(1, attempts + 1):
+        engine.dispose()
+        try:
+            with Session(engine) as db:
+                seed_defaults_with(db)
+            return
+        except DBAPIError as exc:
+            if not is_write_conflict(exc) or attempt == attempts:
+                raise
+            logger.info("Seeding conflicted (%s); retrying", exc.orig.__class__.__name__)
 
 
 def migrate(app_role_arn: str | None = None) -> None:
