@@ -445,6 +445,63 @@ export interface HoldingValuation {
   price_as_of?: string | null;
   /** False when no quote has been entered; the value shown falls back to cost. */
   is_priced: boolean;
+  /** MANUAL, or the delayed source: YAHOO or TMX. */
+  price_source?: QuoteSource | null;
+  /** Trading session of an automated price. */
+  price_session?: QuoteSession | null;
+  /** Market time of the price (ISO). */
+  price_quoted_at?: string | null;
+  /** The day's reference price, and the change from it. */
+  previous_close?: number | null;
+  day_change?: number | null;
+  day_change_pct?: number | null;
+  /** The exchange listing quotes come from (XEQT.TO for a typed XEQT). */
+  quote_symbol?: string | null;
+}
+
+export type QuoteSource = "MANUAL" | "YAHOO" | "TMX";
+export type QuoteSession = "PRE" | "REGULAR" | "POST";
+
+/** `POST /investments/quotes/fetch-automated`. */
+export interface QuoteRefreshResponse {
+  updated_count: number;
+  failed_count: number;
+  quotes: {
+    symbol: string;
+    listing: string;
+    price: number;
+    currency: string;
+    as_of_date: string;
+    source: QuoteSource;
+    session: QuoteSession;
+    quoted_at: string | null;
+    previous_close: number | null;
+  }[];
+  failed_symbols: string[];
+  failures: { symbol: string; reason: string }[];
+  usdcad_fx_rate: number | null;
+  accounts_revalued: number;
+  skipped_count: number;
+  skipped_symbols: string[];
+  skipped_closed: string[];
+  skipped_recent: string[];
+  skipped_manual: string[];
+  timed_out: boolean;
+  refreshed_at: string | null;
+}
+
+/** `GET /investments/symbol-lookup`: what a typed symbol resolves to. */
+export interface SymbolLookupResponse {
+  query: string;
+  found: boolean;
+  listing?: string | null;
+  name?: string | null;
+  exchange?: string | null;
+  currency?: string | null;
+  price?: number | null;
+  source?: QuoteSource | null;
+  session?: QuoteSession | null;
+  reason?: string | null;
 }
 
 export interface PeriodReturn {

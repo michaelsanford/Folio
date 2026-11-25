@@ -27,6 +27,7 @@ from app.schemas.investment import (
     ReturnHistoryPoint,
     ReturnHistoryResponse,
     SecurityCreate,
+    SymbolLookupResponse,
     SecurityResponse,
 )
 from app.services.investments.performance import (
@@ -39,19 +40,51 @@ from app.services.investments.performance import (
 from app.services.investments.quote_fetcher import (
     INVESTMENT_ACCOUNT_TYPES,
     fetch_boc_usdcad_rate,
+    lookup_listing,
     revalue_accounts,
     update_quotes_for_securities,
 )
+from app.services.investments.symbols import quote_candidates
 
 router = APIRouter(prefix="/investments", tags=["Investments"])
 
 
-def _get_or_create_security(db: Session, symbol: str, name: str | None = None, asset_class=None) -> Security:
+def _find_security(db: Session, symbol: str, currency: str | None = None) -> Security | None:
+    """An existing security for this symbol, or for the listing it means.
+
+    ``XEQT`` typed in a CAD account finds ``XEQT.TO`` rather than becoming a
+    second, unquotable security.
+    """
     symbol = symbol.strip().upper()
-    security = db.query(Security).filter(Security.symbol == symbol).first()
+    exact = db.query(Security).filter(Security.symbol == symbol).first()
+    if exact:
+        return exact
+    candidates = quote_candidates(symbol, currency)
+    if not candidates:
+        return None
+    matches = (
+        db.query(Security)
+        .filter(Security.symbol.in_(candidates) | Security.quote_symbol.in_(candidates))
+        .all()
+    )
+    # Most likely listing first, as quote_candidates orders them.
+    rank = {c: i for i, c in enumerate(candidates)}
+    matches.sort(key=lambda s: min(rank.get(s.symbol, 99), rank.get(s.quote_symbol or "", 99)))
+    return matches[0] if matches else None
+
+
+def _get_or_create_security(
+    db: Session,
+    symbol: str,
+    name: str | None = None,
+    asset_class=None,
+    currency: str | None = None,
+) -> Security:
+    symbol = symbol.strip().upper()
+    security = _find_security(db, symbol, currency)
     if security:
         return security
-    security = Security(symbol=symbol, name=name)
+    security = Security(symbol=symbol, name=name, currency=(currency or "CAD").upper())
     if asset_class is not None:
         security.asset_class = asset_class
     db.add(security)
@@ -72,7 +105,20 @@ def _require_investment_account(db: Session, account_id: str) -> Account:
 
 
 def _valuation_to_schema(v: dict) -> HoldingValuation:
+    price_cents = v["price_cents"]
+    prev_cents = v.get("previous_close_cents")
+    day_change = day_change_pct = None
+    if price_cents is not None and prev_cents:
+        day_change = float(from_cents(price_cents - prev_cents))
+        day_change_pct = round((price_cents - prev_cents) / prev_cents * 100.0, 2)
     return HoldingValuation(
+        price_source=v.get("price_source"),
+        price_session=v.get("price_session"),
+        price_quoted_at=v.get("price_quoted_at"),
+        previous_close=float(from_cents(prev_cents)) if prev_cents else None,
+        day_change=day_change,
+        day_change_pct=day_change_pct,
+        quote_symbol=v.get("quote_symbol"),
         holding_id=v["holding_id"],
         security_id=v["security_id"],
         symbol=v["symbol"],
@@ -122,8 +168,10 @@ def list_holdings(
 
 @router.post("/holdings", response_model=HoldingValuation, status_code=status.HTTP_201_CREATED)
 def create_holding(payload: HoldingCreate, db: Session = Depends(get_db)):
-    _require_investment_account(db, payload.account_id)
-    security = _get_or_create_security(db, payload.symbol, payload.name, payload.asset_class)
+    account = _require_investment_account(db, payload.account_id)
+    security = _get_or_create_security(
+        db, payload.symbol, payload.name, payload.asset_class, currency=account.currency
+    )
 
     holding = (
         db.query(Holding)
@@ -162,9 +210,19 @@ def delete_holding(holding_id: str, db: Session = Depends(get_db)):
 
 # ------------------------------------------------------------------------ prices
 
+def _set_manual_price(quote: PriceQuote, price) -> None:
+    """A typed price replaces a fetched one for that day and is never overwritten by a fetch."""
+    quote.price_cents = to_cents(price)
+    quote.source = "MANUAL"
+    quote.session = None
+    quote.quoted_at = None
+    quote.fetched_at = None
+    quote.previous_close_cents = None
+
+
 @router.post("/prices", response_model=PriceQuoteResponse, status_code=status.HTTP_201_CREATED)
 def upsert_price(payload: PriceQuoteCreate, db: Session = Depends(get_db)):
-    """Record a price. Manual by design: no external feed, so no network egress."""
+    """Record a price by hand. It takes precedence over fetched quotes for that day."""
     security = _get_or_create_security(db, payload.symbol)
 
     quote = (
@@ -172,15 +230,10 @@ def upsert_price(payload: PriceQuoteCreate, db: Session = Depends(get_db)):
         .filter(PriceQuote.security_id == security.id, PriceQuote.as_of_date == payload.as_of_date)
         .first()
     )
-    if quote:
-        quote.price_cents = to_cents(payload.price)
-    else:
-        quote = PriceQuote(
-            security_id=security.id,
-            as_of_date=payload.as_of_date,
-            price_cents=to_cents(payload.price),
-        )
+    if quote is None:
+        quote = PriceQuote(security_id=security.id, as_of_date=payload.as_of_date)
         db.add(quote)
+    _set_manual_price(quote, payload.price)
 
     db.commit()
     db.refresh(quote)
@@ -204,15 +257,10 @@ def upsert_prices_bulk(payload: PriceQuoteBulkCreate, db: Session = Depends(get_
             .filter(PriceQuote.security_id == security.id, PriceQuote.as_of_date == item.as_of_date)
             .first()
         )
-        if quote:
-            quote.price_cents = to_cents(item.price)
-        else:
-            quote = PriceQuote(
-                security_id=security.id,
-                as_of_date=item.as_of_date,
-                price_cents=to_cents(item.price),
-            )
+        if quote is None:
+            quote = PriceQuote(security_id=security.id, as_of_date=item.as_of_date)
             db.add(quote)
+        _set_manual_price(quote, item.price)
         db.flush()
         results.append(
             PriceQuoteResponse(
@@ -240,6 +288,9 @@ def list_prices(symbol: str | None = None, db: Session = Depends(get_db)):
             symbol=q.security.symbol,
             as_of_date=q.as_of_date,
             price=float(from_cents(q.price_cents)),
+            source=q.source,
+            session=q.session,
+            quoted_at=q.quoted_at,
         )
         for q in quotes
     ]
@@ -387,11 +438,18 @@ class AutomatedQuotesResponse(BaseModel):
     usdcad_fx_rate: float | None = None
     accounts_revalued: int
     quotes_fetched: int = 0
-    # Symbols that already had a quote for the date and were not re-fetched.
+    # Symbols not fetched: market closed with its close recorded, fetched in
+    # the last few minutes, or priced by hand today.
     skipped_count: int = 0
     skipped_symbols: list[str] = []
+    skipped_closed: list[str] = []
+    skipped_recent: list[str] = []
+    skipped_manual: list[str] = []
+    # One entry per symbol that could not be quoted, with the reason.
+    failures: list[dict] = []
     # True when the overall fetch deadline cut slow symbols off.
     timed_out: bool = False
+    refreshed_at: str | None = None
 
 
 class FxRateResponse(BaseModel):
@@ -413,9 +471,34 @@ def fetch_automated_quotes(
         symbols = payload
     elif isinstance(payload, dict):
         symbols = payload.get("symbols")
-    res = update_quotes_for_securities(db, symbols=symbols, as_of=as_of)
+    # An empty list means "everything", not "nothing": the app used to send
+    # {"symbols": []} and so refreshed zero securities.
+    res = update_quotes_for_securities(db, symbols=symbols or None, as_of=as_of)
     res["quotes_fetched"] = res.get("updated_count", 0)
     return AutomatedQuotesResponse(**res)
+
+
+@router.get("/symbol-lookup", response_model=SymbolLookupResponse)
+def symbol_lookup(
+    q: str = Query(..., min_length=1, max_length=32),
+    currency: str = Query("CAD", min_length=3, max_length=3),
+):
+    """Which listing a typed symbol means (``XEQT`` -> ``XEQT.TO``), with its delayed price."""
+    result = lookup_listing(q, currency)
+    quote = result.quote
+    if quote is None:
+        return SymbolLookupResponse(query=q.strip().upper(), found=False, reason=result.reason)
+    return SymbolLookupResponse(
+        query=q.strip().upper(),
+        found=True,
+        listing=result.resolved_symbol,
+        name=quote.name,
+        exchange=quote.exchange,
+        currency=quote.currency,
+        price=quote.price,
+        source=quote.source,
+        session=quote.session,
+    )
 
 
 @router.get("/fx-rate", response_model=FxRateResponse)

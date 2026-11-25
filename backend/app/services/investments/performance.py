@@ -34,7 +34,7 @@ DAYS_PER_YEAR = 365.0
 # --------------------------------------------------------------------------
 
 def latest_price_cents(db: Session, security_id: str, as_of: date | None = None) -> tuple[int | None, date | None]:
-    """Most recent manually entered price at or before ``as_of``.
+    """Most recent price at or before ``as_of``.
 
     Returns the date too so callers can show how stale the valuation is -- a
     price with no "as of" stamp invites mistaking an old quote for a live one.
@@ -59,8 +59,20 @@ def latest_prices_cents(
     Returns ``{security_id: (price_cents, as_of_date)}``; unpriced securities
     are absent. Replaces one query per holding when valuing a portfolio.
     """
+    return {sid: (row.price_cents, row.as_of_date) for sid, row in latest_quote_rows(db, security_ids, as_of).items()}
+
+
+def latest_quote_rows(
+    db: Session,
+    security_ids: list[str],
+    as_of: date | None = None,
+) -> dict[str, PriceQuote]:
+    """Latest PriceQuote row at or before ``as_of`` per security, in one query.
+
+    The whole row, so callers also see where the price came from and when.
+    """
     ids = list(dict.fromkeys(i for i in security_ids if i))
-    prices: dict[str, tuple[int, date]] = {}
+    prices: dict[str, PriceQuote] = {}
     for i in range(0, len(ids), _ID_CHUNK):
         chunk = ids[i : i + _ID_CHUNK]
         latest = db.query(
@@ -71,7 +83,7 @@ def latest_prices_cents(
             latest = latest.filter(PriceQuote.as_of_date <= as_of)
         latest = latest.group_by(PriceQuote.security_id).subquery()
         rows = (
-            db.query(PriceQuote.security_id, PriceQuote.price_cents, PriceQuote.as_of_date)
+            db.query(PriceQuote)
             .join(
                 latest,
                 and_(
@@ -81,8 +93,8 @@ def latest_prices_cents(
             )
             .all()
         )
-        for security_id, price_cents, quote_date in rows:
-            prices[security_id] = (price_cents, quote_date)
+        for row in rows:
+            prices[row.security_id] = row
     return prices
 
 
@@ -96,11 +108,8 @@ def load_holdings(db: Session, account_ids: list[str] | None = None) -> list[Hol
 
 def value_holdings(db: Session, holdings: list[Holding], as_of: date | None = None) -> list[dict]:
     """Value many holdings with a single batched price lookup."""
-    prices = latest_prices_cents(db, [h.security_id for h in holdings], as_of)
-    return [
-        holding_valuation(db, h, as_of, price=prices.get(h.security_id, (None, None)))
-        for h in holdings
-    ]
+    rows = latest_quote_rows(db, [h.security_id for h in holdings], as_of)
+    return [holding_valuation(db, h, as_of, quote=rows.get(h.security_id), batched=True) for h in holdings]
 
 
 def open_quantity(holding: Holding) -> Decimal:
@@ -127,19 +136,20 @@ def holding_valuation(
     db: Session,
     holding: Holding,
     as_of: date | None = None,
-    price: tuple[int | None, date | None] | None = None,
+    quote: PriceQuote | None = None,
+    batched: bool = False,
 ) -> dict:
     """Market value, cost basis, and unrealized gain for one position.
 
-    Pass ``price`` (from :func:`latest_prices_cents`) when valuing many
-    holdings, to avoid one price query per holding.
+    When valuing many holdings, pass ``quote`` (from :func:`latest_quote_rows`)
+    with ``batched=True`` to avoid one price query per holding.
     """
     quantity = open_quantity(holding)
     cost_cents = open_cost_basis_cents(holding)
-    if price is None:
-        price_cents, price_date = latest_price_cents(db, holding.security_id, as_of)
-    else:
-        price_cents, price_date = price
+    if not batched:
+        quote = latest_quote_rows(db, [holding.security_id], as_of).get(holding.security_id)
+    price_cents = quote.price_cents if quote is not None else None
+    price_date = quote.as_of_date if quote is not None else None
 
     if price_cents is None:
         # No price entered yet: report cost rather than pretending the value is
@@ -166,6 +176,11 @@ def holding_valuation(
         "price_cents": price_cents,
         "price_as_of": price_date,
         "is_priced": priced,
+        "price_source": quote.source if quote is not None else None,
+        "price_session": quote.session if quote is not None else None,
+        "price_quoted_at": quote.quoted_at if quote is not None else None,
+        "previous_close_cents": quote.previous_close_cents if quote is not None else None,
+        "quote_symbol": holding.security.quote_symbol if holding.security else None,
     }
 
 

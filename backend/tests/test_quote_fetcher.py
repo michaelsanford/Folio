@@ -27,15 +27,16 @@ def test_automated_quote_fetching(client: TestClient, db_session: Session, monke
     def mock_boc_rate(*args, **kwargs):
         return 1.3850
 
-    def mock_single_quote(symbol, *args, **kwargs):
+    def mock_yahoo(symbol, *args, **kwargs):
         if symbol == "XEQT.TO":
-            return 32.50, "CAD"
-        return None, None
+            return qf.Quote(symbol=symbol, price=32.50, source="YAHOO", currency="CAD"), None
+        return None, "not found"
 
     import app.api.investments as inv_api
     monkeypatch.setattr(qf, "fetch_boc_usdcad_rate", mock_boc_rate)
     monkeypatch.setattr(inv_api, "fetch_boc_usdcad_rate", mock_boc_rate)
-    monkeypatch.setattr(qf, "fetch_single_quote", mock_single_quote)
+    monkeypatch.setattr(qf, "fetch_yahoo_quote", mock_yahoo)
+    monkeypatch.setattr(qf, "fetch_tmx_quote", lambda *a, **k: (None, "not found"))
 
     # 1. Test FX rate endpoint
     fx_resp = client.get("/api/investments/fx-rate")
@@ -58,3 +59,24 @@ def test_automated_quote_fetching(client: TestClient, db_session: Session, monke
     assert acc_check.json()["current_balance"] == 3250.0
 from datetime import datetime
 
+
+
+def test_an_empty_symbol_list_refreshes_everything(client: TestClient, db_session: Session, monkeypatch):
+    """The app sent {"symbols": []}, which used to refresh nothing at all."""
+    acc = Account(name="TFSA", type=AccountType.TFSA, currency="CAD")
+    db_session.add(acc)
+    db_session.flush()
+    sec = Security(symbol="XEQT.TO", currency="CAD")
+    db_session.add(sec)
+    db_session.flush()
+    db_session.add(Holding(account_id=acc.id, security_id=sec.id))
+    db_session.commit()
+
+    monkeypatch.setattr(qf, "fetch_boc_usdcad_rate", lambda *a, **k: None)
+    monkeypatch.setattr(qf, "fetch_tmx_quote", lambda *a, **k: (None, "not found"))
+    monkeypatch.setattr(
+        qf, "fetch_yahoo_quote",
+        lambda s, *a, **k: (qf.Quote(symbol=s, price=43.17, source="YAHOO"), None),
+    )
+    data = client.post("/api/investments/quotes/fetch-automated", json={"symbols": []}).json()
+    assert data["updated_count"] == 1

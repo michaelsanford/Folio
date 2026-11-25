@@ -1,32 +1,73 @@
+"""Delayed market quotes from keyless public sources, and portfolio revaluation.
+
+Sources, tried per security in order:
+
+* **Yahoo Finance** chart endpoint (unofficial; TSX, TSX-V, US, crypto), with
+  pre- and post-market prices for US listings.
+* **TMX Money** quote endpoint (unofficial; the TSX operator's own data, about
+  15 minutes delayed), for TSX and TSX-V listings when Yahoo does not answer.
+
+Neither is an official API, so every failure is logged with the provider, the
+symbol and the reason, and reported back per symbol. Quotes are fetched only
+while a listing trades (see ``market_hours``), never more than once per
+``REFRESH_FLOOR``, and a price typed in by hand is never overwritten.
+"""
 import logging
+import math
 import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from datetime import date
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta, timezone
 
 import httpx
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.core.money import from_cents, to_cents
 from app.models.account import Account, AccountType
-from app.models.investment import PriceQuote, Security
+from app.models.investment import PriceQuote, QuoteSource, Security
+from app.services.investments.market_hours import (
+    default_timezone,
+    has_extended_hours,
+    should_fetch,
+    trading_date,
+)
 from app.services.investments.performance import load_holdings, value_holdings
+from app.services.investments.symbols import is_canadian_listing, quote_candidates, tmx_symbol
 from app.services.snapshots.balance_history import record_snapshot
 
 logger = logging.getLogger("folio.quote_fetcher")
 
 BOC_VALET_URL = "https://www.bankofcanada.ca/valet/observations/FXUSDCAD/json?recent=1"
-YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=1d"
+YAHOO_CHART_URL = (
+    "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=5m&range=1d&includePrePost=true"
+)
+TMX_GRAPHQL_URL = "https://app-money.tmx.com/graphql"
+# Yahoo refuses requests without a browser User-Agent.
 REQUEST_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
+TMX_HEADERS = {
+    "User-Agent": "Folio/1.0",
+    "Accept": "application/json",
+    "Referer": "https://money.tmx.com/",
+    "Origin": "https://money.tmx.com",
+}
+TMX_QUERY = """query getQuoteBySymbol($symbol: String, $locale: String) {
+  getQuoteBySymbol(symbol: $symbol, locale: $locale) {
+    symbol name price prevClose exShortName datetime
+  }
+}"""
 
 # The whole refresh must finish well inside the request budget. Quotes still
 # outstanding at the deadline are reported as failed instead of holding the
-# request open (sequential fetches at 8 s each used to stack up per symbol).
+# request open.
 QUOTE_DEADLINE_SECONDS = 20.0
 PER_REQUEST_TIMEOUT_SECONDS = 8.0
 MAX_QUOTE_WORKERS = 8
+# Repeated refreshes inside this window reuse the last fetch.
+REFRESH_FLOOR = timedelta(minutes=10)
 
 INVESTMENT_ACCOUNT_TYPES = {
     AccountType.INVESTMENT,
@@ -109,63 +150,241 @@ def fetch_boc_usdcad_rate(timeout: float = PER_REQUEST_TIMEOUT_SECONDS, client: 
                 rate_str = latest.get("FXUSDCAD", {}).get("v")
                 if rate_str:
                     return float(rate_str)
+        else:
+            logger.warning("Bank of Canada FX request returned HTTP %s", resp.status_code)
     except Exception as e:
         logger.warning(f"Could not fetch Bank of Canada FXUSDCAD rate: {e}")
     return None
 
 
-def fetch_single_quote(
+# --------------------------------------------------------------------- providers
+
+@dataclass
+class Quote:
+    """One delayed price from a provider."""
+
+    symbol: str
+    price: float
+    source: str
+    currency: str | None = None
+    session: str = "REGULAR"
+    quoted_at: datetime | None = None
+    previous_close: float | None = None
+    name: str | None = None
+    exchange: str | None = None
+    timezone: str | None = None
+
+
+@dataclass
+class QuoteResult:
+    """What fetching one security produced: a quote, or why there is none."""
+
+    quote: Quote | None = None
+    # The listing that answered (``XEQT.TO`` for a typed ``XEQT``).
+    resolved_symbol: str | None = None
+    reasons: list[str] = field(default_factory=list)
+
+    @property
+    def reason(self) -> str:
+        return "; ".join(self.reasons) or "no answer"
+
+
+def _valid_price(value) -> float | None:
+    try:
+        price = float(value)
+    except (TypeError, ValueError):
+        return None
+    return price if math.isfinite(price) and price > 0 else None
+
+
+def _epoch(value) -> datetime | None:
+    try:
+        return datetime.fromtimestamp(int(value), tz=timezone.utc)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+
+
+def parse_yahoo_chart(symbol: str, data: dict) -> tuple[Quote | None, str | None]:
+    """A Yahoo chart response -> Quote, marking pre/post-market prices as such."""
+    chart = (data or {}).get("chart") or {}
+    results = chart.get("result") or []
+    if not results:
+        error = chart.get("error") or {}
+        return None, error.get("description") or "no data"
+    result = results[0]
+    meta = result.get("meta") or {}
+    regular = _valid_price(meta.get("regularMarketPrice"))
+    if regular is None:
+        return None, "no price"
+
+    quote = Quote(
+        symbol=meta.get("symbol") or symbol,
+        price=regular,
+        source=QuoteSource.YAHOO.value,
+        currency=meta.get("currency"),
+        quoted_at=_epoch(meta.get("regularMarketTime")),
+        previous_close=_valid_price(meta.get("chartPreviousClose") or meta.get("previousClose")),
+        name=meta.get("longName") or meta.get("shortName"),
+        exchange=meta.get("exchangeName"),
+        timezone=meta.get("exchangeTimezoneName"),
+    )
+
+    if meta.get("hasPrePostMarketData"):
+        # The latest candle tells whether trading is now outside the regular session.
+        stamps = result.get("timestamp") or []
+        closes = (((result.get("indicators") or {}).get("quote") or [{}])[0].get("close")) or []
+        last = next(
+            ((ts, c) for ts, c in zip(reversed(stamps), reversed(closes)) if _valid_price(c) is not None),
+            None,
+        )
+        periods = meta.get("currentTradingPeriod") or {}
+        if last is not None:
+            ts, close = last
+            for name, session in (("pre", "PRE"), ("post", "POST")):
+                window = periods.get(name) or {}
+                start, end = window.get("start"), window.get("end")
+                if start is not None and end is not None and start <= ts < end:
+                    quote.session = session
+                    # Change is measured against the regular session's last price.
+                    quote.previous_close = regular
+                    quote.price = float(close)
+                    quote.quoted_at = _epoch(ts)
+                    break
+    return quote, None
+
+
+def fetch_yahoo_quote(
     symbol: str,
     timeout: float = PER_REQUEST_TIMEOUT_SECONDS,
     client: httpx.Client | None = None,
-) -> tuple[float | None, str | None]:
-    """
-    Fetches the latest market price for a symbol via public market endpoint.
-    Returns (price, currency). Supports TSX (.TO), TSX-V (.V), US tickers, and Crypto.
-    """
-    clean_sym = symbol.strip().upper()
-    url = YAHOO_CHART_URL.format(symbol=clean_sym)
+) -> tuple[Quote | None, str | None]:
+    """Yahoo Finance delayed quote, or (None, reason)."""
     try:
-        resp = (client or get_http_client()).get(url, timeout=timeout)
-        if resp.status_code == 200:
-            data = resp.json()
-            result = data.get("chart", {}).get("result", [])
-            if result:
-                meta = result[0].get("meta", {})
-                price = meta.get("regularMarketPrice")
-                currency = meta.get("currency", "CAD")
-                if price is not None:
-                    return float(price), currency
+        resp = (client or get_http_client()).get(YAHOO_CHART_URL.format(symbol=symbol), timeout=timeout)
     except Exception as e:
-        logger.warning(f"Failed to fetch market quote for {symbol}: {e}")
-    return None, None
+        logger.warning("Yahoo quote for %s failed: %s", symbol, e)
+        return None, f"Yahoo: {type(e).__name__}"
+    if resp.status_code == 404:
+        return None, "not found"
+    if resp.status_code != 200:
+        logger.warning("Yahoo quote for %s returned HTTP %s", symbol, resp.status_code)
+        return None, f"Yahoo: HTTP {resp.status_code}"
+    try:
+        quote, reason = parse_yahoo_chart(symbol, resp.json())
+    except Exception as e:
+        logger.warning("Yahoo quote for %s could not be read: %s", symbol, e)
+        return None, "Yahoo: unreadable response"
+    if quote is None:
+        logger.info("Yahoo had no quote for %s: %s", symbol, reason)
+    return quote, reason
+
+
+def parse_tmx_quote(symbol: str, data: dict) -> tuple[Quote | None, str | None]:
+    """A TMX Money ``getQuoteBySymbol`` response -> Quote."""
+    node = ((data or {}).get("data") or {}).get("getQuoteBySymbol")
+    if not node:
+        errors = (data or {}).get("errors") or []
+        return None, "not found" if any(str(e.get("code")) == "404" for e in errors) else "no data"
+    price = _valid_price(node.get("price"))
+    if price is None:
+        return None, "no price"
+    quoted_at = None
+    if node.get("datetime"):
+        try:
+            quoted_at = datetime.fromisoformat(node["datetime"]).astimezone(timezone.utc)
+        except ValueError:
+            quoted_at = None
+    return Quote(
+        symbol=symbol,
+        price=price,
+        source=QuoteSource.TMX.value,
+        currency="CAD",
+        quoted_at=quoted_at,
+        previous_close=_valid_price(node.get("prevClose")),
+        name=node.get("name"),
+        exchange=node.get("exShortName"),
+        timezone="America/Toronto",
+    ), None
+
+
+def fetch_tmx_quote(
+    symbol: str,
+    timeout: float = PER_REQUEST_TIMEOUT_SECONDS,
+    client: httpx.Client | None = None,
+) -> tuple[Quote | None, str | None]:
+    """TMX Money delayed quote for a TSX/TSX-V listing, or (None, reason)."""
+    body = {
+        "operationName": "getQuoteBySymbol",
+        "variables": {"symbol": tmx_symbol(symbol), "locale": "en"},
+        "query": TMX_QUERY,
+    }
+    try:
+        resp = (client or get_http_client()).post(TMX_GRAPHQL_URL, json=body, headers=TMX_HEADERS, timeout=timeout)
+    except Exception as e:
+        logger.warning("TMX quote for %s failed: %s", symbol, e)
+        return None, f"TMX: {type(e).__name__}"
+    if resp.status_code != 200:
+        logger.warning("TMX quote for %s returned HTTP %s", symbol, resp.status_code)
+        return None, f"TMX: HTTP {resp.status_code}"
+    try:
+        return parse_tmx_quote(symbol, resp.json())
+    except Exception as e:
+        logger.warning("TMX quote for %s could not be read: %s", symbol, e)
+        return None, "TMX: unreadable response"
+
+
+def fetch_security_quote(
+    candidates: list[str],
+    timeout: float = PER_REQUEST_TIMEOUT_SECONDS,
+    client: httpx.Client | None = None,
+) -> QuoteResult:
+    """Try each candidate listing on Yahoo, then TMX for Canadian ones."""
+    result = QuoteResult()
+    for symbol in candidates:
+        # Module-level lookups at call time, so tests can patch the providers.
+        quote, reason = fetch_yahoo_quote(symbol, timeout, client)
+        if quote is not None:
+            return QuoteResult(quote=quote, resolved_symbol=symbol)
+        result.reasons.append(f"{symbol}: {reason}")
+    for symbol in candidates:
+        if not is_canadian_listing(symbol):
+            continue
+        quote, reason = fetch_tmx_quote(symbol, timeout, client)
+        if quote is not None:
+            return QuoteResult(quote=quote, resolved_symbol=symbol)
+        result.reasons.append(f"{symbol} (TMX): {reason}")
+    logger.warning("No quote for %s: %s", candidates[0] if candidates else "?", result.reason)
+    return result
 
 
 def fetch_quotes_concurrently(
-    symbols: list[str],
+    requests: dict[str, list[str]],
     deadline_seconds: float = QUOTE_DEADLINE_SECONDS,
     include_fx: bool = True,
-) -> tuple[dict[str, tuple[float | None, str | None]], float | None, bool]:
+) -> tuple[dict[str, QuoteResult], float | None, bool]:
     """Fetch quotes (and the BoC FX rate) in parallel under one overall deadline.
 
-    Returns ``(quotes_by_symbol, fx_rate, timed_out)``. Symbols still pending at
-    the deadline are absent from ``quotes_by_symbol``.
+    ``requests`` maps a caller's key (a security id) to the listings to try.
+    Returns ``(results_by_key, fx_rate, timed_out)``; keys still pending at the
+    deadline are absent.
     """
     started = time.monotonic()
     per_call = min(PER_REQUEST_TIMEOUT_SECONDS, deadline_seconds)
     client = get_http_client()
-    results: dict[str, tuple[float | None, str | None]] = {}
+    results: dict[str, QuoteResult] = {}
     fx_rate: float | None = None
     timed_out = False
 
-    work = len(symbols) + (1 if include_fx else 0)
+    work = len(requests) + (1 if include_fx else 0)
     if work == 0:
         return results, fx_rate, False
 
     pool = ThreadPoolExecutor(max_workers=min(MAX_QUOTE_WORKERS, work), thread_name_prefix="quotes")
     try:
-        # Module-level lookups at call time, so tests can patch the fetchers.
-        futures = {pool.submit(fetch_single_quote, sym, per_call, client): sym for sym in symbols}
+        futures = {
+            pool.submit(fetch_security_quote, candidates, per_call, client): key
+            for key, candidates in requests.items()
+        }
         fx_future = pool.submit(fetch_boc_usdcad_rate, per_call, client) if include_fx else None
         pending = set(futures) | ({fx_future} if fx_future else set())
         while pending:
@@ -177,13 +396,15 @@ def fetch_quotes_concurrently(
             for fut in done:
                 try:
                     value = fut.result()
-                except Exception as e:  # fetchers already swallow errors; belt and braces
+                except Exception as e:  # providers already swallow errors; belt and braces
                     logger.warning("Quote fetch failed: %s", e)
                     value = None
                 if fut is fx_future:
                     fx_rate = value
                 else:
-                    results[futures[fut]] = value if value is not None else (None, None)
+                    results[futures[fut]] = value if isinstance(value, QuoteResult) else QuoteResult(
+                        reasons=["unexpected error"]
+                    )
         if pending:
             timed_out = True
             for fut in pending:
@@ -194,12 +415,38 @@ def fetch_quotes_concurrently(
 
     if timed_out:
         logger.warning(
-            "Quote refresh hit its %.0f s deadline; %d of %d symbols unanswered",
+            "Quote refresh hit its %.0f s deadline; %d of %d securities unanswered",
             deadline_seconds,
-            len(symbols) - len(results),
-            len(symbols),
+            len(requests) - len(results),
+            len(requests),
         )
     return results, fx_rate, timed_out
+
+
+# ----------------------------------------------------------------------- refresh
+
+def _latest_quotes(db: Session, security_ids: list[str]) -> dict[str, PriceQuote]:
+    """The most recent PriceQuote row per security, in one query."""
+    if not security_ids:
+        return {}
+    latest = (
+        db.query(PriceQuote.security_id.label("security_id"), func.max(PriceQuote.as_of_date).label("d"))
+        .filter(PriceQuote.security_id.in_(security_ids))
+        .group_by(PriceQuote.security_id)
+        .subquery()
+    )
+    rows = (
+        db.query(PriceQuote)
+        .join(latest, and_(PriceQuote.security_id == latest.c.security_id, PriceQuote.as_of_date == latest.c.d))
+        .all()
+    )
+    return {r.security_id: r for r in rows}
+
+
+def _aware(moment: datetime | None) -> datetime | None:
+    if moment is not None and moment.tzinfo is None:
+        return moment.replace(tzinfo=timezone.utc)
+    return moment
 
 
 def update_quotes_for_securities(
@@ -207,67 +454,134 @@ def update_quotes_for_securities(
     symbols: list[str] | None = None,
     as_of: date | None = None,
     deadline_seconds: float = QUOTE_DEADLINE_SECONDS,
+    now: datetime | None = None,
 ) -> dict:
+    """Fetch delayed quotes for held securities, record them, and revalue accounts.
+
+    A security is skipped when its market is closed and its close is already
+    recorded, when it was fetched within ``REFRESH_FLOOR``, or when today's
+    price was typed in by hand. Every skip and failure is reported by symbol.
     """
-    Automated quote update: fetches quotes for all active or specified securities,
-    records PriceQuote entries in exact cents, and triggers portfolio revaluation.
+    now = _aware(now) or datetime.now(timezone.utc)
+    query = db.query(Security)
+    if symbols is not None:
+        clean = [s.strip().upper() for s in symbols if s.strip()]
+        query = query.filter(Security.symbol.in_(clean) | Security.quote_symbol.in_(clean))
+    securities = query.all()
 
-    Securities that already have a quote for the date are not fetched again.
-    """
-    as_of_date = as_of or date.today()
-    if symbols is None:
-        securities = db.query(Security).all()
-    else:
-        clean_symbols = [s.strip().upper() for s in symbols if s.strip()]
-        securities = db.query(Security).filter(Security.symbol.in_(clean_symbols)).all()
+    latest = _latest_quotes(db, [s.id for s in securities])
 
-    already_quoted = {
-        row[0]
-        for row in db.query(PriceQuote.security_id)
-        .filter(
-            PriceQuote.as_of_date == as_of_date,
-            PriceQuote.security_id.in_([sec.id for sec in securities]),
-        )
-        .all()
-    } if securities else set()
+    to_fetch: dict[str, list[str]] = {}
+    skipped_closed: list[str] = []
+    skipped_recent: list[str] = []
+    skipped_manual: list[str] = []
+    for sec in securities:
+        candidates = [sec.quote_symbol] if sec.quote_symbol else quote_candidates(sec.symbol, sec.currency)
+        if not candidates:
+            continue
+        listing = candidates[0]
+        tz = sec.exchange_timezone or default_timezone(listing)
+        extended = has_extended_hours(listing)
+        today_there = trading_date(now, tz, now.date())
+        row = latest.get(sec.id)
 
-    to_fetch = [sec for sec in securities if sec.id not in already_quoted]
-    skipped = sorted(sec.symbol for sec in securities if sec.id in already_quoted)
+        if row is not None and row.source == QuoteSource.MANUAL.value and row.as_of_date >= today_there:
+            skipped_manual.append(sec.symbol)
+            continue
+        last_fetched = _aware(row.fetched_at) if row is not None and row.source != QuoteSource.MANUAL.value else None
+        if last_fetched is not None and now - last_fetched < REFRESH_FLOOR:
+            skipped_recent.append(sec.symbol)
+            continue
+        if not should_fetch(now, tz, extended, last_fetched):
+            skipped_closed.append(sec.symbol)
+            continue
+        to_fetch[sec.id] = candidates
 
-    quotes, fx_rate, timed_out = fetch_quotes_concurrently(
-        [sec.symbol for sec in to_fetch], deadline_seconds=deadline_seconds
-    )
+    results, fx_rate, timed_out = fetch_quotes_concurrently(to_fetch, deadline_seconds=deadline_seconds)
 
+    by_id = {s.id: s for s in securities}
     updated: list[dict] = []
-    failed: list[str] = []
-    for sec in to_fetch:
-        price, cur = quotes.get(sec.symbol, (None, None))
-        if price is None or price <= 0:
-            failed.append(sec.symbol)
+    failures: list[dict] = []
+    for sec_id in to_fetch:
+        sec = by_id[sec_id]
+        result = results.get(sec_id)
+        if result is None:
+            failures.append({"symbol": sec.symbol, "reason": "timed out"})
+            continue
+        quote = result.quote
+        if quote is None:
+            failures.append({"symbol": sec.symbol, "reason": result.reason})
             continue
 
-        price_cents = to_cents(price)
-        db.add(PriceQuote(security_id=sec.id, as_of_date=as_of_date, price_cents=price_cents))
+        # Remember the listing that answered, and its exchange.
+        sec.quote_symbol = result.resolved_symbol
+        sec.exchange_timezone = quote.timezone or sec.exchange_timezone or default_timezone(result.resolved_symbol)
+        sec.exchange = quote.exchange or sec.exchange
+        if not sec.name and quote.name:
+            sec.name = quote.name
+
+        quote_date = as_of or trading_date(quote.quoted_at, sec.exchange_timezone, now.date())
+        row = (
+            db.query(PriceQuote)
+            .filter(PriceQuote.security_id == sec.id, PriceQuote.as_of_date == quote_date)
+            .first()
+        )
+        if row is not None and row.source == QuoteSource.MANUAL.value:
+            skipped_manual.append(sec.symbol)
+            continue
+        if row is None:
+            row = PriceQuote(security_id=sec.id, as_of_date=quote_date)
+            db.add(row)
+        row.price_cents = to_cents(quote.price)
+        row.source = quote.source
+        row.session = quote.session
+        row.quoted_at = quote.quoted_at
+        row.fetched_at = now
+        row.previous_close_cents = to_cents(quote.previous_close) if quote.previous_close else None
+
         updated.append({
             "symbol": sec.symbol,
-            "price": float(from_cents(price_cents)),
-            "currency": cur or sec.currency or "CAD",
-            "as_of_date": as_of_date.isoformat(),
+            "listing": result.resolved_symbol,
+            "price": float(from_cents(row.price_cents)),
+            "currency": quote.currency or sec.currency or "CAD",
+            "as_of_date": quote_date.isoformat(),
+            "source": quote.source,
+            "session": quote.session,
+            "quoted_at": quote.quoted_at.isoformat() if quote.quoted_at else None,
+            "previous_close": quote.previous_close,
         })
 
     db.commit()
 
     # Revalue all investment accounts to update balances and balance snapshots
-    accounts_revalued, _ = revalue_accounts(db=db, as_of=as_of_date)
+    accounts_revalued, _ = revalue_accounts(db=db, as_of=as_of)
 
+    skipped = sorted(set(skipped_closed + skipped_recent + skipped_manual))
     return {
         "updated_count": len(updated),
-        "failed_count": len(failed),
+        "failed_count": len(failures),
         "quotes": updated,
-        "failed_symbols": failed,
+        "failed_symbols": [f["symbol"] for f in failures],
+        "failures": failures,
         "usdcad_fx_rate": fx_rate,
         "accounts_revalued": accounts_revalued,
         "skipped_count": len(skipped),
         "skipped_symbols": skipped,
+        "skipped_closed": sorted(skipped_closed),
+        "skipped_recent": sorted(skipped_recent),
+        "skipped_manual": sorted(set(skipped_manual)),
         "timed_out": timed_out,
+        "refreshed_at": now.isoformat(),
     }
+
+
+def lookup_listing(
+    query: str,
+    currency: str | None = "CAD",
+    timeout: float = PER_REQUEST_TIMEOUT_SECONDS,
+) -> QuoteResult:
+    """Resolve what a typed symbol means, for the Add holding preview."""
+    candidates = quote_candidates(query, currency)
+    if not candidates:
+        return QuoteResult(reasons=["empty symbol"])
+    return fetch_security_quote(candidates, timeout, get_http_client())

@@ -75,6 +75,11 @@ class Security(Base):
     exchange = Column(String(32), nullable=True)
     currency = Column(String(3), nullable=False, default="CAD")
     asset_class = Column(Enum(AssetClass), nullable=False, default=AssetClass.EQUITY)
+    # The listing that actually answered a quote request (``XEQT`` typed in a
+    # CAD account resolves to ``XEQT.TO``), so it is looked up only once.
+    quote_symbol = Column(String(32), nullable=True)
+    # IANA zone of the listing's exchange, for its trading hours.
+    exchange_timezone = Column(String(64), nullable=True)
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -122,9 +127,27 @@ class Lot(Base):
     holding = relationship("Holding", back_populates="lots")
 
 
-@with_money(price=False)
+class QuoteSource(str, enum.Enum):
+    MANUAL = "MANUAL"
+    YAHOO = "YAHOO"
+    TMX = "TMX"
+
+
+class QuoteSession(str, enum.Enum):
+    """Which part of the trading day an automated price comes from."""
+
+    PRE = "PRE"
+    REGULAR = "REGULAR"
+    POST = "POST"
+
+
+@with_money(price=False, previous_close=True)
 class PriceQuote(Base):
-    """A manually entered price. There is no external price feed by design."""
+    """One price per security per trading day.
+
+    Typed in by hand (``MANUAL``) or fetched as a delayed quote. A manual price
+    is never overwritten by a fetched one for the same day.
+    """
 
     __tablename__ = "price_quotes"
 
@@ -132,6 +155,15 @@ class PriceQuote(Base):
     security_id = Column(String(36), ForeignKey("securities.id", ondelete="CASCADE"), nullable=False, index=True)
     as_of_date = Column(Date, nullable=False, index=True)
     price_cents = Column(Integer, nullable=False)
+
+    source = Column(String(16), nullable=False, default=QuoteSource.MANUAL.value, server_default="MANUAL")
+    # Market time of the price (exchange clock), and when Folio fetched it.
+    quoted_at = Column(DateTime(timezone=True), nullable=True)
+    fetched_at = Column(DateTime(timezone=True), nullable=True)
+    session = Column(String(8), nullable=True)
+    # Reference for the day's change: the prior close, or for a pre/post-market
+    # price the regular session's close.
+    previous_close_cents = Column(Integer, nullable=True)
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 

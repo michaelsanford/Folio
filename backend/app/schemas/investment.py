@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -75,6 +75,17 @@ class HoldingValuation(BaseModel):
     # False when no quote has been entered, so the UI can label the row rather
     # than let a cost-basis fallback pass for a market valuation.
     is_priced: bool
+    # MANUAL, YAHOO or TMX; automated prices are delayed.
+    price_source: str | None = None
+    # PRE, REGULAR or POST for automated prices.
+    price_session: str | None = None
+    price_quoted_at: datetime | None = None
+    # The day's reference price and the change from it.
+    previous_close: float | None = None
+    day_change: float | None = None
+    day_change_pct: float | None = None
+    # The exchange listing quotes come from (XEQT.TO for a typed XEQT).
+    quote_symbol: str | None = None
 
 
 class PriceQuoteCreate(BaseModel):
@@ -98,6 +109,24 @@ class PriceQuoteResponse(BaseModel):
     symbol: str
     as_of_date: date
     price: float
+    source: str = "MANUAL"
+    session: str | None = None
+    quoted_at: datetime | None = None
+
+
+class SymbolLookupResponse(BaseModel):
+    """What a typed symbol resolves to, before a holding is saved."""
+
+    query: str
+    found: bool
+    listing: str | None = None
+    name: str | None = None
+    exchange: str | None = None
+    currency: str | None = None
+    price: float | None = None
+    source: str | None = None
+    session: str | None = None
+    reason: str | None = None
 
 
 class InvestmentActivityCreate(BaseModel):

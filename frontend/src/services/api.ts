@@ -15,6 +15,8 @@ import type {
   HoldingValuation,
   PerformanceResponse,
   ReturnHistoryResponse,
+  QuoteRefreshResponse,
+  SymbolLookupResponse,
   PriceQuote,
   AuthStatusResponse,
   CognitoConfigResponse,
@@ -779,19 +781,17 @@ export const api = {
       "/investments/revalue",
       { method: "POST" }
     ),
+  /** Refresh delayed quotes for every held security, or only `symbols`. */
   fetchAutomatedQuotes: (symbols?: string[]) =>
-    request<{
-      quotes_fetched: number;
-      updated_count: number;
-      failed_count: number;
-      quotes: { symbol: string; price: number; currency: string; as_of_date: string }[];
-      failed_symbols: string[];
-      usdcad_fx_rate: number | null;
-      accounts_revalued: number;
-    }>("/investments/quotes/fetch-automated", {
+    request<QuoteRefreshResponse>("/investments/quotes/fetch-automated", {
       method: "POST",
-      body: JSON.stringify({ symbols: symbols || [] }),
+      // No body means every security; an empty list used to mean none.
+      ...(symbols && symbols.length ? { body: JSON.stringify({ symbols }) } : {}),
     }),
+  lookupSymbol: (q: string, currency = "CAD") =>
+    request<SymbolLookupResponse>(
+      `/investments/symbol-lookup?${new URLSearchParams({ q, currency }).toString()}`
+    ),
   getFxRate: (pair = "USDCAD") =>
     request<{ pair: string; rate: number | null; source?: string; as_of_date?: string }>(
       `/investments/fx-rate?pair=${pair}`

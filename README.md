@@ -128,10 +128,13 @@ Folio is architected for Canadian legal, tax, and banking realities:
   - The minimum monthly payment is interest-only by default. It can instead be set to a percentage of the balance, and is never less than that month's interest.
   - The Loans view projects the next 12 months at the minimum payment, and the cash flow forecast includes that payment.
 
-- **Automated TSX Market Quotes & Bank of Canada Valet FX**:
-  - Automated, zero-cost price quotes for Toronto Stock Exchange (TSX) and TSX Venture (`.TO`, `.V`) equities and ETFs.
+- **Delayed Market Quotes & Bank of Canada Valet FX**:
+  - Free, keyless quotes for TSX and TSX Venture (`.TO`, `.V`), US equities and ETFs, and crypto, delayed about 15 minutes. Yahoo Finance's chart endpoint is tried first; for TSX and TSX-V listings, TMX Money's quote endpoint fills in when Yahoo doesn't answer. Neither is an official API, so every failure is logged and reported by symbol with its reason.
+  - Symbols are matched to their listing: `XEQT` typed in a CAD account resolves to `XEQT.TO` (then `.V`, then US), the Add holding dialog previews the match with its name, exchange and price, and a bare symbol never becomes a second, unquotable security. Migration `0009` merges any that already exist.
+  - Quotes refresh by themselves once per browser session when Investments opens, then only when you press Refresh quotes, with the time of the last refresh shown. A listing is not fetched outside its trading hours once its close is recorded (TSX and US regular hours 9:30-16:00 ET, US pre-market from 4:00 and after hours to 20:00), nor twice within 10 minutes. A price you type in for a day is never overwritten by a fetched one.
+  - Delayed prices carry a small "D" marker, US pre-market and after-hours prices a "Pre" or "Post" marker (with the regular close beside them); the marker's tooltip names the source and quote time. Hand-entered prices carry none.
   - Integration with the official **Bank of Canada Valet API** for daily USD/CAD exchange rates (`FXUSDCAD`) and automated portfolio revaluation.
-  - 100% privacy-preserving: no third-party financial aggregators or paid API keys required.
+  - Privacy-preserving: no financial aggregators or API keys; requests carry only ticker symbols.
 
 ---
 
@@ -201,7 +204,8 @@ Folio provides statutory tracking for Canadian tax-advantaged accounts:
 - **Capital vs. Growth Breakdown**:
   - Distinguishes cumulative net contributions from market appreciation.
 - **Holdings-First Layout and Charts**:
-  - Holdings lead the page, largest position first, with each position's weight in the portfolio.
+  - A ticker strip across the top shows each holding's latest price and the day's change. It updates only with a quote refresh, pauses on hover or focus, and stands still with reduced motion or fewer than three holdings.
+  - The market value, unrealized gain, money added and market growth tiles follow, then the holdings, largest position first, with each position's weight in the portfolio.
   - Returns follow, with the period table charted as time-weighted vs money-weighted bars.
   - Allocation is shown by position (positions under 3% grouped as Other) and by asset class, alongside unrealized gain or loss per position and contributions vs growth.
 - **Projection with Error Bands** (collapsed until opened):

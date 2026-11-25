@@ -3,10 +3,18 @@ import { AlertTriangle, ChevronDown, Plus, RefreshCw, Trash2 } from "lucide-reac
 import { LazyChart } from "../common/LazyChart";
 import { Money } from "../common/Money";
 import { ProjectionPanel } from "./ProjectionPanel";
+import { QuoteBadge, formatQuoteTime } from "./QuoteBadge";
+import { QuoteTicker } from "./QuoteTicker";
 import { isInvestmentAccount } from "../../constants/canadianAccountTypes";
 import { useChartTheme } from "../../hooks/useChartTheme";
 import { formatMoney, formatMoneyCompact, formatNumber } from "../../utils/format";
-import type { Account, HoldingValuation, PerformanceResponse } from "../../types";
+import type {
+  Account,
+  HoldingValuation,
+  PerformanceResponse,
+  QuoteRefreshResponse,
+  SymbolLookupResponse,
+} from "../../types";
 import { api } from "../../services/api";
 
 interface InvestmentsViewProps {
@@ -21,6 +29,19 @@ const percent = (value: number | null) =>
 
 const todayIso = () => new Date().toISOString().split("T")[0];
 
+/** Line under a price: when it was quoted, or that it was typed in. */
+function priceDetail(h: HoldingValuation, currency: string): string {
+  if (!h.price_source || h.price_source === "MANUAL") {
+    if (!h.price_as_of) return "";
+    const [y, m, d] = h.price_as_of.split("-").map(Number);
+    return `Entered ${new Date(y, m - 1, d).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}`;
+  }
+  if ((h.price_session === "PRE" || h.price_session === "POST") && h.previous_close != null) {
+    return `Close ${formatMoney(h.previous_close, { currency })}`;
+  }
+  return formatQuoteTime(h.price_quoted_at) ?? `As of ${h.price_as_of}`;
+}
+
 const ASSET_CLASS_LABELS: Record<string, string> = {
   EQUITY: "Stocks",
   ETF: "ETFs",
@@ -30,6 +51,45 @@ const ASSET_CLASS_LABELS: Record<string, string> = {
   CRYPTO: "Crypto",
   OTHER: "Other",
 };
+
+/** Session flag: quotes refresh by themselves once per browser session. */
+const AUTO_REFRESH_KEY = "folio.quotes.autoRefreshed";
+const REFRESHED_AT_KEY = "folio.quotes.refreshedAt";
+
+const sessionGet = (key: string): string | null => {
+  try {
+    return globalThis.sessionStorage?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+};
+const sessionSet = (key: string, value: string) => {
+  try {
+    globalThis.sessionStorage?.setItem(key, value);
+  } catch {
+    /* private mode or blocked storage: refresh again next visit */
+  }
+};
+
+const SOURCE_LABELS: Record<string, string> = { YAHOO: "Yahoo", TMX: "TMX" };
+
+/** One line saying exactly what a quote refresh did. */
+export function summarizeRefresh(res: QuoteRefreshResponse): string {
+  const parts: string[] = [];
+  const bySource = new Map<string, number>();
+  for (const q of res.quotes ?? []) bySource.set(q.source, (bySource.get(q.source) ?? 0) + 1);
+  const sources = [...bySource].map(([src, n]) => `${SOURCE_LABELS[src] ?? src} ${n}`).join(", ");
+  parts.push(`Updated ${res.updated_count}${sources ? ` (${sources})` : ""}`);
+  if (res.skipped_closed?.length) parts.push(`Market closed: ${res.skipped_closed.length}`);
+  if (res.skipped_recent?.length) parts.push(`Already current: ${res.skipped_recent.length}`);
+  if (res.skipped_manual?.length) parts.push(`Priced by hand today: ${res.skipped_manual.join(", ")}`);
+  const failures = res.failures?.length
+    ? res.failures.map((f) => `${f.symbol} (${f.reason})`)
+    : res.failed_symbols ?? [];
+  if (failures.length) parts.push(`Couldn't quote: ${failures.join(", ")}`);
+  if (res.timed_out) parts.push("Some quotes timed out");
+  return parts.join(" · ");
+}
 
 /** Positions below this share of the portfolio are grouped as "Other" in the donut. */
 const SMALL_POSITION_SHARE = 0.03;
@@ -72,6 +132,9 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
   const [priceDate, setPriceDate] = useState(todayIso());
   const [priceText, setPriceText] = useState("");
   const [projectionOpened, setProjectionOpened] = useState(false);
+  const [quotesRefreshedAt, setQuotesRefreshedAt] = useState<string | null>(() => sessionGet(REFRESHED_AT_KEY));
+  const [symbolLookup, setSymbolLookup] = useState<SymbolLookupResponse | null>(null);
+  const [isLookingUp, setIsLookingUp] = useState(false);
 
   useEffect(() => {
     if (!accountId && investmentAccounts.length > 0) {
@@ -120,12 +183,15 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
   const weight = (h: HoldingValuation) =>
     totalValue > 0 ? `${((Math.max(0, h.market_value) / totalValue) * 100).toFixed(1)}%` : "—";
 
-  const handleFetchAutomatedQuotes = async () => {
+  /**
+   * Refresh delayed quotes. The first visit in a session does this by itself
+   * and stays quiet unless something failed; the button reports every outcome.
+   */
+  const refreshQuotes = async ({ automatic = false } = {}) => {
     setIsFetchingQuotes(true);
-    setError(null);
+    if (!automatic) setError(null);
     try {
       const res = await api.fetchAutomatedQuotes();
-      const count = res.quotes_fetched ?? res.updated_count ?? 0;
       const rateVal = res.usdcad_fx_rate;
       if (rateVal !== null && rateVal !== undefined) {
         setFxRate({
@@ -135,33 +201,59 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           as_of_date: todayIso(),
         });
       }
-
-      let noticeText = `Automated quotes updated (${count} symbol${count === 1 ? "" : "s"}).`;
-      if (rateVal !== null && rateVal !== undefined) {
-        noticeText += ` Bank of Canada USD/CAD: ${rateVal.toFixed(4)}`;
-      }
-      if (res.failed_count > 0 && res.failed_symbols?.length) {
-        noticeText += ` (${res.failed_symbols.join(", ")} could not be quoted)`;
-      }
-      setNotice(noticeText);
+      const at = res.refreshed_at || new Date().toISOString();
+      setQuotesRefreshedAt(at);
+      sessionSet(REFRESHED_AT_KEY, at);
+      if (!automatic || res.failed_count > 0) setNotice(summarizeRefresh(res));
 
       await load();
       onDataModified();
     } catch (err: any) {
-      setError(err?.message || "Could not fetch automated quotes.");
+      if (!automatic) setError(err?.message || "Could not refresh quotes.");
     } finally {
       setIsFetchingQuotes(false);
     }
   };
 
+  // Once per browser session, refresh quotes when the page first opens.
+  useEffect(() => {
+    if (investmentAccounts.length === 0 || sessionGet(AUTO_REFRESH_KEY)) return;
+    sessionSet(AUTO_REFRESH_KEY, "1");
+    void refreshQuotes({ automatic: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [investmentAccounts.length]);
+
   const currency = investmentAccounts.find((a) => a.id === accountId)?.currency || "CAD";
+
+  // While adding a holding, show which listing the typed symbol means.
+  useEffect(() => {
+    const typed = newHolding.symbol.trim();
+    if (!isAddOpen || typed.length === 0) {
+      setSymbolLookup(null);
+      return;
+    }
+    let cancelled = false;
+    setIsLookingUp(true);
+    const timer = window.setTimeout(() => {
+      api
+        .lookupSymbol(typed, currency)
+        .then((r) => !cancelled && setSymbolLookup(r))
+        .catch(() => !cancelled && setSymbolLookup(null))
+        .finally(() => !cancelled && setIsLookingUp(false));
+    }, 450);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [newHolding.symbol, isAddOpen, currency]);
 
   const handleAddHolding = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       await api.createHolding({
         account_id: accountId,
-        symbol: newHolding.symbol,
+        // Save the listing the lookup found (XEQT -> XEQT.TO), so it can be quoted.
+        symbol: symbolLookup?.found && symbolLookup.listing ? symbolLookup.listing : newHolding.symbol,
         name: newHolding.name || undefined,
         lots: [
           {
@@ -181,7 +273,8 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         cost_basis: "",
         fee: "0",
       });
-      setNotice(`Added position in ${newHolding.symbol.toUpperCase()}`);
+      setNotice(`Added position in ${(symbolLookup?.found && symbolLookup.listing) || newHolding.symbol.toUpperCase()}`);
+      setSymbolLookup(null);
       await load();
       onDataModified();
     } catch (err: any) {
@@ -549,17 +642,24 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted tabular-nums" aria-live="polite">
+            {isFetchingQuotes
+              ? "Refreshing quotes…"
+              : quotesRefreshedAt
+                ? `Quotes updated ${formatQuoteTime(quotesRefreshedAt, Intl.DateTimeFormat().resolvedOptions().timeZone, "")}`
+                : null}
+          </span>
           <button
-            onClick={handleFetchAutomatedQuotes}
+            onClick={() => void refreshQuotes()}
             disabled={isFetchingQuotes}
             className={`${btnSecondary} disabled:opacity-50 disabled:cursor-not-allowed`}
-            title="Automatically fetch latest quotes for TSX/TSX-V (.TO, .V), US equities, and Bank of Canada exchange rate"
+            title="Fetch delayed quotes (Yahoo Finance, with TMX Money for TSX/TSX-V) and the Bank of Canada USD/CAD rate. Listings outside their trading hours are skipped once their close is recorded."
           >
             <RefreshCw
               className={`w-4 h-4 text-sub ${isFetchingQuotes ? "animate-spin" : ""}`}
               strokeWidth={1.5}
             />
-            {isFetchingQuotes ? "Updating quotes…" : "Update quotes (TSX / BoC)"}
+            Refresh quotes
           </button>
           <button onClick={() => setIsPriceOpen(true)} className={btnSecondary}>
             Update prices
@@ -579,6 +679,62 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
             positions are shown at cost, so market value and returns understate reality until you
             enter a price.
           </span>
+        </div>
+      )}
+
+      {/* Ticker: refreshed with the quotes, never on a timer */}
+      {performance && sortedHoldings.length > 0 && <QuoteTicker holdings={sortedHoldings} currency={currency} />}
+
+      {/* KPI row */}
+      {performance && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className={`${card} p-5`}>
+            <div className="text-sm text-sub">Market value</div>
+            <Money
+              value={performance.market_value}
+              currency={currency}
+              className="block mt-2 font-display text-2xl font-medium leading-none text-main"
+            />
+            <div className="mt-2 text-xs text-muted">
+              Cost <span className="tabular-nums">{formatMoney(performance.cost_basis, { currency })}</span>
+            </div>
+          </div>
+
+          <div className={`${card} p-5`}>
+            <div className="text-sm text-sub">Unrealized gain</div>
+            <Money
+              value={performance.unrealized_gain}
+              currency={currency}
+              signed
+              className={`block mt-2 text-2xl font-medium leading-none ${
+                performance.unrealized_gain >= 0 ? "text-positive" : "text-negative"
+              }`}
+            />
+            <div className="mt-2 text-xs text-muted">Against cost basis</div>
+          </div>
+
+          <div className={`${card} p-5`}>
+            <div className="text-sm text-sub">Money you added</div>
+            <Money
+              value={performance.net_invested}
+              currency={currency}
+              className="block mt-2 font-display text-2xl font-medium leading-none text-main"
+            />
+            <div className="mt-2 text-xs text-muted">Contributions less withdrawals</div>
+          </div>
+
+          <div className={`${card} p-5`}>
+            <div className="text-sm text-sub">Market growth</div>
+            <Money
+              value={performance.market_growth}
+              currency={currency}
+              signed
+              className={`block mt-2 text-2xl font-medium leading-none ${
+                performance.market_growth >= 0 ? "text-positive" : "text-negative"
+              }`}
+            />
+            <div className="mt-2 text-xs text-muted">Value beyond what you put in</div>
+          </div>
         </div>
       )}
 
@@ -635,6 +791,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                     {h.is_priced ? (
                       <>
                         Price <Money value={h.price ?? 0} currency={currency} className="text-sub" />
+                        <QuoteBadge source={h.price_source} session={h.price_session} quotedAt={h.price_quoted_at} />
                       </>
                     ) : (
                       <span className="text-warning">No price</span>
@@ -702,7 +859,8 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                       {h.is_priced ? (
                         <>
                           <Money value={h.price ?? 0} currency={currency} className="text-main" />
-                          <div className="text-xs tabular-nums text-muted">as of {h.price_as_of}</div>
+                          <QuoteBadge source={h.price_source} session={h.price_session} quotedAt={h.price_quoted_at} />
+                          <div className="text-xs tabular-nums text-muted">{priceDetail(h, currency)}</div>
                         </>
                       ) : (
                         <span className="text-xs text-warning">No price</span>
@@ -741,59 +899,6 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           </table>
         </div>
       </section>
-
-      {/* KPI row */}
-      {performance && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className={`${card} p-5`}>
-            <div className="text-sm text-sub">Market value</div>
-            <Money
-              value={performance.market_value}
-              currency={currency}
-              className="block mt-2 font-display text-2xl font-medium leading-none text-main"
-            />
-            <div className="mt-2 text-xs text-muted">
-              Cost <span className="tabular-nums">{formatMoney(performance.cost_basis, { currency })}</span>
-            </div>
-          </div>
-
-          <div className={`${card} p-5`}>
-            <div className="text-sm text-sub">Unrealized gain</div>
-            <Money
-              value={performance.unrealized_gain}
-              currency={currency}
-              signed
-              className={`block mt-2 text-2xl font-medium leading-none ${
-                performance.unrealized_gain >= 0 ? "text-positive" : "text-negative"
-              }`}
-            />
-            <div className="mt-2 text-xs text-muted">Against cost basis</div>
-          </div>
-
-          <div className={`${card} p-5`}>
-            <div className="text-sm text-sub">Money you added</div>
-            <Money
-              value={performance.net_invested}
-              currency={currency}
-              className="block mt-2 font-display text-2xl font-medium leading-none text-main"
-            />
-            <div className="mt-2 text-xs text-muted">Contributions less withdrawals</div>
-          </div>
-
-          <div className={`${card} p-5`}>
-            <div className="text-sm text-sub">Market growth</div>
-            <Money
-              value={performance.market_growth}
-              currency={currency}
-              signed
-              className={`block mt-2 text-2xl font-medium leading-none ${
-                performance.market_growth >= 0 ? "text-positive" : "text-negative"
-              }`}
-            />
-            <div className="mt-2 text-xs text-muted">Value beyond what you put in</div>
-          </div>
-        </div>
-      )}
 
       {/* Returns */}
       {performance && (
@@ -918,15 +1023,25 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
       {/* Canadian market coverage and BoC FX context */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs text-muted">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="text-sub">Market coverage:</span>
           <span>
-            TSX &amp; TSX-V (<code className="font-mono text-sub">.TO</code>,{" "}
-            <code className="font-mono text-sub">.V</code>)
+            <abbr className="quote-badge no-underline" title="Delayed quote">D</abbr> Delayed about 15 minutes, from Yahoo
+            Finance with TMX Money as the backup for TSX &amp; TSX-V
           </span>
           <span aria-hidden="true">·</span>
-          <span>US equities &amp; ETFs (USD)</span>
+          <span>
+            <abbr className="quote-badge no-underline" data-session="PRE" title="Pre-market or after-hours quote">
+              Pre
+            </abbr>{" "}
+            /{" "}
+            <abbr className="quote-badge no-underline" data-session="POST" title="After-hours quote">
+              Post
+            </abbr>{" "}
+            US extended hours
+          </span>
           <span aria-hidden="true">·</span>
-          <span>Bank of Canada Valet FX daily</span>
+          <span>Not refreshed outside trading hours once the close is in</span>
+          <span aria-hidden="true">·</span>
+          <span>Bank of Canada FX daily</span>
         </div>
         {fxAvailable && fxRate && (
           <div className="flex items-center gap-2 shrink-0">
@@ -953,7 +1068,8 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                   required
                   value={newHolding.symbol}
                   onChange={(e) => setNewHolding({ ...newHolding, symbol: e.target.value })}
-                  placeholder="VFV.TO"
+                  placeholder="VFV or VFV.TO"
+                  aria-describedby="symbol-lookup"
                   className={`${inputCls} tabular-nums`}
                 />
               </div>
@@ -967,6 +1083,39 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                 />
               </div>
             </div>
+
+            {newHolding.symbol.trim() && (
+              <div id="symbol-lookup" aria-live="polite" className="-mt-2 text-xs">
+                {isLookingUp && !symbolLookup ? (
+                  <span className="text-muted">Looking up {newHolding.symbol.trim().toUpperCase()}…</span>
+                ) : symbolLookup?.found ? (
+                  <span className="text-sub">
+                    <span className="font-mono text-main">{symbolLookup.query}</span>
+                    {symbolLookup.listing !== symbolLookup.query && (
+                      <>
+                        {" → "}
+                        <span className="font-mono text-main">{symbolLookup.listing}</span>
+                      </>
+                    )}
+                    {symbolLookup.name ? ` · ${symbolLookup.name}` : ""}
+                    {symbolLookup.exchange ? ` · ${symbolLookup.exchange}` : ""}
+                    {symbolLookup.price != null && (
+                      <>
+                        {" · "}
+                        <span className="tabular-nums text-main">
+                          {formatMoney(symbolLookup.price, { currency: symbolLookup.currency || currency })}
+                        </span>
+                        <QuoteBadge source={symbolLookup.source} session={symbolLookup.session} />
+                      </>
+                    )}
+                  </span>
+                ) : symbolLookup ? (
+                  <span className="text-warning">
+                    No listing found for {symbolLookup.query}. You can still save it and enter prices by hand.
+                  </span>
+                ) : null}
+              </div>
+            )}
 
             <div>
               <label className={labelCls}>Purchase date</label>

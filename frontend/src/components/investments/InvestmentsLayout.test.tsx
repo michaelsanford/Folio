@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { InvestmentsView } from "./InvestmentsView";
 import { ThemeProvider } from "../../context/ThemeContext";
@@ -78,16 +78,24 @@ const renderView = () =>
 describe("InvestmentsView layout", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    // Skip the once-per-session refresh; tests that want it clear this.
+    sessionStorage.setItem("folio.quotes.autoRefreshed", "1");
     vi.spyOn(api, "getPerformance").mockResolvedValue(performance);
     vi.spyOn(api, "getFxRate").mockResolvedValue({ pair: "USDCAD", rate: null });
+    vi.spyOn(api, "fetchAutomatedQuotes").mockResolvedValue({} as never);
+    vi.spyOn(api, "lookupSymbol").mockResolvedValue({ query: "XEQT", found: false });
   });
 
-  it("puts holdings first, then returns, then allocation", async () => {
+  it("runs ticker, value tiles, holdings, returns, then allocation", async () => {
     renderView();
     const holdings = await screen.findByRole("heading", { name: "Holdings" });
+    const ticker = screen.getByRole("list", { name: "Holdings ticker" });
+    const tiles = screen.getAllByText("Market value").find((el) => el.tagName !== "TH")!;
     const returns = screen.getByRole("heading", { name: "Returns" });
     const allocation = screen.getByRole("heading", { name: "Allocation by position" });
     const follows = (a: Element, b: Element) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(ticker, tiles)).toBe(true);
+    expect(follows(tiles, holdings)).toBe(true);
     expect(follows(holdings, returns)).toBe(true);
     expect(follows(returns, allocation)).toBe(true);
     expect(screen.getByRole("heading", { name: "Allocation by asset class" })).toBeDefined();
@@ -97,7 +105,7 @@ describe("InvestmentsView layout", () => {
   it("lists the largest position first with its weight", async () => {
     renderView();
     await screen.findByRole("heading", { name: "Holdings" });
-    const rows = screen.getAllByRole("row").slice(1);
+    const rows = screen.getAllByRole("row").filter((r) => r.closest("tbody") && r.textContent?.includes("%")).slice(0, 2);
     expect(rows[0].textContent).toContain("BIG");
     expect(rows[0].textContent).toContain("75.0%");
     expect(rows[1].textContent).toContain("SMALL");
@@ -134,5 +142,82 @@ describe("InvestmentsView layout", () => {
     details.open = true;
     fireEvent(details, new Event("toggle"));
     expect(await screen.findByText(/needs at least 6 months/)).toBeDefined();
+  });
+});
+
+describe("quote markers and ticker", () => {
+  const priced = (overrides: Partial<HoldingValuation>): HoldingValuation => ({
+    ...holding("XEQT.TO", 4317),
+    price: 43.17,
+    price_as_of: "2026-11-24",
+    ...overrides,
+  });
+
+  const renderWith = (holdings: HoldingValuation[]) => {
+    vi.spyOn(api, "getPerformance").mockResolvedValue({ ...performance, holdings });
+    return renderView();
+  };
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    sessionStorage.setItem("folio.quotes.autoRefreshed", "1");
+    vi.spyOn(api, "getFxRate").mockResolvedValue({ pair: "USDCAD", rate: null });
+  });
+
+  it("marks delayed, extended-hours and hand-entered prices differently", async () => {
+    renderWith([
+      priced({ holding_id: "a", symbol: "XEQT.TO", price_source: "YAHOO", price_session: "REGULAR" }),
+      priced({ holding_id: "b", symbol: "AAPL", price_source: "YAHOO", price_session: "POST", previous_close: 354.07 }),
+      priced({ holding_id: "c", symbol: "PRIV", price_source: "MANUAL" }),
+    ]);
+    await screen.findByRole("heading", { name: "Holdings" });
+    expect(within(document.body).getAllByTitle(/^Delayed quote · Yahoo Finance/).length).toBeGreaterThan(0);
+    expect(within(document.body).getAllByTitle(/^After-hours quote/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Close \$354\.07/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Entered Nov 24").length).toBeGreaterThan(0);
+  });
+
+  it("ticker shows the day's change and hides its loop copy from screen readers", async () => {
+    renderWith([
+      priced({ holding_id: "a", symbol: "XEQT.TO", price_source: "YAHOO", day_change: -0.41, day_change_pct: -0.94 }),
+      priced({ holding_id: "b", symbol: "VFV.TO", price_source: "TMX", day_change: 1.2, day_change_pct: 0.83 }),
+      priced({ holding_id: "c", symbol: "ZAG.TO", price_source: "YAHOO", day_change: 0, day_change_pct: 0 }),
+    ]);
+    const ticker = await screen.findByRole("list", { name: "Holdings ticker" });
+    const changes = within(ticker).getAllByText((_, el) => el?.tagName === "SPAN" && /%\)$/.test(el.textContent ?? ""));
+    expect(changes[0].textContent).toMatch(/−\$0\.41 \(−0\.9%\)$/);
+    expect(changes[0].className).toContain("text-negative");
+    expect(changes[1].textContent).toMatch(/\+\$1\.20 \(\+0\.8%\)$/);
+    expect(changes[1].className).toContain("text-positive");
+    const copy = ticker.nextElementSibling as HTMLElement;
+    expect(copy.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("holds still with fewer than three holdings", async () => {
+    renderWith([priced({ holding_id: "a", price_source: "YAHOO" })]);
+    const ticker = await screen.findByRole("list", { name: "Holdings ticker" });
+    expect(ticker.nextElementSibling).toBeNull();
+    expect(ticker.closest(".ticker-viewport")?.getAttribute("data-static")).toBe("true");
+  });
+
+  it("previews the listing a typed symbol resolves to", async () => {
+    vi.spyOn(api, "getPerformance").mockResolvedValue(performance);
+    vi.spyOn(api, "lookupSymbol").mockResolvedValue({
+      query: "XEQT", found: true, listing: "XEQT.TO", name: "iShares Core Equity ETF Portfolio",
+      exchange: "TOR", currency: "CAD", price: 43.17, source: "YAHOO", session: "REGULAR",
+    });
+    const create = vi.spyOn(api, "createHolding").mockResolvedValue({} as never);
+    renderView();
+    fireEvent.click(await screen.findByRole("button", { name: /Add holding/ }));
+    fireEvent.change(screen.getByPlaceholderText("VFV or VFV.TO"), { target: { value: "xeqt" } });
+    await waitFor(() => expect(api.lookupSymbol).toHaveBeenCalledWith("xeqt", "CAD"), { timeout: 2000 });
+    const preview = await screen.findByText(/iShares Core Equity ETF Portfolio/);
+    expect(preview.closest("#symbol-lookup")?.textContent).toContain("XEQT → XEQT.TO");
+
+    fireEvent.change(screen.getByPlaceholderText("100"), { target: { value: "1" } });
+    fireEvent.change(screen.getByPlaceholderText("10000.00"), { target: { value: "40" } });
+    fireEvent.submit(screen.getByPlaceholderText("100").closest("form")!);
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    expect(create.mock.calls[0][0].symbol).toBe("XEQT.TO");
   });
 });
