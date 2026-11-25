@@ -3,8 +3,9 @@
     Tear down a Folio AWS SAM CloudFormation stack and optionally delete preserved resources.
 
 .DESCRIPTION
-    Discovers the main CloudFormation stack and the resources it leaves behind: retained S3 vault
-    buckets, the retained Cognito User Pool, the stack's Secrets Manager secrets, SAM ECR
+    Discovers the main CloudFormation stack and the resources it leaves behind: the retained
+    Aurora DSQL database and its AWS Backup vault, retained S3 archive buckets, the retained
+    Cognito User Pool, the stack's Secrets Manager secrets, SAM ECR
     CompanionStacks and container images, and CloudWatch Log Groups (the legacy
     /aws/lambda/<function> groups, and /folio/<env>/app if it outlived its stack). Resources the
     stack owns outright (CloudFront distribution, alarms, SNS topic, budget, the
@@ -13,14 +14,26 @@
     By default, prompts individually before deleting preserved resources; use -DeleteAll for a
     single prompt or -Force to delete all stack-associated resources without prompting.
 
-    Vault safety rules:
-    - Before a vault bucket is emptied, the vault (database/folio.db.zst, or the plain
+    Database safety rules:
+    - Before the database is deleted, every table is exported with `python -m app.cli export`
+      (uv, backend/) to .\folio-db-backup-<cluster>-<yyyyMMdd-HHmmss>.db.zst in the current
+      directory: a compressed SQLite file that `python -m app.cli import` loads into a fresh
+      install. If the export fails the database is preserved, even with -Force. The database
+      has deletion protection on; it is turned off just before deleting it.
+    - Deleting the database requires typing its cluster id, including with -DeleteAll. Only
+      -Force skips the typed confirmation. A cluster matched only by its Name tag (no stack) is
+      never selected by -DeleteAll or -Force.
+    - The backup vault is deleted (with its recovery points) only together with the database.
+
+    Archive bucket safety rules:
+    - Before an archive bucket is emptied, the vault (database/folio.db.zst, or the plain
       database/folio.db of older releases) is downloaded to
       .\folio-vault-backup-<bucket>-<yyyyMMdd-HHmmss>.db.zst (or .db) in the current directory, and
       closed-year archives (archives/) to .\folio-vault-backup-<bucket>-<yyyyMMdd-HHmmss>-archives\. If that
       download fails the bucket is preserved, even with -Force. Use -SkipVaultBackup to skip
-      the download deliberately.
-    - Deleting a vault bucket requires typing its exact name, including with -DeleteAll. Only
+      the download deliberately. Releases that kept the database itself in S3 left
+      database/folio.db.zst there; it is downloaded too when present.
+    - Deleting an archive bucket requires typing its exact name, including with -DeleteAll. Only
       -Force skips the typed confirmation.
     - A bucket the stack reused through ExistingVaultBucketName is never selected by -DeleteAll
       or -Force; it can only be deleted interactively.
@@ -57,7 +70,7 @@
     preserves the bucket).
 
 .PARAMETER SkipVaultBackup
-    Do not download the vault before deleting a vault bucket.
+    Do not export the database or download the archive bucket before deleting them.
 
 .EXAMPLE
     .\teardown.ps1 -Region ca-central-1 -StackName Folio-QA
@@ -78,7 +91,7 @@ param (
     [switch]$DeleteAll,
     # Skip all confirmation prompts and delete the stack and all stack-associated retained resources.
     [switch]$Force,
-    # Do not download the vault before deleting a vault bucket.
+    # Do not export the database or download archives before deleting them.
     [switch]$SkipVaultBackup
 )
 
@@ -207,6 +220,71 @@ function Backup-VaultArchives {
         return [pscustomobject]@{ Ok = $false; Path = $null; Note = "archive download failed ($saved of $count): $($sync.Output)" }
     }
     return [pscustomobject]@{ Ok = $true; Path = $folder; Note = "$saved archive file(s)" }
+}
+
+function Backup-FolioDatabase {
+    # Exports every table of the cluster to a compressed SQLite file with the app's own CLI,
+    # signed in as the database admin. Returns Ok=$false (database must be preserved) on failure.
+    param ([string]$ClusterId, [string]$Endpoint)
+
+    if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+        return [pscustomobject]@{ Ok = $false; Path = $null; Note = "uv is not installed (winget install astral-sh.uv)" }
+    }
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $path = Join-Path (Get-Location).Path "folio-db-backup-$ClusterId-$stamp.db.zst"
+    $vars = @{ DSQL_ENDPOINT = $Endpoint; AWS_REGION = $Region; FOLIO_SKIP_STARTUP_TASKS = "1" }
+    if ($Profile) { $vars["AWS_PROFILE"] = $Profile }
+    $saved = @{}
+    foreach ($name in $vars.Keys) {
+        $saved[$name] = [Environment]::GetEnvironmentVariable($name)
+        [Environment]::SetEnvironmentVariable($name, $vars[$name])
+    }
+    try {
+        $out = & uv run --directory (Join-Path $PSScriptRoot "backend") --quiet python -m app.cli export "$path" 2>&1
+        $code = $LASTEXITCODE
+    } finally {
+        foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name]) }
+    }
+    if ($code -ne 0 -or -not (Test-Path $path) -or (Get-Item $path).Length -eq 0) {
+        Remove-Item $path -Force -ErrorAction SilentlyContinue
+        return [pscustomobject]@{ Ok = $false; Path = $null; Note = "export failed: $($out | Select-Object -Last 3)" }
+    }
+    return [pscustomobject]@{ Ok = $true; Path = $path; Note = "$((Get-Item $path).Length) bytes" }
+}
+
+function Remove-DsqlCluster {
+    # Turns off deletion protection, then deletes the cluster and waits until it is gone.
+    param ([string]$ClusterId)
+
+    $upd = Invoke-Aws -Arguments @("dsql", "update-cluster", "--identifier", $ClusterId, "--no-deletion-protection-enabled", "--output", "json") -AllowFailure
+    if ($upd.ExitCode -ne 0) {
+        throw "Could not turn off deletion protection on database '$ClusterId' (preserved):`n$($upd.Output)"
+    }
+    $del = Invoke-Aws -Arguments @("dsql", "delete-cluster", "--identifier", $ClusterId, "--output", "json") -AllowFailure
+    if ($del.ExitCode -ne 0) {
+        throw "Deletion protection on database '$ClusterId' was turned off but delete-cluster failed:`n$($del.Output)"
+    }
+    Invoke-Aws -Arguments @("dsql", "wait", "cluster-not-exists", "--identifier", $ClusterId) -AllowFailure | Out-Null
+}
+
+function Remove-BackupVault {
+    # Deletes every recovery point in the vault, then the vault.
+    param ([string]$VaultName)
+
+    $list = Invoke-Aws -Arguments @("backup", "list-recovery-points-by-backup-vault", "--backup-vault-name", $VaultName, "--query", "RecoveryPoints[].RecoveryPointArn", "--output", "json") -AllowFailure
+    if ($list.ExitCode -ne 0) { throw "Could not list recovery points in '$VaultName':`n$($list.Output)" }
+    foreach ($arn in @($list.Output | ConvertFrom-Json)) {
+        if (-not $arn) { continue }
+        $rp = Invoke-Aws -Arguments @("backup", "delete-recovery-point", "--backup-vault-name", $VaultName, "--recovery-point-arn", $arn) -AllowFailure
+        if ($rp.ExitCode -ne 0) { throw "Could not delete recovery point $arn :`n$($rp.Output)" }
+    }
+    # Deletions are asynchronous; the vault can only go once it is empty.
+    for ($i = 0; $i -lt 30; $i++) {
+        $del = Invoke-Aws -Arguments @("backup", "delete-backup-vault", "--backup-vault-name", $VaultName) -AllowFailure
+        if ($del.ExitCode -eq 0) { return }
+        Start-Sleep -Seconds 10
+    }
+    throw "Backup vault '$VaultName' still has recovery points being deleted; delete it later in the console."
 }
 
 function Remove-CognitoUserPool {
@@ -473,6 +551,8 @@ $stackLambdaName = $null
 $stackReusedBucket = $null
 $stackUserPoolId = $null
 $stackSecretArns = @()
+$stackClusterId = $null
+$stackBackupVault = $null
 
 $stackProbe = Invoke-Aws -Arguments @("cloudformation", "describe-stacks", "--stack-name", $StackName, "--output", "json") -AllowFailure
 if ($stackProbe.ExitCode -eq 0 -and $stackProbe.Output.Trim()) {
@@ -503,6 +583,10 @@ if ($stackProbe.ExitCode -eq 0 -and $stackProbe.Output.Trim()) {
             $poolRes = $resources | Where-Object { $_.ResourceType -eq "AWS::Cognito::UserPool" } | Select-Object -First 1
             if ($poolRes -and $poolRes.PhysicalResourceId) { $stackUserPoolId = $poolRes.PhysicalResourceId }
             $stackSecretArns = @($resources | Where-Object { $_.ResourceType -eq "AWS::SecretsManager::Secret" -and $_.PhysicalResourceId } | ForEach-Object { $_.PhysicalResourceId })
+            $dbRes = $resources | Where-Object { $_.ResourceType -eq "AWS::DSQL::Cluster" } | Select-Object -First 1
+            if ($dbRes -and $dbRes.PhysicalResourceId) { $stackClusterId = $dbRes.PhysicalResourceId }
+            $bvRes = $resources | Where-Object { $_.ResourceType -eq "AWS::Backup::BackupVault" } | Select-Object -First 1
+            if ($bvRes -and $bvRes.PhysicalResourceId) { $stackBackupVault = $bvRes.PhysicalResourceId }
         }
     }
 }
@@ -597,6 +681,48 @@ foreach ($poolId in $userPoolCandidates.Keys) {
     }
 }
 
+# 3a. Discover the retained database (stack resource, or Name tag folio-<env> once the stack is gone)
+$clusterCandidates = [ordered]@{}
+if ($stackClusterId) {
+    $clusterCandidates[$stackClusterId] = @{ Source = "Stack resource (FolioDatabase)"; IncludeInDeleteAll = $true }
+}
+if ($effectiveEnv) {
+    $clList = Invoke-Aws -Arguments @("dsql", "list-clusters", "--output", "json") -AllowFailure
+    if ($clList.ExitCode -eq 0 -and $clList.Output.Trim()) {
+        foreach ($c in @(($clList.Output | ConvertFrom-Json).clusters)) {
+            if (-not $c.identifier -or $clusterCandidates.Contains($c.identifier)) { continue }
+            $tags = Invoke-Aws -Arguments @("dsql", "list-tags-for-resource", "--resource-arn", $c.arn, "--output", "json") -AllowFailure
+            if ($tags.ExitCode -eq 0 -and $tags.Output.Trim()) {
+                $tagMap = ($tags.Output | ConvertFrom-Json).tags
+                if ($tagMap -and $tagMap.Name -eq "folio-$effectiveEnv") {
+                    # Not provably this stack's database: interactive deletion only.
+                    $clusterCandidates[$c.identifier] = @{ Source = "Name tag (folio-$effectiveEnv)"; IncludeInDeleteAll = $false }
+                }
+            }
+        }
+    }
+}
+$discoveredDatabases = @()
+foreach ($cid in $clusterCandidates.Keys) {
+    $cg = Invoke-Aws -Arguments @("dsql", "get-cluster", "--identifier", $cid, "--output", "json") -AllowFailure
+    if ($cg.ExitCode -eq 0 -and $cg.Output.Trim()) {
+        $cl = $cg.Output | ConvertFrom-Json
+        $discoveredDatabases += [pscustomobject]@{
+            Id                 = $cid
+            Endpoint           = if ($cl.endpoint) { $cl.endpoint } else { "$cid.dsql.$Region.on.aws" }
+            Status             = $cl.status
+            Source             = $clusterCandidates[$cid].Source
+            IncludeInDeleteAll = $clusterCandidates[$cid].IncludeInDeleteAll
+        }
+    }
+}
+$backupVaultName = if ($stackBackupVault) { $stackBackupVault } elseif ($effectiveEnv) { "folio-$effectiveEnv-$Region" } else { $null }
+$discoveredBackupVault = $null
+if ($backupVaultName) {
+    $bv = Invoke-Aws -Arguments @("backup", "describe-backup-vault", "--backup-vault-name", $backupVaultName, "--output", "json") -AllowFailure
+    if ($bv.ExitCode -eq 0) { $discoveredBackupVault = $backupVaultName }
+}
+
 # 3c. Stack secrets (deleted by CloudFormation, possibly with a recovery window)
 $discoveredSecrets = @($stackSecretArns)
 
@@ -676,6 +802,16 @@ if ($stackExists) {
 } else {
     Write-Host "  - Main Stack:       (none found)" -ForegroundColor DarkGray
 }
+if ($discoveredDatabases.Count -gt 0) {
+    foreach ($d in $discoveredDatabases) {
+        Write-Host "  - Database:         $($d.Id) [$($d.Status)] $($d.Endpoint) - $($d.Source)" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "  - Database:         (none found)" -ForegroundColor DarkGray
+}
+if ($discoveredBackupVault) {
+    Write-Host "  - Backup Vault:     $discoveredBackupVault (deleted only with the database)" -ForegroundColor Yellow
+}
 if ($discoveredBuckets.Count -gt 0) {
     foreach ($b in $discoveredBuckets) {
         Write-Host "  - S3 Vault Bucket:  $($b.Name) [$($b.Versions) versions, $($b.DeleteMarkers) delete markers] - $($b.Source)" -ForegroundColor Yellow
@@ -710,7 +846,7 @@ if ($discoveredLogGroups.Count -gt 0) {
     Write-Host "  - CloudWatch Logs:  (none found)" -ForegroundColor DarkGray
 }
 
-if (-not $stackExists -and $discoveredBuckets.Count -eq 0 -and $discoveredUserPools.Count -eq 0 -and $discoveredCompanions.Count -eq 0 -and $discoveredLogGroups.Count -eq 0) {
+if (-not $stackExists -and $discoveredDatabases.Count -eq 0 -and $discoveredBuckets.Count -eq 0 -and $discoveredUserPools.Count -eq 0 -and $discoveredCompanions.Count -eq 0 -and $discoveredLogGroups.Count -eq 0) {
     Write-Host "`nNothing to tear down for stack '$StackName' in $Region." -ForegroundColor Green
     exit 0
 }
@@ -718,6 +854,7 @@ if (-not $stackExists -and $discoveredBuckets.Count -eq 0 -and $discoveredUserPo
 # 6. Collect confirmation choices
 Write-Host "`n[2/4] Confirming Teardown Actions..." -ForegroundColor Yellow
 $deleteMainStack = $false
+$databasesToDelete = @()
 $bucketsToDelete = @()
 $userPoolsToDelete = @()
 $secretsToPurge = @()
@@ -732,6 +869,15 @@ if ($Force -or $DeleteAll) {
         exit 0
     }
     $deleteMainStack = $stackExists
+    foreach ($d in $discoveredDatabases) {
+        if (-not $d.IncludeInDeleteAll) {
+            Write-Host "  Skipping database '$($d.Id)' (matched by Name tag only; run interactively to delete it)." -ForegroundColor DarkYellow
+        } elseif ($Force -or (Confirm-TypedName -Prompt "Type the database id '$($d.Id)' to permanently delete it (anything else keeps it)" -Expected $d.Id)) {
+            $databasesToDelete += $d
+        } else {
+            Write-Host "  Id did not match: keeping database '$($d.Id)'." -ForegroundColor DarkYellow
+        }
+    }
     foreach ($b in $discoveredBuckets) {
         if ($b.Reused) {
             Write-Host "  Skipping reused vault bucket '$($b.Name)' (ExistingVaultBucketName; it predates this stack). Run interactively without -Force/-DeleteAll to delete it." -ForegroundColor DarkYellow
@@ -759,6 +905,13 @@ if ($Force -or $DeleteAll) {
         if (-not $deleteMainStack) {
             Write-Host "Teardown aborted. No changes were made." -ForegroundColor Yellow
             exit 0
+        }
+    }
+
+    foreach ($d in $discoveredDatabases) {
+        $prompt = "[PRESERVED BY DEFAULT] Database '$($d.Id)' ($($d.Endpoint)). Type its id to export it and delete it permanently, or press Enter to keep it"
+        if (Confirm-TypedName -Prompt $prompt -Expected $d.Id) {
+            $databasesToDelete += $d
         }
     }
 
@@ -797,7 +950,7 @@ if ($Force -or $DeleteAll) {
     }
 }
 
-if (-not $deleteMainStack -and $bucketsToDelete.Count -eq 0 -and $userPoolsToDelete.Count -eq 0 -and $companionsToDelete.Count -eq 0 -and $logGroupsToDelete.Count -eq 0) {
+if (-not $deleteMainStack -and $databasesToDelete.Count -eq 0 -and $bucketsToDelete.Count -eq 0 -and $userPoolsToDelete.Count -eq 0 -and $companionsToDelete.Count -eq 0 -and $logGroupsToDelete.Count -eq 0) {
     Write-Host "Nothing selected for deletion. Exiting cleanly." -ForegroundColor Yellow
     exit 0
 }
@@ -807,6 +960,23 @@ Write-Host "`n[3/4] Executing Teardown..." -ForegroundColor Yellow
 $deletedItems = @()
 $failedItems = @()
 $backupFiles = @()
+
+$skippedDatabases = @()
+foreach ($d in $databasesToDelete) {
+    if (-not $SkipVaultBackup) {
+        Write-Host "Exporting database '$($d.Id)'..." -ForegroundColor Gray
+        $export = Backup-FolioDatabase -ClusterId $d.Id -Endpoint $d.Endpoint
+        if (-not $export.Ok) {
+            Write-Host "  Export FAILED ($($export.Note)). Preserving database '$($d.Id)'." -ForegroundColor Red
+            $failedItems += "Database $($d.Id) preserved: export failed"
+            $skippedDatabases += $d.Id
+            continue
+        }
+        Write-Host "  Saved $($export.Path) ($($export.Note))." -ForegroundColor Green
+        $backupFiles += $export.Path
+    }
+}
+$databasesToDelete = @($databasesToDelete | Where-Object { $skippedDatabases -notcontains $_.Id })
 
 if ($deleteMainStack) {
     Write-Host "Deleting CloudFormation stack '$StackName' (the CloudFront distribution can take several minutes)..." -ForegroundColor Gray
@@ -828,6 +998,29 @@ foreach ($s in $secretsToPurge) {
         $deletedItems += "Secret (no recovery window): $s"
     } else {
         $failedItems += "Secret $s : $($sdel.Output)"
+    }
+}
+
+foreach ($d in $databasesToDelete) {
+    Write-Host "Disabling deletion protection and deleting database '$($d.Id)'..." -ForegroundColor Gray
+    try {
+        Remove-DsqlCluster -ClusterId $d.Id
+        $deletedItems += "Database: $($d.Id)"
+    } catch {
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
+        $failedItems += "Database $($d.Id) preserved"
+        $skippedDatabases += $d.Id
+    }
+}
+$databasesToDelete = @($databasesToDelete | Where-Object { $skippedDatabases -notcontains $_.Id })
+if ($discoveredBackupVault -and $databasesToDelete.Count -gt 0) {
+    Write-Host "Deleting backup vault '$discoveredBackupVault' and its recovery points..." -ForegroundColor Gray
+    try {
+        Remove-BackupVault -VaultName $discoveredBackupVault
+        $deletedItems += "Backup vault: $discoveredBackupVault"
+    } catch {
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
+        $failedItems += "Backup vault $discoveredBackupVault preserved"
     }
 }
 
@@ -910,7 +1103,7 @@ foreach ($d in $deletedItems) {
     Write-Host "  - $d" -ForegroundColor White
 }
 if ($backupFiles.Count -gt 0) {
-    Write-Host "Vault backups saved:" -ForegroundColor Green
+    Write-Host "Backups saved:" -ForegroundColor Green
     foreach ($f in $backupFiles) {
         Write-Host "  - $f" -ForegroundColor White
     }
@@ -922,6 +1115,8 @@ if ($failedItems.Count -gt 0) {
     }
 }
 
+$deletedDatabaseIds = @($databasesToDelete | ForEach-Object { $_.Id })
+$preservedDatabases = @($discoveredDatabases | Where-Object { $deletedDatabaseIds -notcontains $_.Id })
 $deletedBucketNames = @($bucketsToDelete | ForEach-Object { $_.Name })
 $deletedPoolIds = @($userPoolsToDelete | ForEach-Object { $_.Id })
 $deletedCompanionNames = @($companionsToDelete | ForEach-Object { $_.StackName })
@@ -933,6 +1128,10 @@ $preservedLogs = @($discoveredLogGroups | Where-Object { $logGroupsToDelete -not
 Write-Host "Preserved:" -ForegroundColor Cyan
 if ($stackExists -and -not $deleteMainStack) {
     Write-Host "  - CloudFormation stack: $StackName" -ForegroundColor White
+}
+foreach ($d in $preservedDatabases) {
+    Write-Host "  - Database: $($d.Id) ($($d.Endpoint))" -ForegroundColor White
+    Write-Host "    A new deploy creates a new, empty database; export this one with python -m app.cli export and import it there." -ForegroundColor DarkGray
 }
 foreach ($b in $preservedBuckets) {
     $envFlag = if ($effectiveEnv) { "-Environment $effectiveEnv " } else { "" }

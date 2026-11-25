@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Folio - Hardened Serverless Application (FastAPI + React 19 PWA + SQLite + Cognito) behind CloudFront in ca-central-1
+Description: Folio - Hardened Serverless Application (FastAPI + React 19 PWA + Aurora DSQL + Cognito) behind CloudFront in ca-central-1
 
 Parameters:
   EnvironmentName:
@@ -58,8 +58,8 @@ Parameters:
     Description: >-
       Optional Lambda ReservedConcurrentExecutions. 0 (default) leaves the
       function unreserved. Any positive value is purely a spend/abuse cap: the
-      app is safe with several concurrent instances because vault uploads use
-      S3 conditional writes (a stale writer gets HTTP 409 and reloads). New or
+      app is safe with several concurrent instances because they share one
+      database and a save that loses a race is retried. New or
       sandbox accounts whose account concurrency quota is 10 cannot reserve
       any concurrency, so keep 0 there.
 
@@ -67,10 +67,10 @@ Parameters:
     Type: String
     Default: ''
     Description: >-
-      Optional name of an existing S3 vault bucket to reuse (for example, a
-      bucket retained from an earlier stack). When set, CloudFormation skips
-      creating FolioStorageVault (and its bucket policy) and connects Lambda to
-      this bucket instead.
+      Optional name of an existing S3 bucket to reuse for closed-year archives
+      (for example, a bucket retained from an earlier stack). When set,
+      CloudFormation skips creating FolioStorageVault (and its bucket policy)
+      and connects Lambda to this bucket instead.
 
   EnableCognito:
     Type: String
@@ -100,6 +100,23 @@ Parameters:
       Monthly AWS cost budget in USD (account-wide). Requires AlarmEmail;
       notifies at 80% of actual spend and when forecast spend exceeds 100%.
 
+  EnableBackups:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: >-
+      Daily backups of the database with AWS Backup, kept 14 days. Backup
+      storage is billed per GB-month, a few cents for a household.
+
+  DailyDpuAlarmThreshold:
+    Type: Number
+    Default: 3000
+    MinValue: 1
+    Description: >-
+      Alarm when the database uses more than this many DPUs in a day. The
+      free tier covers 100,000 DPUs a month (about 3,300 a day); a household
+      normally stays far below it.
+
 Conditions:
   HasAllowedOrigin: !Not [!Equals [!Ref AllowedOrigin, '']]
   HasReservedConcurrency: !Not [!Equals [!Ref ReservedConcurrency, 0]]
@@ -107,6 +124,7 @@ Conditions:
   UseCognito: !Equals [!Ref EnableCognito, 'true']
   UseBedrock: !Equals [!Ref EnableBedrock, 'true']
   HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, '']]
+  UseBackups: !Equals [!Ref EnableBackups, 'true']
 
 Globals:
   Function:
@@ -121,7 +139,24 @@ Globals:
       env: !Ref EnvironmentName
 
 Resources:
-  # 1. Private S3 Vault for the SQLite database and short-lived pre-migration backups
+  # 1. The household's database: Aurora DSQL, serverless and billed per
+  #    request. Retained when the stack is deleted (teardown.ps1 exports it
+  #    first, then removes it explicitly).
+  FolioDatabase:
+    Type: AWS::DSQL::Cluster
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      DeletionProtectionEnabled: true
+      Tags:
+        - Key: app
+          Value: folio
+        - Key: env
+          Value: !Ref EnvironmentName
+        - Key: Name
+          Value: !Sub 'folio-${EnvironmentName}'
+
+  # Private S3 bucket for closed-year archives
   FolioStorageVault:
     Type: AWS::S3::Bucket
     Condition: CreateVaultBucket
@@ -150,18 +185,14 @@ Resources:
         Status: Enabled
       LifecycleConfiguration:
         Rules:
-          # Short-term backstop for the vault: every write uploads a new
-          # version, and previous versions of database/folio.db.zst are kept for
-          # 5 days. Long enough to notice and roll back a bad write, short
-          # enough that version storage stays small.
-          - Id: ExpireOldSnapshots
+          # Objects left by releases that kept the database itself in S3.
+          - Id: ExpireRetiredVaultObjects
             Status: Enabled
             Prefix: database/
+            ExpirationInDays: 30
             NoncurrentVersionExpiration:
-              NoncurrentDays: 5
-          # Pre-migration snapshots written by the app, only when a deploy
-          # changes the schema; a week covers checking a deploy.
-          - Id: ExpirePreMigrationBackups
+              NoncurrentDays: 1
+          - Id: ExpireRetiredBackups
             Status: Enabled
             Prefix: backups/
             ExpirationInDays: 7
@@ -373,39 +404,15 @@ Resources:
 
   # The JSON filter matches the "event" field whether Lambda forwards the
   # app's JSON line as-is ($.event) or nests it under "message".
-  S3SyncFailedMetricFilter:
+  WriteConflictMetricFilter:
     Type: AWS::Logs::MetricFilter
     Properties:
       LogGroupName: !Ref FolioAppLogGroup
-      FilterName: s3_sync_failed
-      FilterPattern: '{ ($.event = "s3_sync_failed") || ($.message.event = "s3_sync_failed") }'
+      FilterName: write_conflict
+      FilterPattern: '{ ($.event = "write_conflict") || ($.message.event = "write_conflict") }'
       MetricTransformations:
         - MetricNamespace: !Sub 'Folio/${EnvironmentName}'
-          MetricName: S3SyncFailed
-          MetricValue: '1'
-          Unit: Count
-
-  S3SyncConflictMetricFilter:
-    Type: AWS::Logs::MetricFilter
-    Properties:
-      LogGroupName: !Ref FolioAppLogGroup
-      FilterName: s3_sync_conflict
-      FilterPattern: '{ ($.event = "s3_sync_conflict") || ($.message.event = "s3_sync_conflict") }'
-      MetricTransformations:
-        - MetricNamespace: !Sub 'Folio/${EnvironmentName}'
-          MetricName: S3SyncConflict
-          MetricValue: '1'
-          Unit: Count
-
-  S3RestoreFailedMetricFilter:
-    Type: AWS::Logs::MetricFilter
-    Properties:
-      LogGroupName: !Ref FolioAppLogGroup
-      FilterName: s3_restore_failed
-      FilterPattern: '{ ($.event = "s3_restore_failed") || ($.message.event = "s3_restore_failed") }'
-      MetricTransformations:
-        - MetricNamespace: !Sub 'Folio/${EnvironmentName}'
-          MetricName: S3RestoreFailed
+          MetricName: WriteConflict
           MetricValue: '1'
           Unit: Count
 
@@ -421,26 +428,12 @@ Resources:
           MetricValue: '1'
           Unit: Count
 
-  S3SyncFailedAlarm:
+  WriteConflictAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmDescription: !Sub 'Folio ${EnvironmentName}: vault upload to S3 failed (edits may not be durable yet).'
+      AlarmDescription: !Sub 'Folio ${EnvironmentName}: saves that lost every retry to concurrent writers (people were asked to try again).'
       Namespace: !Sub 'Folio/${EnvironmentName}'
-      MetricName: S3SyncFailed
-      Statistic: Sum
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 1
-      ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: notBreaching
-      AlarmActions: !If [HasAlarmEmail, [!Ref FolioAlarmTopic], !Ref AWS::NoValue]
-
-  S3SyncConflictAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmDescription: !Sub 'Folio ${EnvironmentName}: repeated vault write conflicts (concurrent editors or a stale instance).'
-      Namespace: !Sub 'Folio/${EnvironmentName}'
-      MetricName: S3SyncConflict
+      MetricName: WriteConflict
       Statistic: Sum
       Period: 3600
       EvaluationPeriods: 1
@@ -449,17 +442,20 @@ Resources:
       TreatMissingData: notBreaching
       AlarmActions: !If [HasAlarmEmail, [!Ref FolioAlarmTopic], !Ref AWS::NoValue]
 
-  S3RestoreFailedAlarm:
+  DatabaseDpuAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmDescription: !Sub 'Folio ${EnvironmentName}: vault restore from S3 failed at startup.'
-      Namespace: !Sub 'Folio/${EnvironmentName}'
-      MetricName: S3RestoreFailed
+      AlarmDescription: !Sub 'Folio ${EnvironmentName}: database usage today is above the daily share of the free tier.'
+      Namespace: AWS/AuroraDSQL
+      MetricName: TotalDPU
+      Dimensions:
+        - Name: ClusterId
+          Value: !Ref FolioDatabase
       Statistic: Sum
-      Period: 300
+      Period: 86400
       EvaluationPeriods: 1
-      Threshold: 1
-      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Threshold: !Ref DailyDpuAlarmThreshold
+      ComparisonOperator: GreaterThanThreshold
       TreatMissingData: notBreaching
       AlarmActions: !If [HasAlarmEmail, [!Ref FolioAlarmTopic], !Ref AWS::NoValue]
 
@@ -542,6 +538,72 @@ Resources:
             - SubscriptionType: EMAIL
               Address: !Ref AlarmEmail
 
+  # Daily database backups (AWS Backup restores into a new cluster).
+  FolioBackupVault:
+    Type: AWS::Backup::BackupVault
+    Condition: UseBackups
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_166
+            comment: Recovery points are encrypted with the AWS-managed backup key; a customer-managed key adds cost without changing who can read them.
+    Properties:
+      BackupVaultName: !Sub 'folio-${EnvironmentName}-${AWS::Region}'
+      BackupVaultTags:
+        app: folio
+        env: !Ref EnvironmentName
+
+  FolioBackupRole:
+    Type: AWS::IAM::Role
+    Condition: UseBackups
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: backup.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup'
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores'
+      Tags:
+        - Key: app
+          Value: folio
+        - Key: env
+          Value: !Ref EnvironmentName
+
+  FolioBackupPlan:
+    Type: AWS::Backup::BackupPlan
+    Condition: UseBackups
+    Properties:
+      BackupPlan:
+        BackupPlanName: !Sub 'folio-${EnvironmentName}-daily'
+        BackupPlanRule:
+          - RuleName: daily
+            TargetBackupVault: !Ref FolioBackupVault
+            ScheduleExpression: 'cron(0 7 * * ? *)'
+            StartWindowMinutes: 60
+            CompletionWindowMinutes: 180
+            Lifecycle:
+              DeleteAfterDays: 14
+      BackupPlanTags:
+        app: folio
+        env: !Ref EnvironmentName
+
+  FolioBackupSelection:
+    Type: AWS::Backup::BackupSelection
+    Condition: UseBackups
+    Properties:
+      BackupPlanId: !Ref FolioBackupPlan
+      BackupSelection:
+        SelectionName: folio-database
+        IamRoleArn: !GetAtt FolioBackupRole.Arn
+        Resources:
+          - !Sub 'arn:${AWS::Partition}:dsql:${AWS::Region}:${AWS::AccountId}:cluster/${FolioDatabase}'
+
   # 6. Serverless Function (FastAPI + Embedded PWA via AWS Lambda Web Adapter)
   FolioServerlessFunction:
     Type: AWS::Serverless::Function
@@ -556,7 +618,7 @@ Resources:
           - id: CKV_AWS_116
             comment: Invocations are synchronous HTTP requests through the Function URL; a DLQ does not apply.
           - id: CKV_AWS_117
-            comment: The function only calls public AWS endpoints (S3, Secrets Manager, Cognito, Bedrock); a VPC adds NAT cost without benefit.
+            comment: The function only calls public AWS endpoints (Aurora DSQL with IAM auth, S3, Secrets Manager, Cognito, Bedrock); a VPC adds NAT cost without benefit.
           - id: CKV_AWS_173
             comment: Secrets live in Secrets Manager; remaining environment variables are non-secret or a bcrypt hash.
     Properties:
@@ -582,13 +644,18 @@ Resources:
           AWS_LWA_ASYNC_INIT: "true"
           AWS_LWA_READINESS_CHECK_PATH: "/api/health"
           FOLIO_ENV: !Ref EnvironmentName
-          SQLITE_DB_PATH: "/tmp/folio.db"
+          # Local files (generated keys); Lambda can only write under /tmp.
+          FOLIO_DATA_DIR: "/tmp/folio"
+          DSQL_ENDPOINT: !GetAtt FolioDatabase.Endpoint
+          # The app's own database role; deploy.ps1 maps it to this function's IAM role.
+          DSQL_USER: folio_app
           # Lambda's filesystem is read-only outside /tmp; statement uploads must land there.
           FOLIO_UPLOAD_DIR: "/tmp/uploads"
           # Function URLs cap request payloads at 6 MB (including multipart overhead).
           # Function URL requests are capped at 6 MB and multipart bodies are
           # base64-encoded in the event (+~33%), so 4 MB is the safe ceiling.
           FOLIO_MAX_UPLOAD_MB: "4"
+          # Closed-year archives.
           S3_BUCKET_NAME: !If [CreateVaultBucket, !Ref FolioStorageVault, !Ref ExistingVaultBucketName]
           FOLIO_SESSION_SECRET_ARN: !Ref FolioSessionSecret
           FOLIO_ORIGIN_SECRET_ARN: !Ref FolioOriginSecret
@@ -629,40 +696,20 @@ Resources:
           - !Ref AWS::NoValue
       Policies:
         - Statement:
-            - Sid: VaultObjectReadWrite
+            - Sid: ConnectToDatabase
+              Effect: Allow
+              Action: 'dsql:DbConnect'
+              Resource: !Sub 'arn:${AWS::Partition}:dsql:${AWS::Region}:${AWS::AccountId}:cluster/${FolioDatabase}'
+            # Closed-year archives (Glacier Instant Retrieval), written once.
+            - Sid: ArchiveReadWrite
               Effect: Allow
               Action:
                 - 's3:GetObject'
                 - 's3:PutObject'
                 - 's3:AbortMultipartUpload'
-              Resource:
-                - !Sub
-                  - 'arn:${AWS::Partition}:s3:::${Bucket}/database/*'
-                  - Bucket: !If [CreateVaultBucket, !Ref FolioStorageVault, !Ref ExistingVaultBucketName]
-                - !Sub
-                  - 'arn:${AWS::Partition}:s3:::${Bucket}/backups/*'
-                  - Bucket: !If [CreateVaultBucket, !Ref FolioStorageVault, !Ref ExistingVaultBucketName]
-                # Closed-year archives (Glacier Instant Retrieval), written once.
-                - !Sub
-                  - 'arn:${AWS::Partition}:s3:::${Bucket}/archives/*'
-                  - Bucket: !If [CreateVaultBucket, !Ref FolioStorageVault, !Ref ExistingVaultBucketName]
-            # ListBucket lets HeadObject/GetObject return 404 (not 403) for a
-            # missing vault on first start. IfExists: that implicit check
-            # carries no s3:prefix, while explicit listings are limited to the
-            # two vault prefixes.
-            - Sid: VaultListPrefixes
-              Effect: Allow
-              Action: 's3:ListBucket'
               Resource: !Sub
-                - 'arn:${AWS::Partition}:s3:::${Bucket}'
+                - 'arn:${AWS::Partition}:s3:::${Bucket}/archives/*'
                 - Bucket: !If [CreateVaultBucket, !Ref FolioStorageVault, !Ref ExistingVaultBucketName]
-              Condition:
-                StringLikeIfExists:
-                  's3:prefix':
-                    - ''
-                    - 'database/*'
-                    - 'backups/*'
-                    - 'archives/*'
             - Sid: ReadAppSecrets
               Effect: Allow
               Action: 'secretsmanager:GetSecretValue'
@@ -888,6 +935,18 @@ Outputs:
     Description: CloudWatch Logs group for application and platform logs (90-day retention)
     Value: !Ref FolioAppLogGroup
 
+  DatabaseEndpoint:
+    Description: Aurora DSQL endpoint (deploy.ps1 migrates it; retained on stack deletion)
+    Value: !GetAtt FolioDatabase.Endpoint
+
+  DatabaseClusterId:
+    Description: Aurora DSQL cluster identifier
+    Value: !Ref FolioDatabase
+
+  FunctionRoleArn:
+    Description: IAM role the function runs as (mapped to the database role folio_app)
+    Value: !GetAtt FolioServerlessFunctionRole.Arn
+
   AlarmTopicArn:
     Condition: HasAlarmEmail
     Description: SNS topic for alarm notifications (confirm the email subscription)
@@ -904,9 +963,9 @@ Outputs:
     Value: !Ref FolioUserPoolClient
 
   S3VaultBucket:
-    Description: S3 Storage Vault Bucket Name
+    Description: S3 bucket for closed-year archives
     Value: !If [CreateVaultBucket, !Ref FolioStorageVault, !Ref ExistingVaultBucketName]
 
   VaultBucketReused:
-    Description: '"true" when the stack reuses an existing vault bucket (ExistingVaultBucketName); teardown.ps1 never bulk-deletes it'
+    Description: '"true" when the stack reuses an existing archive bucket (ExistingVaultBucketName); teardown.ps1 never bulk-deletes it'
     Value: !If [CreateVaultBucket, 'false', 'true']

@@ -5,9 +5,15 @@
 .DESCRIPTION
     Validates prerequisites and parameters, builds the ARM64 container image with Docker BuildKit
     (attestations disabled for Lambda manifest compatibility), deploys the CloudFormation stack
-    (CloudFront + Lambda Function URL + S3 vault + optional Cognito), applies an ECR lifecycle
-    policy to the image repository, and optionally invites an owner or household user in the
-    invite-only Cognito User Pool.
+    (CloudFront + Lambda Function URL + Aurora DSQL database + S3 archive bucket + optional
+    Cognito), migrates and seeds the database, applies an ECR lifecycle policy to the image
+    repository, and optionally invites an owner or household user in the invite-only Cognito
+    User Pool.
+
+    The database schema is changed only here, never by the running app: after `sam deploy` the
+    script runs `python -m app.cli migrate` from this machine (uv, backend/), signed in to the
+    database as its admin role with your AWS credentials. It also creates the app's own
+    database role and maps it to the function's IAM role.
 
     Settings persist per environment. The merged CloudFormation parameter overrides, stack name
     and region are written to samconfig.toml under [<Environment>.deploy.parameters] and the
@@ -32,8 +38,8 @@
 
     -Preview builds the image and creates a CloudFormation change set with the same settings a
     deploy would use, prints every resource it would add, modify or remove (flagging
-    replacements and removals of stateful resources such as the Cognito user pool, the vault
-    bucket, the CloudFront distribution and the secrets), then deletes the change set without
+    replacements and removals of stateful resources such as the database, the Cognito user
+    pool, the archive bucket, the CloudFront distribution and the secrets), then deletes the change set without
     executing it. The stack and samconfig.toml are left unchanged. It is not side-effect free:
     the image is pushed to ECR and build artifacts are uploaded to the SAM managed bucket. On a
     first deploy the empty placeholder stack CloudFormation creates for the change set is
@@ -51,7 +57,7 @@
 
 .PARAMETER Environment
     Stage name (lowercase letters, digits, hyphens; 1-21 chars). Selects the samconfig.toml
-    config environment and names the vault bucket, user pool and log group.
+    config environment and names the database, archive bucket, user pool and log group.
 
 .PARAMETER MasterPassword
     Master passphrase. It is hashed locally with bcrypt; only the hash is sent to
@@ -66,7 +72,7 @@
     concurrency quota is 10). The app is safe with several instances (S3 conditional writes).
 
 .PARAMETER ExistingVaultBucket
-    Name of a retained S3 vault bucket to reuse instead of creating a new one.
+    Name of a retained S3 archive bucket to reuse instead of creating a new one.
 
 .PARAMETER OwnerEmail
     Email address to invite in the Cognito User Pool (idempotent). Not valid with Cognito
@@ -151,6 +157,8 @@ if ($Preview -and $OwnerEmail) {
 
 # Resource types whose replacement or removal loses state or changes the URL users visit.
 $StatefulResourceTypes = @(
+    "AWS::DSQL::Cluster",
+    "AWS::Backup::BackupVault",
     "AWS::Cognito::UserPool",
     "AWS::Cognito::UserPoolClient",
     "AWS::S3::Bucket",
@@ -219,9 +227,9 @@ function Show-ChangeSetPreview {
                 $what = if ($r.Action -eq "Remove") { "removed" } else { "replaced ($($r.Replacement))" }
                 Write-Host ("  {0} ({1}) would be {2}" -f $r.Resource, $r.Type, $what) -ForegroundColor Red
             }
-            Write-Host "  Retained resources (vault bucket, user pool) are orphaned rather than deleted when removed." -ForegroundColor DarkGray
+            Write-Host "  Retained resources (database, archive bucket, user pool) are orphaned rather than deleted when removed." -ForegroundColor DarkGray
         } else {
-            Write-Host "No stateful resource (user pool, vault bucket, distribution, secrets) is replaced or removed." -ForegroundColor Green
+            Write-Host "No stateful resource (database, user pool, archive bucket, distribution, secrets) is replaced or removed." -ForegroundColor Green
         }
     } finally {
         if ($changeSet) {
@@ -552,6 +560,37 @@ if ($MasterPassword) {
     $Overrides["MasterPasswordHash"] = "$Hash".Trim()
 }
 
+function Invoke-DatabaseMigration {
+    <#
+        .SYNOPSIS
+        Migrate and seed the stack's database, and map the app's database role to the function.
+    #>
+    param([string]$Endpoint, [string]$AppRoleArn, [string]$AwsRegion)
+
+    if (-not $Endpoint) { throw "The stack has no DatabaseEndpoint output; cannot migrate the database." }
+    if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+        throw "uv is required to migrate the database. Install via: winget install astral-sh.uv"
+    }
+    Write-Host "Migrating database ($Endpoint)..." -ForegroundColor Yellow
+    $saved = @{}
+    $vars = @{
+        DSQL_ENDPOINT             = $Endpoint
+        AWS_REGION                = $AwsRegion
+        FOLIO_SKIP_STARTUP_TASKS  = "1"
+    }
+    foreach ($name in $vars.Keys) {
+        $saved[$name] = [Environment]::GetEnvironmentVariable($name)
+        [Environment]::SetEnvironmentVariable($name, $vars[$name])
+    }
+    try {
+        & uv run --directory (Join-Path $PSScriptRoot "backend") --quiet python -m app.cli migrate --app-role-arn "$AppRoleArn"
+        if ($LASTEXITCODE -ne 0) { throw "Database migration failed with exit code $LASTEXITCODE." }
+    } finally {
+        foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name]) }
+    }
+    Write-Host "Database is at the latest schema." -ForegroundColor Green
+}
+
 $PrevAttestations = $env:BUILDX_NO_DEFAULT_ATTESTATIONS
 $PrevSamConfig = if (Test-Path $SamConfigPath) { [System.IO.File]::ReadAllText($SamConfigPath) } else { $null }
 $DeploySucceeded = $false
@@ -611,6 +650,7 @@ try {
     $DeploySucceeded = $true
 
     $OutputsMap = Get-StackOutputMap -Name $StackName -AwsRegion $Region
+    Invoke-DatabaseMigration -Endpoint $OutputsMap["DatabaseEndpoint"] -AppRoleArn $OutputsMap["FunctionRoleArn"] -AwsRegion $Region
     $AppUrl = $OutputsMap["AppUrl"]
     $FunctionName = $OutputsMap["FunctionName"]
     $VaultBucket = $OutputsMap["S3VaultBucket"]
@@ -665,7 +705,8 @@ try {
     Write-Host "Folio Serverless SAM Deployment Complete!" -ForegroundColor Green
     Write-Host "Application URL (CloudFront): $AppUrl" -ForegroundColor Cyan
     Write-Host "  (The raw Lambda Function URL rejects direct requests; always use the URL above.)" -ForegroundColor DarkGray
-    Write-Host "S3 Storage Vault Bucket:      $VaultBucket" -ForegroundColor Gray
+    Write-Host "Database endpoint:            $($OutputsMap["DatabaseEndpoint"])" -ForegroundColor Gray
+    Write-Host "Archive bucket:               $VaultBucket" -ForegroundColor Gray
     Write-Host "Lambda Function (alias live): $FunctionName" -ForegroundColor Gray
     Write-Host "Roll back if needed:          .\deploy.ps1 -Environment $Environment -RollbackToVersion <n>" -ForegroundColor DarkGray
     if ($Overrides.Contains("AlarmEmail")) {

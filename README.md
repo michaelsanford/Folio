@@ -2,7 +2,7 @@
 
 # Folio
 
-Folio is a self-hosted personal finance tracking, statement ingestion, and household budgeting application. Built with **FastAPI**, **SQLite (WAL mode)**, and a **React 19 + Vite + Tailwind CSS PWA**, it is engineered for high performance on desktop and mobile, with an optional low-cost AWS SAM serverless deployment (CloudFront + Lambda + S3) in `ca-central-1`.
+Folio is a self-hosted personal finance tracking, statement ingestion, and household budgeting application. Built with **FastAPI**, **PostgreSQL**, and a **React 19 + Vite + Tailwind CSS PWA**, it is engineered for high performance on desktop and mobile, with an optional low-cost AWS SAM serverless deployment (CloudFront + Lambda + Aurora DSQL) in `ca-central-1`.
 
 Folio combines high-density desktop statement parsing and data entry with responsive mobile consultation (charts, budget meters, net worth progression), tailored for Canadian and North American households.
 
@@ -92,7 +92,7 @@ flowchart TD
 
 - **Tier 4 — Optional AWS Bedrock AI Recourse (Zero Recurring Cost)**:
   - If a novel or ambiguous merchant cannot be resolved locally, Folio can optionally recurse to the AWS Bedrock Converse API using **Amazon Nova Micro** (`amazon.nova-micro-v1:0`) or Claude 3 Haiku in `ca-central-1`.
-  - **Zero-Repeat Self-Learning**: When Bedrock successfully classifies an unrecognized merchant, Folio automatically stores a new Tier 1 exact rule in SQLite. Bedrock is **never invoked twice** for the same merchant pattern.
+  - **Zero-Repeat Self-Learning**: When Bedrock successfully classifies an unrecognized merchant, Folio automatically stores a new Tier 1 exact rule in the database. Bedrock is **never invoked twice** for the same merchant pattern.
   - **Graceful Offline Fallback**: If AWS credentials, Bedrock access, or network are unavailable, the engine gracefully continues using local tiers without throwing errors.
 
 #### Interactive Sandbox & Batch Operations
@@ -234,7 +234,7 @@ Folio provides statutory tracking for Canadian tax-advantaged accounts:
 - Multi-split transactions (e.g. mortgage payment split between principal, interest, and escrow).
 - **Automated Transfer Pairing**: Identifies offsetting transactions between accounts (e.g. Chequing debit and Visa credit), linking them via `transfer_transaction_id` so they do not artificially inflate income or expenses.
 - Inline category editing, merchant pattern rules creation, and batch categorization.
-- **Closed years** (Ledger > Closed years): once a year is over, an owner can close it. Its transactions are then locked: they cannot be added, changed, deleted or moved in or out of the year, by anyone or anything. Rule application, auto-classification and transfer pairing pass over them, imports skip rows dated in a closed year and say how many, and the ledger shows a lock instead of the edit buttons. Closing a year also locks every year before it. Closing writes a read-only archive of the year: a SQLite file with that year's transactions, splits, budgets and month-end balances, plus the accounts, categories and household members they refer to. It is compressed and checksummed and kept in long-term storage. Anyone can download an archive, and an owner can reopen the latest closed year, which keeps its archive. Nothing is removed from the live vault.
+- **Closed years** (Ledger > Closed years): once a year is over, an owner can close it. Its transactions are then locked: they cannot be added, changed, deleted or moved in or out of the year, by anyone or anything. Rule application, auto-classification and transfer pairing pass over them, imports skip rows dated in a closed year and say how many, and the ledger shows a lock instead of the edit buttons. Closing a year also locks every year before it. Closing writes a read-only archive of the year: a SQLite file with that year's transactions, splits, budgets and month-end balances, plus the accounts, categories and household members they refer to. It is compressed and checksummed and kept in long-term storage. Anyone can download an archive, and an owner can reopen the latest closed year, which keeps its archive. Nothing is removed from the live database.
 
 ---
 
@@ -259,8 +259,9 @@ flowchart LR
     User[Client: Desktop / Mobile PWA] -->|HTTPS| CF[Amazon CloudFront<br/>/assets/* cached at the edge<br/>/api/* not cached]
     CF -->|X-Folio-Origin-Verify header| FURL[Lambda Function URL<br/>alias: live]
     FURL --> LWA[AWS Lambda + Web Adapter<br/>FastAPI + Embedded React 19 PWA<br/>ARM64 Graviton2]
-    LWA <-->|Local /tmp| DB[(SQLite WAL Engine)]
-    DB <-->|Restore on start / ETag freshness check / conditional writes| S3[(Amazon S3 Private Vault<br/>versioned, ca-central-1)]
+    LWA <-->|IAM-token TLS connection| DB[(Aurora DSQL<br/>serverless PostgreSQL, ca-central-1)]
+    LWA -->|Closed-year archives| S3[(Amazon S3<br/>Glacier Instant Retrieval)]
+    BK[AWS Backup<br/>daily, 14 days] -.-> DB
     LWA -->|Session + origin secrets at startup| SM[(AWS Secrets Manager)]
     LWA -->|Sign-In / JWKS / TOTP MFA| COG[(AWS Cognito<br/>Invite-Only User Pool, Plus tier)]
     LWA -.->|Optional Recourse| BR[(AWS Bedrock<br/>Amazon Nova Micro)]
@@ -292,6 +293,7 @@ Folio is an installable Progressive Web App with its own icon (a wallet with car
 - **uv** (`winget install astral-sh.uv` — manages Python 3.14 and the backend virtual environment automatically)
 - **Python 3.14** (used in CI, container image, and local development)
 - **Node.js 26 LTS** and **npm** (used in CI and the container image)
+- **Docker** (Docker Desktop on Windows): the local database is PostgreSQL 16 in a container
 
 ### 1-Command Local Launcher
 
@@ -301,7 +303,7 @@ Launch both the FastAPI backend and Vite frontend with hot-reloading:
 .\dev.ps1
 ```
 
-This syncs the Python virtual environment with `uv`, installs frontend dependencies if needed, starts the backend on `http://localhost:8000`, the frontend on `http://localhost:5173`, and opens your browser.
+This starts the local database (the `db` service in `docker-compose.yml`: PostgreSQL 16 on `127.0.0.1:5433`, data in the `folio-db` Docker volume), syncs the Python virtual environment with `uv`, installs frontend dependencies if needed, starts the backend on `http://localhost:8000`, the frontend on `http://localhost:5173`, and opens your browser. The backend creates and migrates the schema on first start.
 
 ### First Run: Master Passphrase Vault
 
@@ -320,24 +322,23 @@ To generate a bcrypt hash manually:
 "your passphrase" | uv run --directory backend python scripts\hash_password.py
 ```
 
-If the backend starts with no passphrase configured (for example a fresh Docker container), the web app offers a one-time setup through `POST /api/auth/setup`. The bcrypt hash is written to `data/.folio_master_hash` (mode 0600) next to the database and loaded on later starts while `FOLIO_MASTER_PASSWORD_HASH` is unset, so a restart does not reopen setup. Setup is refused in production mode (on AWS Lambda, or when `FOLIO_ENV` is `prod` or `production`).
+If the backend starts with no passphrase configured (for example a fresh Docker container), the web app offers a one-time setup through `POST /api/auth/setup`. The bcrypt hash is written to `data/.folio_master_hash` (mode 0600) in the data directory (`FOLIO_DATA_DIR`) and loaded on later starts while `FOLIO_MASTER_PASSWORD_HASH` is unset, so a restart does not reopen setup. Setup is refused in production mode (on AWS Lambda, or when `FOLIO_ENV` is `prod` or `production`).
 
 The session signing key works the same way: when `FOLIO_SECRET_KEY` is unset, a random key is generated once into `data/.folio_secret_key`, so sessions survive restarts. Production mode refuses to start on a generated key when local (non-Cognito) sign-in is in use.
 
 ### Database Migrations & Maintenance
 
-The schema is managed by Alembic and upgraded automatically on startup.
+The schema is managed by Alembic.
 
-- History starts at a single baseline revision (`0001_baseline`) that creates the whole schema; later changes are new revisions on top of it. A vault created by an earlier build (revisions `0002` to `0011`) is not upgraded by this build: start a fresh vault, or keep running the build it was made with.
-
-- When the database is already at the latest revision, Alembic is not invoked at all.
-- Before a real upgrade, the database is copied with the SQLite backup API to `<db>.pre-migrate-<rev>-<timestamp>.bak` next to the database file (the 3 most recent copies are kept). On AWS, the copy is also uploaded to `backups/pre-migrate-<rev>-<timestamp>.db`, where it expires after 7 days.
+- History starts at a single baseline revision (`0001_baseline`) that creates the whole schema; later changes are new revisions on top of it. A vault file from the last release that kept the database in SQLite (revision `0001`) has the same tables as an export: compress it with `scripts/vault_zstd.py compress` and load it with `python -m app.cli import` (see [Backups & Restore](#backups--restore)).
+- **Local and Docker** installs migrate on startup. Each revision runs in its own transaction, so a failed upgrade rolls back.
+- **AWS** never migrates from the running app. `deploy.ps1` runs `python -m app.cli migrate` from your machine after `sam deploy`, signed in to the database as its admin role. The app's own database role (`folio_app`) can read and write rows but cannot change the schema; a Lambda instance that finds the database behind its code refuses to start until the migration has run. On the serverless database every schema statement commits on its own and indexes are built asynchronously, so write revisions that add rather than rewrite (new columns and tables, then backfill), and keep each step safe to run against code one version older.
 - If the database is at a revision this build does not know (a newer build already migrated it), the app logs a warning and skips migrating rather than attempting a downgrade.
 
 ```powershell
 cd backend
-uv run alembic current      # Show applied revision
-uv run alembic upgrade head # Apply pending migrations
+uv run alembic current           # Show applied revision
+uv run python -m app.cli migrate # Apply pending migrations and seed default categories and rules
 ```
 
 One-shot maintenance operations for existing installations:
@@ -360,6 +361,8 @@ Run the complete 3-phase automated test suite (Backend Pytest + Frontend Vitest 
 .\test.ps1
 ```
 
+The backend tests run against the `folio_test` database in the local Postgres container (`test.ps1` starts it; the container's first start creates that database). Each test runs inside a transaction that is rolled back, so tests never see each other's data or your development data. Point `FOLIO_TEST_DATABASE_URL` at another server to use it instead; CI uses a Postgres service container.
+
 ---
 
 ## CI/CD & Automated Security
@@ -367,7 +370,7 @@ Run the complete 3-phase automated test suite (Backend Pytest + Frontend Vitest 
 Folio includes automated GitHub Actions workflows. Every third-party action is pinned to a full commit SHA (with the version in a comment).
 
 - **Continuous Integration ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))**: Runs on every commit:
-  - Backend: Pytest suite.
+  - Backend: Pytest suite against a PostgreSQL 16 service container.
   - Frontend: Vitest suite, `tsc -b`, and the Vite production build.
   - Infrastructure: `sam validate --lint`, `cfn-lint`, and Checkov against `template.yaml`.
   - Container: builds the Docker image for `linux/arm64` (the Lambda architecture) without pushing it.
@@ -380,7 +383,7 @@ Folio includes automated GitHub Actions workflows. Every third-party action is p
 
 ## Docker Compose Setup
 
-Run the unified single-container build (FastAPI + embedded PWA + SQLite):
+Run the unified build (FastAPI + embedded PWA, with PostgreSQL 16 in a second container):
 
 ```powershell
 docker compose up --build
@@ -389,11 +392,11 @@ docker compose up --build
 Access the application at `http://localhost:8000`.
 
 - **Network**: The port is published on `127.0.0.1` only. To reach the app from other devices on your network, change the mapping in `docker-compose.yml` to `"8000:8000"`.
-- **Data**: `./backend/data` is mounted at `/app/data` and holds the database, uploads, the generated session key (`.folio_secret_key`) and, if you used the setup screen, `.folio_master_hash`.
+- **Data**: the database lives in the `folio-db` Docker volume. `./backend/data` is mounted at `/app/data` and holds uploads, closed-year archives, the generated session key (`.folio_secret_key`) and, if you used the setup screen, `.folio_master_hash`. Set `FOLIO_DB_PASSWORD` (in a `.env` file next to `docker-compose.yml`) before the first start to use a database password other than the development default; the database port is published on `127.0.0.1` only.
 - **Authentication**: Set `FOLIO_MASTER_PASSWORD_HASH` (for example in a `.env` file next to `docker-compose.yml`), or leave it unset and use the one-time setup screen.
 - **Session key**: `FOLIO_SECRET_KEY` is optional in development; a random key is generated into `backend/data/.folio_secret_key`. It is required when `FOLIO_ENV` is `prod` or `production`.
 - **Origin check**: `FOLIO_ORIGIN_VERIFY_SECRET` is optional. Set it only if a reverse proxy in front of the container injects a matching `X-Folio-Origin-Verify` header; every request without it is then rejected with `403`.
-- **Local development only**: Docker Compose is for running Folio on your own machine. The vault lives only in `./backend/data` and is never synced to AWS. S3 sync runs only in the Lambda deployment; if `S3_BUCKET_NAME` is set outside Lambda it is ignored and a warning is logged. This keeps a local copy from ever overwriting the cloud vault.
+- **Local development only**: Docker Compose is for running Folio on your own machine and never talks to AWS storage. If `S3_BUCKET_NAME` is set outside Lambda it is ignored and a warning is logged. To move a household between Docker and AWS, export and import it (see [Backups & Restore](#backups--restore)).
 - **Health**: The image defines a `HEALTHCHECK`, and Compose a matching `healthcheck`, that calls `GET /api/health` every 30 seconds. The endpoint runs a trivial database query and returns `503` when the database does not answer.
 
 ---
@@ -421,17 +424,18 @@ Folio implements a defense-in-depth security model for hosting financial data:
   - No `Server` header. `Cross-Origin-Embedder-Policy` is deliberately not sent because it would block the Google Fonts stylesheet.
   - On AWS, a CloudFront response headers policy mirrors these values. It always adds HSTS, and fills in the other headers only where the app did not answer (for example a CloudFront error page). The CSP comes from the app only.
 - **Structured Logs**: Every request writes one JSON access line (`folio.access`: method, path without the query string, status, duration, request ID, client IP). Uvicorn's startup and error lines are JSON too, and `GET`/`HEAD` both work on `/` and `/api/health`.
-- **S3 Vault Protection**: The vault bucket blocks all public access, enforces bucket-owner object ownership (`BucketOwnerEnforced`, ACLs disabled), encrypts objects with SSE-S3 (`AES256`), keeps versions, and has a bucket policy that denies any request not made over TLS.
-- **Least-Privilege IAM**: The Lambda role can read and write only `database/*`, `backups/*` and `archives/*` (closed-year archives) in the vault bucket, list only those prefixes, and read only the stack's two secrets. With Cognito on, it may create, look up, disable, enable, sign out and delete users in the stack's own user pool only, for in-app people management. `bedrock:InvokeModel` is granted only when `EnableBedrock` is `true`, and only for the configured model or inference profile.
+- **Database access**: The database has no password. The function connects to the Aurora DSQL endpoint over TLS with a short-lived IAM authentication token as the `folio_app` role, which may read and write rows but not change the schema; `deploy.ps1` maps that role to the function's IAM role. The cluster has deletion protection on and is retained when the stack is deleted.
+- **S3 Archive Protection**: The archive bucket blocks all public access, enforces bucket-owner object ownership (`BucketOwnerEnforced`, ACLs disabled), encrypts objects with SSE-S3 (`AES256`), keeps versions, and has a bucket policy that denies any request not made over TLS.
+- **Least-Privilege IAM**: The Lambda role may connect to the stack's own database as a non-admin role (`dsql:DbConnect` on that cluster only), read and write only `archives/*` (closed-year archives) in the archive bucket, and read only the stack's two secrets. With Cognito on, it may create, look up, disable, enable, sign out and delete users in the stack's own user pool only, for in-app people management. `bedrock:InvokeModel` is granted only when `EnableBedrock` is `true`, and only for the configured model or inference profile.
 - **Container Non-Root Isolation**: Multi-stage Docker execution runs as an unprivileged `appuser` (UID 1000), and the Docker build context excludes `backend/data/`, databases, `.env` files and `samconfig.toml` so no vault data or secrets are baked into the image.
 
 ---
 
 ## Data Handling
 
-- The vault is a single SQLite file that holds financial personal information: payees, amounts, dates, balances, account names and masked account numbers (`*XXXX`). Treat the database file, the S3 bucket and any backup copies accordingly.
+- The database holds financial personal information: payees, amounts, dates, balances, account names and masked account numbers (`*XXXX`). Treat the database, its exports, the archive bucket and any backup copies accordingly.
 - Appearance settings (theme, light or dark mode, type style, number format, the collapsed sidebar and the accounts hidden from the dashboard) are stored per user in the vault, in the `user_preferences` table, so they follow you to any device or browser and are backed up with the vault. Each Cognito user has their own row, keyed by their Cognito user ID; the master passphrase owner has one. The browser also keeps a copy so the sign-in screen opens in your colours, and changes are saved about a second after you stop adjusting them.
-- On AWS, uploaded statements are parsed in memory and are not archived: `/tmp` is not synced to S3 and disappears with the instance. Only the parsed transactions are stored in the vault. Docker and local installs keep a copy of each uploaded statement in the uploads directory.
+- On AWS, uploaded statements are parsed in memory and are not archived: `/tmp` disappears with the instance. Only the parsed transactions are stored in the database. Docker and local installs keep a copy of each uploaded statement in the uploads directory.
 - With Bedrock enabled, transactions that the local tiers cannot classify are sent to the configured Bedrock model: raw payee text, amount, currency, account type and date, plus your category names. A cross-region inference profile (for example `us.amazon.nova-micro-v1:0`) may process that data outside `ca-central-1`. If that matters to you, leave Bedrock off (the default) or choose a model that runs in your region.
 
 ---
@@ -452,7 +456,7 @@ Folio includes a native AWS SAM template (`template.yaml` + `Dockerfile`) that r
 
 ### Prerequisites
 
-- **AWS SAM CLI** (`>= 1.159` with `--use-buildkit` support) and **AWS CLI v2** authenticated with permissions to create IAM roles/policies (`iam:CreateRole`, `iam:PutRolePolicy`, `iam:DeleteRole*`; note AWS's built-in `AWSPowerUserAccess` excludes IAM management), plus CloudFront, Secrets Manager, CloudWatch, SNS, AWS Budgets and `ecr:PutLifecyclePolicy` permissions, `cognito-idp:AdminGetUser` / `cognito-idp:AdminCreateUser` when using `-OwnerEmail`, and CloudFormation/S3/ECR/Logs/Cognito/Secrets Manager delete permissions when using `teardown.ps1`.
+- **AWS SAM CLI** (`>= 1.159` with `--use-buildkit` support) and **AWS CLI v2** authenticated with permissions to create IAM roles/policies (`iam:CreateRole`, `iam:PutRolePolicy`, `iam:DeleteRole*`; note AWS's built-in `AWSPowerUserAccess` excludes IAM management), plus CloudFront, Secrets Manager, CloudWatch, SNS, AWS Budgets, AWS Backup and `ecr:PutLifecyclePolicy` permissions, `dsql:CreateCluster` / `dsql:DbConnectAdmin` (the deploy step migrates the database as its admin role), `cognito-idp:AdminGetUser` / `cognito-idp:AdminCreateUser` when using `-OwnerEmail`, and CloudFormation/DSQL/Backup/S3/ECR/Logs/Cognito/Secrets Manager delete permissions when using `teardown.ps1`. **uv** is also needed on the deploying machine: `deploy.ps1` runs the database migration with it.
 - **Docker with Buildx** (builds the static frontend on native `$BUILDPLATFORM` and compiles the runtime image for `linux/arm64` with `BUILDX_NO_DEFAULT_ATTESTATIONS=1` so BuildKit emits a single-platform manifest compatible with AWS Lambda).
 
 ### Deploying
@@ -464,13 +468,13 @@ Folio includes a native AWS SAM template (`template.yaml` + `Dockerfile`) that r
 # Invite another household member later (idempotent; existing users are skipped)
 .\deploy.ps1 -Environment prod -OwnerEmail member@example.com
 
-# Deploy an isolated QA stack with its own vault bucket (folio-vault-qa-<account>-<region>)
+# Deploy an isolated QA stack with its own database and archive bucket (folio-vault-qa-<account>-<region>)
 .\deploy.ps1 -Environment qa -StackName Folio-QA -OwnerEmail you@example.com
 
 # Or deploy a QA/dev stack in single Master Passphrase mode without Cognito
 .\deploy.ps1 -Environment qa -StackName Folio-QA -DisableCognito -MasterPassword (Read-Host -AsSecureString)
 
-# Reuse a retained vault bucket from a previous deployment
+# Reuse a retained archive bucket from a previous deployment
 .\deploy.ps1 -Environment qa -StackName Folio-QA -ExistingVaultBucket folio-vault-qa-012345678901-ca-central-1
 
 # Enable Bedrock classification (accepts a model ID or an inference profile ID)
@@ -493,7 +497,7 @@ sam validate -t template.yaml --lint
 
 | Parameter | Default | Purpose |
 | :--- | :--- | :--- |
-| `-Environment` | `prod` | Stage name (`[a-z0-9-]`, 1-21 chars). Selects the saved settings and names the vault bucket, user pool and log group. |
+| `-Environment` | `prod` | Stage name (`[a-z0-9-]`, 1-21 chars). Selects the saved settings and names the database, archive bucket, user pool and log group. |
 | `-StackName` | Saved value, else `folio-<Environment>` | CloudFormation stack name. |
 | `-Region` | Saved value, else `ca-central-1` | AWS region. |
 | `-OwnerEmail` | | Invite this email to the Cognito pool (idempotent). The first one given is saved as the household owner (`OwnerEmail`), who always signs in as an owner. Not valid with Cognito disabled. |
@@ -503,11 +507,11 @@ sam validate -t template.yaml --lint
 | `-BedrockModelId` | `amazon.nova-micro-v1:0` | Model ID or inference profile ID. IAM access is granted to this ID only. |
 | `-AlarmEmail` | | Email for alarm (SNS) and budget notifications. Pass `''` to remove. |
 | `-MonthlyBudgetUsd` | `5` | Account-wide monthly cost budget in USD. Only created when an alarm email is set. |
-| `-ExistingVaultBucket` | | Reuse a retained vault bucket instead of creating one. |
+| `-ExistingVaultBucket` | | Reuse a retained archive bucket instead of creating one. |
 | `-AllowedOrigin` | | Extra origin allowed to call the API cross-origin. Leave empty for the default same-origin deployment. |
 | `-ReservedConcurrency` | `0` | Optional Lambda reserved concurrency, as a spend cap only. See below. |
 | `-RollbackToVersion` | | Point the `live` alias at an earlier version and exit. See [Rolling Back a Deploy](#rolling-back-a-deploy). |
-| `-Preview` | | Build and create a CloudFormation change set with the saved settings, print every resource it would add, modify or remove, flag any replacement or removal of the user pool, vault bucket, CloudFront distribution, secrets or log group, then delete the change set without deploying. `samconfig.toml` and the stack stay unchanged, but the image is pushed to ECR. Run it before deploying a template change. |
+| `-Preview` | | Build and create a CloudFormation change set with the saved settings, print every resource it would add, modify or remove, flag any replacement or removal of the database, backup vault, user pool, archive bucket, CloudFront distribution, secrets or log group, then delete the change set without deploying. `samconfig.toml` and the stack stay unchanged, but the image is pushed to ECR. Run it before deploying a template change. |
 | `-WhatIf` / `-Confirm` | | Standard PowerShell confirmation. `-WhatIf` only prints the parameters and stops before building; it does not contact CloudFormation. |
 
 What a deploy does:
@@ -522,7 +526,7 @@ What a deploy does:
 
 `deploy.ps1` fails fast on authentication, `sam build`, `sam deploy`, or `describe-stacks` errors so a failed container build never provisions orphaned CloudFormation companion stacks. If the deploy fails, `samconfig.toml` is restored to its previous content.
 
-**Reserved concurrency** is no longer needed for safety. Several Lambda instances can serve the app at once because vault uploads are S3 conditional writes (see [Serverless Architecture Highlights](#serverless-architecture-highlights)). `-ReservedConcurrency` is only an optional spend cap, and a low cap has a cost: when all reserved instances are busy, the Function URL answers `429` instead of queueing the request. Accounts whose Lambda concurrency quota is 10 (new or sandbox accounts) cannot reserve any concurrency, so leave it at `0` there.
+**Reserved concurrency** is not needed for safety. Several Lambda instances can serve the app at once because they share one database and a save that loses a race is retried (see [Serverless Architecture Highlights](#serverless-architecture-highlights)). `-ReservedConcurrency` is only an optional spend cap, and a low cap has a cost: when all reserved instances are busy, the Function URL answers `429` instead of queueing the request. Accounts whose Lambda concurrency quota is 10 (new or sandbox accounts) cannot reserve any concurrency, so leave it at `0` there.
 
 **Upgrading a stack deployed before CloudFront was added**: the old `FolioAppUrl` output is gone; use `AppUrl`. The `SessionSecretKey` and `OriginVerifySecret` parameters were removed and `deploy.ps1` drops them from saved settings. Because the session key moves to a new generated secret, existing sessions end once after that upgrade. Later deploys keep the same key, so redeploying no longer signs anyone out.
 
@@ -559,15 +563,13 @@ You can sign out and lock the session at any time using the **Sign out** button 
 3. **Versioned deploys**: Every deploy publishes a new Lambda version and moves the `live` alias, which the Function URL serves. This is what makes [rollback](#rolling-back-a-deploy) a single alias update.
 4. **Invite-Only AWS Cognito + Built-in Sign-In & MFA**: Provisioned with `AllowAdminCreateUserOnly: true`, case-insensitive email usernames, 20-char passphrases, mandatory TOTP MFA (`SOFTWARE_TOKEN_MFA`), the Plus tier with threat protection, and deletion protection. The pool is retained when the stack is deleted. The web app handles email/password login, first-login passphrase replacement, inline SVG QR TOTP enrollment, `HttpOnly` session + refresh cookies, and sidebar/mobile sign-out; pass `-DisableCognito -MasterPassword` to use single Master Passphrase mode instead.
 5. **Generated secrets**: `FolioSessionSecret` (session signing key) and `FolioOriginSecret` (origin-verify value) are generated once by CloudFormation in Secrets Manager and stay the same across deploys.
-6. **S3 vault durability across instances**:
-   - The S3 object `database/folio.db.zst` (the SQLite file compressed with zstd, typically 4 to 5 times smaller) is the durable copy. Each instance restores it into `/tmp` at startup. A vault written by an older release as plain `database/folio.db` is read once and rewritten under the new key at startup; deploy this change while nobody is editing, because an instance still running the old release would keep writing the old key. Startup fails closed: any S3 error other than "object not found" stops the instance from starting, so it can never begin with an empty vault and upload it over the real one.
-   - Every database commit that changes data marks the vault as changed. On Lambda, a mutating request (`POST`, `PUT`, `PATCH`, `DELETE`) uploads the vault before its response is returned, because Lambda freezes the instance as soon as it responds.
-   - Snapshots are taken with SQLite's online backup API, so a concurrent write cannot produce a torn file.
-   - Uploads are S3 conditional writes (`If-Match` on the ETag the instance last saw). If another instance changed the vault first (two people saving at the same moment), S3 rejects the upload and the instance reloads the current vault. The losing change was made on a copy that has just been discarded, so the server runs the same request again on the reloaded vault and uploads that, after a short randomized pause, up to three attempts in all. Both people's changes land. Only when every attempt loses does the request return `409` with code `vault_conflict`, and the web app shows a notice asking the user to retry. Requests with effects outside the vault (sending an invitation, fetching quotes) are never repeated: they return `409` straight away. To make the replay possible, the request body is held in memory, and every response waits until its upload is done.
-   - If the upload fails for any other reason (for example S3 is unreachable), the change is discarded and the request returns `503` with code `vault_sync_failed`; the web app shows "Your change wasn't saved. Please try again." A save is therefore either stored in S3 or visibly rejected, never silently kept only in one instance. If the instance can't reload the vault either, it answers `503` until S3 is reachable again. These failures are logged as `s3_sync_failed` and raise the sync-failure alarm.
-   - Before opening a database session, an instance checks the S3 ETag (at most once per second, and not while it has unsynced changes) and reloads the vault if another instance has written a newer one.
-   - Default categories and rules use deterministic UUIDv5 IDs, so separate instances seeding a fresh vault agree on them.
-   - The bucket (`folio-vault-${EnvironmentName}-${AWS::AccountId}-${AWS::Region}`) has `DeletionPolicy: Retain` and `UpdateReplacePolicy: Retain`. Reattach a retained bucket with `-ExistingVaultBucket`.
+6. **Aurora DSQL database**:
+   - The household's data lives in an Aurora DSQL cluster: serverless, PostgreSQL 16 compatible, billed per request, with nothing running while nobody uses the app. The function reaches its public endpoint over TLS without a VPC (and without a NAT gateway), authenticating with an IAM token instead of a password. Every Lambda instance works on the same live data; there is no copy to restore at startup or upload after a change.
+   - **Concurrent saves**: transactions run at `REPEATABLE READ` with optimistic concurrency. When two people change the same rows at the same moment, one commit wins and the other is rolled back. The server then runs the losing request again on the current data, after a short randomized pause, up to three attempts in all, so both changes land. Only when every attempt loses does the request return `409` with code `write_conflict`; the web app reloads its data and asks the person to try again. Requests with effects outside the database (sending an invitation, uploading a year archive) are never repeated. To make the replay possible, the request body is held in memory. Local Postgres uses the same isolation level, so development and tests behave the same way.
+   - **Bounded transactions**: the database refuses a transaction that changes more than 3,000 rows. Imports commit every 1,000 rows; applying rules, auto-classification, transfer pairing, deleting an account and the demo reset commit every 2,000. If a large import fails part-way, the message says how many rows were saved, and importing the file again adds the rest (rows already saved are skipped).
+   - **Schema**: changed only by the deploy step, as the database admin (see [Database Migrations & Maintenance](#database-migrations--maintenance)). Default categories and rules use deterministic UUIDv5 IDs, so seeding twice never duplicates them.
+   - **Retention**: the cluster has deletion protection on, `DeletionPolicy: Retain` and `UpdateReplacePolicy: Retain`. AWS Backup takes a daily backup kept for 14 days (`-EnableBackups`, on by default).
+   - The archive bucket (`folio-vault-${EnvironmentName}-${AWS::AccountId}-${AWS::Region}`) is also retained. Reattach it with `-ExistingVaultBucket`. Objects left in `database/` and `backups/` by releases that kept the vault in S3 expire after 30 and 7 days.
 7. **Optional AWS Bedrock Recourse**: When `EnableBedrock` is `true`, the Lambda role may call `bedrock:InvokeModel` for the configured `BedrockModelId` only (as a foundation model, or as an inference profile in the stack's region together with the foundation models that profile routes to). With Bedrock off, the role has no Bedrock permissions.
 
 ### Observability & Alarms
@@ -579,10 +581,9 @@ You can sign out and lock the session at any time using the **Sign out** button 
 
   | Alarm | Fires when |
   | :--- | :--- |
-  | `s3_sync_failed` | A vault upload to S3 failed (1 or more in 5 minutes). Recent edits may not be durable yet. |
-  | `s3_restore_failed` | An instance could not restore the vault at startup (1 or more in 5 minutes). |
   | `http_5xx` | 5 or more server errors in 5 minutes. |
-  | `s3_sync_conflict` | 5 or more vault write conflicts in an hour (concurrent editors or a stale instance). |
+  | `write_conflict` | 5 or more saves in an hour lost every retry to concurrent writers (people were asked to try again). |
+  | Database DPUs | The database used more than `-DailyDpuAlarmThreshold` DPUs (default 3,000, about the daily share of the 100,000-DPU monthly free tier) in a day. |
   | Lambda `Errors` | Any invocation error (crash, timeout, failed init) in 5 minutes. |
   | Lambda `Throttles` | Any throttled request in 5 minutes (concurrency limit reached). |
 
@@ -593,11 +594,12 @@ You can sign out and lock the session at any time using the **Sign out** button 
 
 For a single household the deployment typically costs a few dollars a month:
 
-- **Baseline, roughly $0-3/month**: Lambda and S3 usage for a household fits within or close to the free tiers, CloudFront stays within its always-free allowance, and the 6 alarms fit within CloudWatch's 10 free alarms unless your account already uses them (each extra alarm is about $0.10/month).
+- **Baseline, roughly $0-3/month**: Lambda usage for a household fits within or close to the free tier, CloudFront stays within its always-free allowance, and the 5 alarms fit within CloudWatch's 10 free alarms unless your account already uses them (each extra alarm is about $0.10/month).
+- **Aurora DSQL**: billed per request in DPUs and per GB-month of storage, with nothing charged while idle. The free tier covers 100,000 DPUs and 1 GB of storage each month, which a household normally stays well inside (50,000 transactions take a few tens of MB). Past it, DPUs cost about $8 per million and storage about $0.33/GB-month (us-east-1 prices; check the ca-central-1 rates). The DPU alarm warns before a month's usage would leave the free tier.
+- **AWS Backup**: daily backups kept 14 days, billed per GB-month of backup storage: cents for a household. Turn off with `-EnableBackups:$false`.
 - **Secrets Manager, about $0.80/month**: two secrets at about $0.40 each.
 - **Closed-year archives**: stored in S3 Glacier Instant Retrieval (about a sixth of the Standard storage price, with a 90-day minimum and 128 KB minimum billable size per object). A year of household transactions is typically well under 1 MB compressed, so archives cost cents per year.
 - **Cognito Plus**: billed per monthly active user, roughly $0.02 per MAU at the time of writing. Cognito's free tier applies to the Lite and Essentials tiers, not Plus, so check current Cognito pricing. A `-DisableCognito` deployment has no Cognito cost.
-- **S3 versions**: Every write uploads the whole compressed vault, and noncurrent versions are kept for 5 days, so storage is roughly compressed size × writes in 5 days. Even a heavy day of 500 edits on a 20 MB vault (about 4 to 5 MB compressed) is about 10 to 12 GB at most, well under $1/month.
 - **Bounded storage**: The ECR lifecycle policy keeps at most 5 images, and logs are kept for 90 days.
 
 ### Tearing Down
@@ -606,17 +608,18 @@ For a single household the deployment typically costs a few dollars a month:
 # Interactive: prompts for each retained resource
 .\teardown.ps1 -Region ca-central-1 -StackName Folio-QA
 
-# One prompt for everything (vault buckets still require typing their name)
+# One prompt for everything (the database and archive buckets still require typing their id or name)
 .\teardown.ps1 -Region ca-central-1 -StackName Folio-QA -DeleteAll
 
 # No prompts: delete the stack and all stack-associated retained resources
 .\teardown.ps1 -Region ca-central-1 -StackName Folio-QA -Force
 ```
 
-`teardown.ps1` deletes the stack (waiting for the CloudFront distribution to be removed, which can take several minutes) and then offers to delete what the stack leaves behind: the vault bucket, the Cognito user pool, the stack's secrets, the SAM ECR companion stack and images, and legacy log groups. Parameters: `-Region`, `-StackName` (default `folio-prod`), `-Environment`, `-Profile`, `-DeleteAll`, `-Force`, `-SkipVaultBackup`.
+`teardown.ps1` deletes the stack (waiting for the CloudFront distribution to be removed, which can take several minutes) and then offers to delete what the stack leaves behind: the database and its backup vault, the archive bucket, the Cognito user pool, the stack's secrets, the SAM ECR companion stack and images, and legacy log groups. Parameters: `-Region`, `-StackName` (default `folio-prod`), `-Environment`, `-Profile`, `-DeleteAll`, `-Force`, `-SkipVaultBackup`.
 
-- **Vault backup first**: Before a vault bucket is emptied, the vault is downloaded to `.\folio-vault-backup-<bucket>-<yyyyMMdd-HHmmss>.db.zst` in the current directory (`.db` for a bucket an older release last wrote). Decompress it with `scripts/vault_zstd.py` (see [Backups & Restore](#backups--restore)). Closed-year archives (`archives/`) are downloaded to a `...-archives` folder beside it. If either download fails, the bucket is kept, even with `-Force`. Pass `-SkipVaultBackup` to skip the download on purpose.
-- **Typed confirmation**: Deleting a vault bucket requires typing its exact name, including with `-DeleteAll`. Only `-Force` skips this.
+- **Database export first**: Before the database is deleted, every table is exported with `python -m app.cli export` to `.\folio-db-backup-<cluster>-<yyyyMMdd-HHmmss>.db.zst` in the current directory (uv is required). If the export fails, the database is kept, even with `-Force`. The backup vault and its recovery points are deleted only together with the database.
+- **Archive backup first**: Before an archive bucket is emptied, closed-year archives (`archives/`) are downloaded to `.\folio-vault-backup-<bucket>-<yyyyMMdd-HHmmss>-archives\`, and a `database/folio.db.zst` left by a release that kept the vault in S3 is downloaded beside it. If a download fails, the bucket is kept, even with `-Force`. Pass `-SkipVaultBackup` to skip the exports and downloads on purpose.
+- **Typed confirmation**: Deleting the database requires typing its cluster id, and deleting an archive bucket its exact name, including with `-DeleteAll`. Only `-Force` skips this. A database matched only by its `Name` tag, not by the stack, is never deleted by `-DeleteAll` or `-Force`.
 - **Reused buckets are protected**: A bucket attached through `ExistingVaultBucketName` predates the stack and is never selected by `-DeleteAll` or `-Force`; it can only be deleted interactively.
 - **Cognito user pool**: The stack retains the pool with deletion protection on. When you choose to delete it (or use `-DeleteAll` / `-Force`), the script turns deletion protection off and deletes the pool with all of its users. Users must then be re-invited and re-enrol MFA. A pool matched only by name, not by the stack, is never deleted by `-DeleteAll` or `-Force`.
 - **Secrets**: CloudFormation may leave the stack's secrets scheduled for deletion with a recovery window. When chosen, they are force-deleted without recovery. The secrets are unnamed, so a redeploy never collides with them either way.
@@ -628,50 +631,32 @@ For a single household the deployment typically costs a few dollars a month:
 
 **What exists**:
 
-- **S3 versions** (AWS only): the vault bucket keeps every previous version of `database/folio.db.zst` for 5 days. This is a short-term backstop for noticing and undoing a bad write, not an archive.
-- **Pre-migration copies**: `<db>.pre-migrate-<rev>-<timestamp>.bak` next to the database (last 3 kept), and in S3 `backups/pre-migrate-<rev>-<timestamp>.db` (expire after 7 days). On Lambda the local copies live in `/tmp` and disappear with the instance, so use the S3 copies.
-- **Teardown backups**: `folio-vault-backup-<bucket>-<timestamp>.db.zst` files (and `-archives` folders) written by `teardown.ps1`.
-- **Closed-year archives**: one read-only `folio-<year>-<timestamp>.db.zst` per closing, in `archives/<year>/` in the vault bucket (Glacier Instant Retrieval, never expired) or `backend/data/archives/<year>/` on Docker and local installs. Each closing records the file's SHA-256, which the download returns in the `X-Archive-SHA256` header. These are a record of the year as closed, not a way to roll the vault back.
+- **AWS Backup** (AWS only): a daily backup of the database, kept 14 days, in the `folio-<env>-<region>` backup vault.
+- **Exports**: `python -m app.cli export <file>.db.zst` writes every table to a compressed SQLite file that opens in any SQLite tool (after decompressing it). `teardown.ps1` writes one before deleting the database. Run one yourself before a risky change.
+- **Closed-year archives**: one read-only `folio-<year>-<timestamp>.db.zst` per closing, in `archives/<year>/` in the archive bucket (Glacier Instant Retrieval, never expired) or `backend/data/archives/<year>/` on Docker and local installs. Each closing records the file's SHA-256, which the download returns in the `X-Archive-SHA256` header. These are a record of the year as closed, not a way to roll the database back.
 
-The cloud vault and teardown backups are zstd-compressed SQLite. `backend/scripts/vault_zstd.py` converts between the two forms and checks the database while doing so:
+**Export and import** (any install; on AWS, set `DSQL_ENDPOINT` and use credentials allowed `dsql:DbConnectAdmin`):
 
 ```powershell
 cd backend
-uv run python scripts/vault_zstd.py decompress ..\folio-restore.db.zst ..\folio-restore.db   # open or inspect locally
-uv run python scripts/vault_zstd.py compress ..\folio.db.pre-migrate-<rev>-<timestamp>.bak ..\folio.db.zst  # prepare an upload
+uv run python -m app.cli export ..\folio-backup.db.zst   # local Postgres (DATABASE_URL)
+
+$env:DSQL_ENDPOINT = "<DatabaseEndpoint output>"
+uv run python -m app.cli export ..\folio-backup.db.zst   # the AWS database, as its admin role
+
+uv run python scripts/vault_zstd.py decompress ..\folio-backup.db.zst ..\folio-backup.db   # open in a SQLite tool
 ```
 
-**Restore a previous version on AWS**:
+`python -m app.cli import <file>.db.zst` loads an export into a freshly migrated database (it replaces the default categories and rules, and refuses a database that already has transactions or other rows). Import before anyone signs in. Use it to restore after a teardown, or to move a household between Docker and AWS.
 
-1. Find the version to restore (note its `VersionId` and `LastModified`):
+**Restore from AWS Backup**: AWS Backup restores a recovery point into a **new** cluster (console: AWS Backup > Backup vaults > `folio-<env>-<region>` > the recovery point > Restore). Then either point the app at it, or export from the new cluster and import into the stack's own database:
 
-   ```powershell
-   aws s3api list-object-versions --bucket <bucket> --prefix database/folio.db.zst
-   ```
+1. Export from the restored cluster: `$env:DSQL_ENDPOINT = "<restored cluster endpoint>"; uv run python -m app.cli export ..\restore.db.zst`.
+2. Empty the stack's database and import. One way is to delete the stack's cluster (`teardown.ps1`, which exports it first), deploy again (a new, empty, migrated database), then run `import` against the new `DatabaseEndpoint` before anyone signs in.
 
-2. Optionally download it first to inspect it:
+Expect any edit made between the recovery point and now to be lost.
 
-   ```powershell
-   aws s3api get-object --bucket <bucket> --key database/folio.db.zst --version-id <id> folio-restore.db.zst
-   ```
-
-3. Copy that version over the current object. This creates a new current version; the version it replaces stays available for 5 days, so the restore itself can be undone.
-
-   ```powershell
-   aws s3api copy-object --bucket <bucket> --key database/folio.db.zst --copy-source "<bucket>/database/folio.db.zst?versionId=<id>"
-   ```
-
-4. Running instances notice the new ETag on their next request that opens a database session (the freshness check runs at most once per second) and reload the vault. An instance that still holds an unsynced change cannot overwrite the restored copy: its conditional upload fails with `vault_conflict` and it reloads. To be certain every instance starts from the restored file, force new instances by redeploying, or by changing the function configuration, for example:
-
-   ```powershell
-   aws lambda update-function-configuration --function-name <FunctionName> --description "restore $(Get-Date -Format s)"
-   ```
-
-   Do this while nobody is editing, and expect any edit made between the restored version and now to be lost.
-
-To restore a pre-migration copy (plain SQLite), compress it first with `scripts/vault_zstd.py compress`, upload the result over `database/folio.db.zst` (`aws s3 cp folio.db.zst s3://<bucket>/database/folio.db.zst`) and force new instances.
-
-**Restore on Docker**: Stop the container, copy a `.bak` file over `backend/data/folio.db`, delete `backend/data/folio.db-wal` and `backend/data/folio.db-shm` if they exist, and start the container again. To debug locally with a copy of the cloud vault, download an S3 version with `aws s3api get-object`, decompress it with `scripts/vault_zstd.py decompress`, and copy it in the same way; Docker never uploads it back.
+**Restore on Docker**: Stop the app, wipe the database (`.\dev.ps1 -Clean`, or drop and recreate the `public` schema), start the app once so it migrates, stop it, then `uv run python -m app.cli import <file>.db.zst`.
 
 ---
 
@@ -685,7 +670,7 @@ The script lists the function's published versions (marking the one `live` serve
 
 - A Lambda version captures its environment variables and settings as well as its image, so rolling back restores that version's configuration too.
 - ECR keeps the 5 most recent images, so rollback reaches back about 5 deploys. A version whose image has expired cannot be served.
-- **Database migrations are forward-only.** Rolling code back past a migration leaves an older build facing a newer schema. The app logs a warning and skips migrating when it sees a revision it does not know, and it will usually still work if the migration only added columns or tables. If it does not, restore the matching pre-migration backup from `backups/` (see [Backups & Restore](#backups--restore)); edits made since that backup are lost.
+- **Database migrations are forward-only.** Rolling code back past a migration leaves an older build facing a newer schema. The app logs a warning and serves the database anyway when it sees a revision it does not know, which works when the migration only added columns or tables. If it does not, restore from AWS Backup (see [Backups & Restore](#backups--restore)); edits made since that backup are lost.
 
 ---
 
@@ -706,14 +691,20 @@ The script lists the function's published versions (marking the one `live` serve
 | `FOLIO_BEDROCK_REGION` | — | `AWS_DEFAULT_REGION`, else `ca-central-1` | AWS region for Bedrock Converse API calls |
 | `FOLIO_CLASSIFICATION_THRESHOLD`| — | `0.75` | Minimum confidence score for automatic category assignment |
 | `FOLIO_MAX_UPLOAD_MB` | — (template sets `4`) | `25` | Maximum statement upload size in MB, shown in the upload screen |
-| `SQLITE_DB_PATH` | — (template sets `/tmp/folio.db`) | `backend/data/folio.db` | SQLite database path |
+| `DATABASE_URL` | — | `postgresql+psycopg://folio:folio@127.0.0.1:5433/folio` | Local and Docker database (PostgreSQL). Ignored when `DSQL_ENDPOINT` is set |
+| `DSQL_ENDPOINT` | Set by the template (`FolioDatabase`) | `""` | Aurora DSQL endpoint; the app connects with IAM tokens |
+| `DSQL_USER` | Set by the template (`folio_app`) | `folio_app` | Database role the app signs in as on Aurora DSQL |
+| — | `EnableBackups` (`-EnableBackups`) | `true` | Daily AWS Backup of the database, kept 14 days |
+| — | `DailyDpuAlarmThreshold` | `3000` | Daily database DPU usage that raises the cost alarm |
+| `FOLIO_DATA_DIR` | — (template sets `/tmp/folio`) | `backend/data` | Local files: generated session key, master passphrase hash, closed-year archives (Docker / local) |
+| `FOLIO_TEST_DATABASE_URL` | — | `postgresql+psycopg://folio:folio@127.0.0.1:5433/folio_test` | Database the backend tests use |
 | `FOLIO_UPLOAD_DIR` | — (template sets `/tmp/uploads`) | `backend/data/uploads` | Directory for uploaded statements |
 | `COGNITO_USER_POOL_ID` | Output from SAM (`-OwnerEmail` invites users) | `""` | AWS Cognito User Pool ID |
 | `COGNITO_CLIENT_ID` | Output from SAM | `""` | AWS Cognito App Client ID |
 | `COGNITO_REGION` | `AWS::Region` (`-Region`) | `ca-central-1` | AWS region for Cognito IDP / JWKS verification |
 | `FOLIO_OWNER_EMAIL` | `OwnerEmail` (first `-OwnerEmail`) | `""` | This email always signs in as a household owner. Empty: the first person to sign in becomes the owner |
-| `AWS_REGION` / `AWS_DEFAULT_REGION` | `AWS::Region` (`-Region`) | `ca-central-1` | AWS region for S3 vault sync and Secrets Manager |
-| `S3_BUCKET_NAME` | `ExistingVaultBucketName` (`-ExistingVaultBucket`) | Auto-created (`folio-vault-<env>-<acct>-<region>`) | Private S3 vault bucket (reuse an existing bucket or let SAM create one). Used only on AWS Lambda; ignored by Docker and local installs |
+| `AWS_REGION` / `AWS_DEFAULT_REGION` | `AWS::Region` (`-Region`) | `ca-central-1` | AWS region for the database, archives and Secrets Manager |
+| `S3_BUCKET_NAME` | `ExistingVaultBucketName` (`-ExistingVaultBucket`) | Auto-created (`folio-vault-<env>-<acct>-<region>`) | Private S3 bucket for closed-year archives (reuse an existing bucket or let SAM create one). Used only on AWS Lambda; ignored by Docker and local installs |
 | `FOLIO_CORS_ORIGINS` | `AllowedOrigin` (`-AllowedOrigin`) | `""` | Comma-separated allowed CORS origins. When empty: the localhost dev-server origins in development, and no origins in production mode. The CloudFront deployment is same-origin and needs none |
 | — | `ReservedConcurrency` (`-ReservedConcurrency`) | `0` | Optional Lambda reserved concurrency as a spend cap. Requests beyond it get `429`; not needed for data safety |
 | — | `AlarmEmail` (`-AlarmEmail`) | `""` | Email for CloudWatch alarm (SNS) and AWS Budgets notifications; confirm the SNS subscription email |
