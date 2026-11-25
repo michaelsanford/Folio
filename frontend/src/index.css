@@ -676,3 +676,27 @@ h2,
   .text-warning { color: var(--fin-warning); }
   .bg-warning-subtle { background-color: var(--fin-warning-subtle); }
 }
+
+/* =========================================================
+   Enter animations for overlays (modals, dropdowns, toasts)
+   ========================================================= */
+/* Short on purpose: overlays should feel placed, not performed. No fill mode,
+   so nothing (transform in particular) lingers on the element afterwards. */
+@keyframes folio-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--enter-y, 0)) scale(var(--enter-scale, 1));
+  }
+}
+
+@layer utilities {
+  .animate-in { animation: folio-enter 140ms var(--ease-out); }
+  .fade-in { --enter-y: 0; }
+  .zoom-in-95 { --enter-scale: 0.96; }
+  .slide-in-from-bottom-2 { --enter-y: 0.5rem; }
+  .slide-in-from-top-1 { --enter-y: -0.25rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-in { animation: none; }
+}

@@ -22,6 +22,7 @@ import type {
 } from "../../types";
 import { api } from "../../services/api";
 import { Money } from "../common/Money";
+import { NumberField } from "../common/NumberField";
 import { formatMoney, getDateLocale } from "../../utils/format";
 
 interface GoalsViewProps {
@@ -192,8 +193,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
   const [goalForm, setGoalForm] = useState<{
     name: string;
     type: GoalType;
-    target_amount: number;
-    current_amount: number;
+    target_amount: number | null;
+    current_amount: number | null;
     target_date: string;
     linked_account_id: string;
     owner_member_id: string;
@@ -202,7 +203,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
     name: "",
     type: "SAVINGS",
     target_amount: 5000,
-    current_amount: 0,
+    current_amount: null,
     target_date: "",
     linked_account_id: "",
     owner_member_id: "",
@@ -316,7 +317,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
       name: "",
       type: presetType,
       target_amount: defaultTarget,
-      current_amount: 0,
+      current_amount: null,
       target_date: "",
       linked_account_id: "",
       owner_member_id: selectedMemberId !== "ALL" ? selectedMemberId : "",
@@ -349,8 +350,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
         await api.goals.updateGoal(editingGoal.id, {
           name: goalForm.name.trim(),
           type: goalForm.type,
-          target_amount: goalForm.target_amount,
-          current_amount: goalForm.current_amount,
+          target_amount: goalForm.target_amount ?? 0,
+          current_amount: goalForm.current_amount ?? 0,
           target_date: goalForm.target_date || undefined,
           linked_account_id: goalForm.linked_account_id || undefined,
           owner_member_id: goalForm.owner_member_id || undefined,
@@ -360,8 +361,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
         await api.goals.createGoal({
           name: goalForm.name.trim(),
           type: goalForm.type,
-          target_amount: goalForm.target_amount,
-          current_amount: goalForm.current_amount,
+          target_amount: goalForm.target_amount ?? 0,
+          current_amount: goalForm.current_amount ?? 0,
           target_date: goalForm.target_date || undefined,
           linked_account_id: goalForm.linked_account_id || undefined,
           owner_member_id: goalForm.owner_member_id || undefined,
@@ -626,7 +627,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
       {/* Emergency fund calculator modal */}
       {showCalcModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
-          <div className="relative w-full max-w-3xl bg-surface border border-default rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[92vh]">
+          <div className="relative w-full max-w-3xl bg-surface border border-default rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95">
             <div className="flex items-start justify-between gap-4 p-5 border-b border-subtle">
               <div>
                 <h2 className="text-base font-medium text-main">Emergency fund calculator</h2>
@@ -792,7 +793,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
       {/* Goal create / edit modal */}
       {isGoalModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
-          <div className="relative w-full max-w-lg bg-surface border border-default rounded-xl shadow-xl overflow-hidden flex flex-col">
+          <div className="relative w-full max-w-lg bg-surface border border-default rounded-xl shadow-xl overflow-hidden flex flex-col animate-in zoom-in-95">
             <div className="flex items-center justify-between p-5 border-b border-subtle">
               <h2 className="text-base font-medium text-main">
                 {editingGoal ? "Edit goal" : "New goal"}
@@ -839,14 +840,11 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
                 <div>
                   <label className={labelCls}>Target amount (CAD) *</label>
-                  <input
-                    type="number"
+                  <NumberField
                     step="0.01"
                     min="1"
                     value={goalForm.target_amount}
-                    onChange={(e) =>
-                      setGoalForm({ ...goalForm, target_amount: parseFloat(e.target.value) || 0 })
-                    }
+                    onValueChange={(v) => setGoalForm({ ...goalForm, target_amount: v })}
                     className={`${inputCls} tabular-nums`}
                     required
                   />
@@ -856,14 +854,11 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelCls}>Current amount (CAD)</label>
-                  <input
-                    type="number"
+                  <NumberField
                     step="0.01"
                     min="0"
                     value={goalForm.current_amount}
-                    onChange={(e) =>
-                      setGoalForm({ ...goalForm, current_amount: parseFloat(e.target.value) || 0 })
-                    }
+                    onValueChange={(v) => setGoalForm({ ...goalForm, current_amount: v })}
                     className={`${inputCls} tabular-nums`}
                   />
                   <span className="mt-1 block text-xs text-muted">

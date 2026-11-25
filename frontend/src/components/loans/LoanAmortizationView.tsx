@@ -62,6 +62,9 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
     })) || [];
 
   const hasEscrow = (scheduleData?.escrow_payment ?? 0) > 0;
+  const isRevolving = !!scheduleData?.is_revolving;
+  const minimumPct = scheduleData?.minimum_payment_percent;
+  const projectedBalance = scheduleData?.schedule.at(-1)?.remaining_balance;
 
 
   // ECharts stacked bar options: principal carries the accent, the rest stay neutral.
@@ -190,8 +193,14 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
                 className="block mt-2 font-display text-2xl font-medium leading-none text-main"
               />
               <div className="mt-2 text-xs text-muted">
-                Original principal{" "}
-                <span className="tabular-nums">{formatMoney(scheduleData.original_principal ?? 0)}</span>
+                {isRevolving ? (
+                  "Revolving, so it goes up and down as you draw and repay"
+                ) : (
+                  <>
+                    Original principal{" "}
+                    <span className="tabular-nums">{formatMoney(scheduleData.original_principal ?? 0)}</span>
+                  </>
+                )}
               </div>
             </div>
 
@@ -201,7 +210,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
                 {scheduleData.interest_rate ?? 0}%
               </div>
               <div className="mt-2 text-xs text-muted">
-                Total interest{" "}
+                {isRevolving ? "Interest, next 12 months " : "Total interest "}
                 <span className="tabular-nums">
                   {formatMoney(scheduleData.total_interest ?? 0, { cents: false })}
                 </span>
@@ -209,27 +218,44 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
             </div>
 
             <div className={`${card} p-5`}>
-              <div className="text-sm text-sub">Monthly payment</div>
+              <div className="text-sm text-sub">{isRevolving ? "Minimum payment" : "Monthly payment"}</div>
               <Money
                 value={scheduleData.monthly_payment ?? 0}
                 className="block mt-2 font-display text-2xl font-medium leading-none text-main"
               />
               <div className="mt-2 text-xs text-muted">
-                {(scheduleData.escrow_payment ?? 0) > 0
-                  ? `Includes ${formatMoney(scheduleData.escrow_payment, { cents: false })} escrow and taxes`
-                  : "Principal and interest"}
+                {isRevolving
+                  ? minimumPct
+                    ? `${minimumPct}% of the balance, at least the interest`
+                    : "Interest only"
+                  : (scheduleData.escrow_payment ?? 0) > 0
+                    ? `Includes ${formatMoney(scheduleData.escrow_payment, { cents: false })} escrow and taxes`
+                    : "Principal and interest"}
               </div>
             </div>
 
-            <div className={`${card} p-5`}>
-              <div className="text-sm text-sub">Projected payoff</div>
-              <div className="mt-2 font-display text-2xl font-medium leading-none tabular-nums text-main">
-                {scheduleData.payoff_date || "—"}
+            {isRevolving ? (
+              <div className={`${card} p-5`}>
+                <div className="text-sm text-sub">Balance in 12 months</div>
+                <Money
+                  value={projectedBalance ?? 0}
+                  className="block mt-2 font-display text-2xl font-medium leading-none text-main"
+                />
+                <div className="mt-2 text-xs text-muted">
+                  No fixed maturity. Assumes minimum payments and no new draws
+                </div>
               </div>
-              <div className="mt-2 text-xs text-muted">
-                {scheduleData.loan_term_months || scheduleData.schedule?.length || 0} total payments
+            ) : (
+              <div className={`${card} p-5`}>
+                <div className="text-sm text-sub">Projected payoff</div>
+                <div className="mt-2 font-display text-2xl font-medium leading-none tabular-nums text-main">
+                  {scheduleData.payoff_date || "—"}
+                </div>
+                <div className="mt-2 text-xs text-muted">
+                  {scheduleData.loan_term_months || scheduleData.schedule?.length || 0} total payments
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Payment breakdown chart */}
@@ -245,7 +271,9 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
           {/* Full schedule */}
           <section className={`${card} overflow-hidden`}>
             <div className="flex items-center justify-between px-5 sm:px-6 h-14 border-b border-subtle">
-              <h2 className="text-base font-medium text-main">Amortization schedule</h2>
+              <h2 className="text-base font-medium text-main">
+                {isRevolving ? "Minimum payment projection" : "Amortization schedule"}
+              </h2>
               <span className="text-xs text-muted">
                 <span className="tabular-nums">{scheduleData.schedule.length}</span> periods
               </span>

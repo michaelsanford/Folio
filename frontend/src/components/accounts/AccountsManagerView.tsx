@@ -6,6 +6,7 @@ import {
   getAccountTypeMeta,
   isAssetAccount,
   isLoanAccount,
+  isRevolvingAccount,
   ACCOUNT_CATEGORY_LABELS,
   type AccountCategoryGroup,
 } from "../../constants/canadianAccountTypes";
@@ -15,6 +16,8 @@ import { AccountIconPickerModal } from "./AccountIconPickerModal";
 import { CanadianRulesModal } from "./CanadianRulesModal";
 import { InstitutionAutocomplete } from "./InstitutionAutocomplete";
 import { Money } from "../common/Money";
+import { NumberField } from "../common/NumberField";
+import { formatMoney } from "../../utils/format";
 
 const card = "rounded-xl bg-surface border border-subtle";
 const fieldLabel = "block text-sm text-sub mb-2";
@@ -26,6 +29,66 @@ const secondaryButton =
   "h-9 px-4 inline-flex items-center justify-center gap-2 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer";
 const iconButton =
   "h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer";
+
+/** Number fields are `null` while blank, so a cleared field stays cleared. */
+interface AccountForm {
+  name: string;
+  type: AccountType;
+  institution: string;
+  account_number_mask: string;
+  icon: string;
+  color: string;
+  owner_member_id: string;
+  current_balance: number | null;
+  credit_limit: number | null;
+  interest_rate: number | null;
+  loan_term_months: number | null;
+  loan_original_principal: number | null;
+  monthly_payment: number | null;
+  escrow_payment: number | null;
+  /** Revolving lines: interest-only by default, or a percentage of the balance. */
+  minimum_payment_mode: MinimumPaymentMode;
+  minimum_payment_percent: number | null;
+}
+
+type MinimumPaymentMode = "INTEREST" | "PERCENT";
+
+const MINIMUM_PAYMENT_MODES: ReadonlyArray<readonly [MinimumPaymentMode, string]> = [
+  ["INTEREST", "Interest only"],
+  ["PERCENT", "% of balance"],
+];
+
+function emptyForm(type: AccountType): AccountForm {
+  const meta = getAccountTypeMeta(type);
+  return {
+    name: "",
+    type,
+    institution: "",
+    account_number_mask: "",
+    icon: meta.defaultIcon,
+    color: meta.defaultColor,
+    owner_member_id: "",
+    current_balance: null,
+    credit_limit: null,
+    interest_rate: null,
+    loan_term_months: null,
+    loan_original_principal: null,
+    monthly_payment: null,
+    escrow_payment: null,
+    minimum_payment_mode: "INTEREST",
+    minimum_payment_percent: null,
+  };
+}
+
+/** Mirrors the backend: interest-only, or % of balance but never below the interest. */
+function estimateMinimumPayment(form: AccountForm): number {
+  const balance = Math.abs(form.current_balance ?? 0);
+  const interest = (balance * (form.interest_rate ?? 0)) / 100 / 12;
+  if (form.minimum_payment_mode === "PERCENT" && form.minimum_payment_percent) {
+    return Math.max(interest, (balance * form.minimum_payment_percent) / 100);
+  }
+  return interest;
+}
 
 interface AccountsManagerViewProps {
   accounts: Account[];
@@ -50,63 +113,19 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
 
   const [directCustomizingAccount, setDirectCustomizingAccount] = useState<Account | null>(null);
 
-  const [formData, setFormData] = useState<{
-    name: string;
-    type: AccountType;
-    institution: string;
-    account_number_mask: string;
-    icon: string;
-    color: string;
-    owner_member_id: string;
-    current_balance: number;
-    credit_limit: number;
-    interest_rate: number;
-    loan_term_months: number;
-    loan_original_principal: number;
-    monthly_payment: number;
-    escrow_payment: number;
-  }>({
-    name: "",
-    type: "CHECKING",
-    institution: "",
-    account_number_mask: "",
-    icon: "wallet",
-    color: "#10B981",
-    owner_member_id: "",
-    current_balance: 0.0,
-    credit_limit: 0.0,
-    interest_rate: 0.0,
-    loan_term_months: 360,
-    loan_original_principal: 0.0,
-    monthly_payment: 0.0,
-    escrow_payment: 0.0,
-  });
+  const [formData, setFormData] = useState<AccountForm>(() => emptyForm("CHECKING"));
+  const estimatedMinimum = estimateMinimumPayment(formData);
 
   const handleOpenCreate = () => {
     setEditingAccount(null);
-    const meta = getAccountTypeMeta("CHECKING");
-    setFormData({
-      name: "",
-      type: "CHECKING",
-      institution: "",
-      account_number_mask: "",
-      icon: meta.defaultIcon,
-      color: meta.defaultColor,
-      owner_member_id: "",
-      current_balance: 0.0,
-      credit_limit: 0.0,
-      interest_rate: 0.0,
-      loan_term_months: 360,
-      loan_original_principal: 0.0,
-      monthly_payment: 0.0,
-      escrow_payment: 0.0,
-    });
+    setFormData(emptyForm("CHECKING"));
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (acc: Account) => {
     setEditingAccount(acc);
     const meta = getAccountTypeMeta(acc.type);
+    // `|| null` leaves stored zeros blank, so there's no 0 to delete before typing.
     setFormData({
       name: acc.name,
       type: acc.type,
@@ -115,13 +134,15 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
       icon: acc.icon || meta.defaultIcon,
       color: acc.color || meta.defaultColor,
       owner_member_id: acc.owner_member_id || "",
-      current_balance: acc.current_balance,
-      credit_limit: acc.credit_limit || 0.0,
-      interest_rate: acc.interest_rate || 0.0,
-      loan_term_months: acc.loan_term_months || 360,
-      loan_original_principal: acc.loan_original_principal || 0.0,
-      monthly_payment: acc.monthly_payment || 0.0,
-      escrow_payment: acc.escrow_payment || 0.0,
+      current_balance: acc.current_balance || null,
+      credit_limit: acc.credit_limit || null,
+      interest_rate: acc.interest_rate || null,
+      loan_term_months: acc.loan_term_months || null,
+      loan_original_principal: acc.loan_original_principal || null,
+      monthly_payment: acc.monthly_payment || null,
+      escrow_payment: acc.escrow_payment || null,
+      minimum_payment_mode: acc.minimum_payment_percent ? "PERCENT" : "INTEREST",
+      minimum_payment_percent: acc.minimum_payment_percent || null,
     });
     setIsModalOpen(true);
   };
@@ -136,63 +157,48 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
     }));
   };
 
+  /** Type-specific fields. A blank field is saved as 0; `undefined` leaves it untouched. */
+  const typeSpecificFields = (): Partial<Account> => {
+    const { type } = formData;
+    const loan = isLoanAccount(type);
+    const revolving = isRevolvingAccount(type);
+    return {
+      credit_limit: type === "CREDIT_CARD" ? formData.credit_limit ?? 0 : undefined,
+      interest_rate: loan ? formData.interest_rate ?? 0 : undefined,
+      // A revolving line has no term, original principal or fixed payment: clear them.
+      loan_term_months: revolving ? null : loan ? formData.loan_term_months ?? 0 : undefined,
+      loan_original_principal: revolving
+        ? null
+        : loan
+          ? formData.loan_original_principal ?? 0
+          : undefined,
+      monthly_payment: revolving ? null : loan ? formData.monthly_payment ?? 0 : undefined,
+      minimum_payment_percent: revolving
+        ? formData.minimum_payment_mode === "PERCENT"
+          ? formData.minimum_payment_percent
+          : null
+        : undefined,
+      escrow_payment: type === "MORTGAGE" ? formData.escrow_payment ?? 0 : undefined,
+    };
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const common = {
+      name: formData.name,
+      institution: formData.institution || undefined,
+      account_number_mask: formData.account_number_mask || undefined,
+      owner_member_id: formData.owner_member_id || undefined,
+      icon: formData.icon || null,
+      color: formData.color || null,
+      current_balance: formData.current_balance ?? 0,
+      ...typeSpecificFields(),
+    };
     try {
       if (editingAccount) {
-        await api.updateAccount(editingAccount.id, {
-          name: formData.name,
-          institution: formData.institution || undefined,
-          account_number_mask: formData.account_number_mask || undefined,
-          owner_member_id: formData.owner_member_id || undefined,
-          icon: formData.icon || null,
-          color: formData.color || null,
-          current_balance: Number(formData.current_balance),
-          credit_limit:
-            formData.type === "CREDIT_CARD" ? Number(formData.credit_limit) : undefined,
-          interest_rate: isLoanAccount(formData.type)
-            ? Number(formData.interest_rate)
-            : undefined,
-          loan_term_months: isLoanAccount(formData.type)
-            ? Number(formData.loan_term_months)
-            : undefined,
-          loan_original_principal: isLoanAccount(formData.type)
-            ? Number(formData.loan_original_principal)
-            : undefined,
-          monthly_payment: isLoanAccount(formData.type)
-            ? Number(formData.monthly_payment)
-            : undefined,
-          escrow_payment:
-            formData.type === "MORTGAGE" ? Number(formData.escrow_payment) : undefined,
-        });
+        await api.updateAccount(editingAccount.id, common);
       } else {
-        await api.createAccount({
-          name: formData.name,
-          type: formData.type,
-          institution: formData.institution || undefined,
-          account_number_mask: formData.account_number_mask || undefined,
-          owner_member_id: formData.owner_member_id || undefined,
-          currency: "CAD",
-          icon: formData.icon || null,
-          color: formData.color || null,
-          current_balance: Number(formData.current_balance),
-          credit_limit:
-            formData.type === "CREDIT_CARD" ? Number(formData.credit_limit) : undefined,
-          interest_rate: isLoanAccount(formData.type)
-            ? Number(formData.interest_rate)
-            : undefined,
-          loan_term_months: isLoanAccount(formData.type)
-            ? Number(formData.loan_term_months)
-            : undefined,
-          loan_original_principal: isLoanAccount(formData.type)
-            ? Number(formData.loan_original_principal)
-            : undefined,
-          monthly_payment: isLoanAccount(formData.type)
-            ? Number(formData.monthly_payment)
-            : undefined,
-          escrow_payment:
-            formData.type === "MORTGAGE" ? Number(formData.escrow_payment) : undefined,
-        });
+        await api.createAccount({ ...common, type: formData.type, currency: "CAD" });
       }
       setIsModalOpen(false);
       onAccountsModified();
@@ -504,7 +510,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
           <form
             onSubmit={handleSubmit}
-            className="w-full max-w-xl rounded-xl bg-surface border border-default shadow-xl max-h-[92vh] overflow-y-auto"
+            className="w-full max-w-xl rounded-xl bg-surface border border-default shadow-xl max-h-[92vh] overflow-y-auto animate-in zoom-in-95"
           >
             <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-subtle">
               <div>
@@ -610,16 +616,11 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
               {/* Balance */}
               <div>
                 <label className={fieldLabel}>Current balance</label>
-                <input
-                  type="number"
+                <NumberField
                   step="0.01"
+                  placeholder="0.00"
                   value={formData.current_balance}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      current_balance: parseFloat(e.target.value) || 0,
-                    })
-                  }
+                  onValueChange={(v) => setFormData({ ...formData, current_balance: v })}
                   className={`${inputClass} tabular-nums`}
                 />
               </div>
@@ -628,54 +629,113 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
               {formData.type === "CREDIT_CARD" && (
                 <div>
                   <label className={fieldLabel}>Credit limit</label>
-                  <input
-                    type="number"
+                  <NumberField
                     step="100"
                     placeholder="10000"
                     value={formData.credit_limit}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        credit_limit: parseFloat(e.target.value) || 0,
-                      })
-                    }
+                    onValueChange={(v) => setFormData({ ...formData, credit_limit: v })}
                     className={`${inputClass} tabular-nums`}
                   />
                 </div>
               )}
 
-              {/* Loan / Mortgage Fields */}
-              {isLoanAccount(formData.type) && (
+              {/* Revolving line of credit: rate and minimum payment, no term */}
+              {isRevolvingAccount(formData.type) && (
+                <>
+                  <div>
+                    <label className={fieldLabel}>Interest rate (APR %)</label>
+                    <NumberField
+                      step="0.01"
+                      placeholder="7.2"
+                      value={formData.interest_rate}
+                      onValueChange={(v) => setFormData({ ...formData, interest_rate: v })}
+                      className={`${inputClass} tabular-nums`}
+                    />
+                  </div>
+
+                  <div>
+                    <span className={fieldLabel} id="min-payment-label">Minimum payment</span>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div
+                        role="radiogroup"
+                        aria-labelledby="min-payment-label"
+                        className="inline-flex p-0.5 rounded-lg border border-default bg-input"
+                      >
+                        {MINIMUM_PAYMENT_MODES.map(([mode, label]) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            role="radio"
+                            aria-checked={formData.minimum_payment_mode === mode}
+                            onClick={() => setFormData({ ...formData, minimum_payment_mode: mode })}
+                            className={`h-8 px-3 rounded-md text-sm transition-colors cursor-pointer ${
+                              formData.minimum_payment_mode === mode
+                                ? "bg-surface-subtle text-main font-medium"
+                                : "text-sub hover:text-main"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {formData.minimum_payment_mode === "PERCENT" && (
+                        <div className="relative w-28 animate-in fade-in">
+                          <NumberField
+                            aria-label="Minimum payment, percent of balance"
+                            step="any"
+                            min="0.01"
+                            max="100"
+                            placeholder="3"
+                            required
+                            value={formData.minimum_payment_percent}
+                            onValueChange={(v) =>
+                              setFormData({ ...formData, minimum_payment_percent: v })
+                            }
+                            className={`${inputClass} pr-7 tabular-nums`}
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted pointer-events-none">
+                            %
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted mt-2 leading-relaxed">
+                      A line of credit has no term. The balance goes up and down as you draw and repay.
+                      {estimatedMinimum > 0 && (
+                        <>
+                          {" "}At today&apos;s balance the minimum is about{" "}
+                          <span className="tabular-nums text-sub">{formatMoney(estimatedMinimum)}</span>{" "}
+                          a month.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {/* Term Loan / Mortgage Fields */}
+              {isLoanAccount(formData.type) && !isRevolvingAccount(formData.type) && (
                 <>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className={fieldLabel}>Interest rate (APR %)</label>
-                      <input
-                        type="number"
+                      <NumberField
                         step="0.01"
                         placeholder="5.5"
                         value={formData.interest_rate}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            interest_rate: parseFloat(e.target.value) || 0,
-                          })
-                        }
+                        onValueChange={(v) => setFormData({ ...formData, interest_rate: v })}
                         className={`${inputClass} tabular-nums`}
                       />
                     </div>
                     <div>
                       <label className={fieldLabel}>Term (months)</label>
-                      <input
-                        type="number"
+                      <NumberField
+                        integer
+                        min="1"
                         placeholder="300"
                         value={formData.loan_term_months}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            loan_term_months: parseInt(e.target.value) || 360,
-                          })
-                        }
+                        onValueChange={(v) => setFormData({ ...formData, loan_term_months: v })}
                         className={`${inputClass} tabular-nums`}
                       />
                     </div>
@@ -684,33 +744,23 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className={fieldLabel}>Original principal</label>
-                      <input
-                        type="number"
+                      <NumberField
                         step="1000"
                         placeholder="350000"
                         value={formData.loan_original_principal}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            loan_original_principal: parseFloat(e.target.value) || 0,
-                          })
+                        onValueChange={(v) =>
+                          setFormData({ ...formData, loan_original_principal: v })
                         }
                         className={`${inputClass} tabular-nums`}
                       />
                     </div>
                     <div>
                       <label className={fieldLabel}>Monthly payment</label>
-                      <input
-                        type="number"
+                      <NumberField
                         step="10"
                         placeholder="2200"
                         value={formData.monthly_payment}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            monthly_payment: parseFloat(e.target.value) || 0,
-                          })
-                        }
+                        onValueChange={(v) => setFormData({ ...formData, monthly_payment: v })}
                         className={`${inputClass} tabular-nums`}
                       />
                     </div>
@@ -719,17 +769,11 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                   {formData.type === "MORTGAGE" && (
                     <div>
                       <label className={fieldLabel}>Escrow payment (taxes and insurance)</label>
-                      <input
-                        type="number"
+                      <NumberField
                         step="10"
                         placeholder="450"
                         value={formData.escrow_payment}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            escrow_payment: parseFloat(e.target.value) || 0,
-                          })
-                        }
+                        onValueChange={(v) => setFormData({ ...formData, escrow_payment: v })}
                         className={`${inputClass} tabular-nums`}
                       />
                     </div>
@@ -762,7 +806,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
           accountType={formData.type}
           accountName={formData.name}
           institution={formData.institution}
-          balance={formData.current_balance}
+          balance={formData.current_balance ?? 0}
           currentIcon={formData.icon}
           currentColor={formData.color}
           onSave={(icon, color) => {

@@ -15,16 +15,19 @@ class AmortizationScheduleRow(BaseModel):
 class AmortizationScheduleResponse(BaseModel):
     account_id: str
     account_name: str
-    original_principal: float
+    original_principal: float | None
     current_balance: float
     interest_rate: float
-    loan_term_months: int
+    loan_term_months: int | None
     monthly_payment: float
     escrow_payment: float
     total_interest: float
     total_cost: float
-    payoff_date: str
+    payoff_date: str | None
     schedule: list[AmortizationScheduleRow]
+    # Revolving lines project the minimum payment instead of amortizing to zero.
+    is_revolving: bool = False
+    minimum_payment_percent: float | None = None
 
 
 class LoanSplitSuggestion(BaseModel):

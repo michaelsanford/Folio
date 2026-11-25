@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
 import { Money } from "../common/Money";
+import { NumberField } from "../common/NumberField";
 import { useChartTheme } from "../../hooks/useChartTheme";
 import { formatMoney, formatMoneyCompact, getDateLocale } from "../../utils/format";
 import { CashFlowForecastView } from "./CashFlowForecastView";
@@ -89,19 +90,19 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
   // Inline Editing
   const [editingTargetId, setEditingTargetId] = useState<string | null>(null);
-  const [targetInput, setTargetInput] = useState<number>(0);
+  const [targetInput, setTargetInput] = useState<number | null>(null);
 
   // Add / Create Category Modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addModalTab, setAddModalTab] = useState<"existing" | "new">("existing");
   const [selectedExistingCatId, setSelectedExistingCatId] = useState<string>("");
-  const [existingCatTarget, setExistingCatTarget] = useState<number>(100);
+  const [existingCatTarget, setExistingCatTarget] = useState<number | null>(100);
 
   // New Category Form
   const [newCatName, setNewCatName] = useState("");
   const [newCatParentId, setNewCatParentId] = useState<string>("");
   const [newCatColor, setNewCatColor] = useState(PRESET_COLORS[0]);
-  const [newCatTarget, setNewCatTarget] = useState<number>(100);
+  const [newCatTarget, setNewCatTarget] = useState<number | null>(100);
   const [isSubmittingCat, setIsSubmittingCat] = useState(false);
 
   // Transaction Drilldown Modal
@@ -160,11 +161,11 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
   };
 
   // Inline Planned Amount Update
-  const handleSavePlannedAmount = async (categoryId: string, plannedAmount: number) => {
+  const handleSavePlannedAmount = async (categoryId: string, plannedAmount: number | null) => {
     try {
       await api.upsertBudgetItem(year, month, {
         category_id: categoryId,
-        planned_amount: plannedAmount,
+        planned_amount: plannedAmount ?? 0,
       });
       setEditingTargetId(null);
       await loadBudget();
@@ -180,7 +181,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
     try {
       await api.upsertBudgetItem(year, month, {
         category_id: selectedExistingCatId,
-        planned_amount: existingCatTarget,
+        planned_amount: existingCatTarget ?? 0,
       });
       setIsAddModalOpen(false);
       await loadBudget();
@@ -208,7 +209,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
       await api.upsertBudgetItem(year, month, {
         category_id: created.id,
-        planned_amount: newCatTarget,
+        planned_amount: newCatTarget ?? 0,
       });
 
       setIsAddModalOpen(false);
@@ -923,11 +924,10 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                         {isEditing ? (
                           <div className="flex items-center justify-end gap-1">
                             <span className="text-muted tabular-nums">$</span>
-                            <input
-                              type="number"
-                              step="10"
+                            <NumberField
+                              step="0.01"
                               value={targetInput}
-                              onChange={(e) => setTargetInput(parseFloat(e.target.value) || 0)}
+                              onValueChange={setTargetInput}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter") handleSavePlannedAmount(item.category_id, targetInput);
                                 if (e.key === "Escape") setEditingTargetId(null);
@@ -1106,11 +1106,10 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       {isEditing ? (
                         <div className="flex items-center gap-1">
                           <span className="text-muted tabular-nums">$</span>
-                          <input
-                            type="number"
-                            step="10"
+                          <NumberField
+                            step="0.01"
                             value={targetInput}
-                            onChange={(e) => setTargetInput(parseFloat(e.target.value) || 0)}
+                            onValueChange={setTargetInput}
                             className="w-20 h-7 px-2 rounded-lg border border-[var(--accent-primary)] bg-input text-xs text-main tabular-nums text-right focus:outline-none"
                           />
                           <button
@@ -1252,12 +1251,11 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm tabular-nums">
                             $
                           </span>
-                          <input
-                            type="number"
+                          <NumberField
                             min="0"
-                            step="10"
+                            step="0.01"
                             value={existingCatTarget}
-                            onChange={(e) => setExistingCatTarget(parseFloat(e.target.value) || 0)}
+                            onValueChange={setExistingCatTarget}
                             className={`${inputClass} pl-7 tabular-nums`}
                           />
                         </div>
@@ -1338,12 +1336,11 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm tabular-nums">
                         $
                       </span>
-                      <input
-                        type="number"
+                      <NumberField
                         min="0"
-                        step="10"
+                        step="0.01"
                         value={newCatTarget}
-                        onChange={(e) => setNewCatTarget(parseFloat(e.target.value) || 0)}
+                        onValueChange={setNewCatTarget}
                         className={`${inputClass} pl-7 tabular-nums`}
                       />
                     </div>

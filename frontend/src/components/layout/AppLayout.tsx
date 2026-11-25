@@ -416,7 +416,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
         {/* Mobile menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden p-3 border-b border-subtle bg-sidebar flex flex-col gap-0.5 animate-in fade-in">
+          <div className="md:hidden p-3 border-b border-subtle bg-sidebar flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1">
             {updateReady && (
               <div className="mb-2">
                 <UpdateItem

@@ -117,6 +117,11 @@ Folio is architected for Canadian legal, tax, and banking realities:
   - Month-by-month principal, interest, and escrow (property tax and insurance) amortization schedules.
   - Supports switching to `MONTHLY` compounding for US mortgages and loans.
 
+- **Revolving Lines of Credit and HELOCs**:
+  - No term or original principal: the balance goes up and down as you draw and repay.
+  - The minimum monthly payment is interest-only by default. It can instead be set to a percentage of the balance, and is never less than that month's interest.
+  - The Loans view projects the next 12 months at the minimum payment, and the cash flow forecast includes that payment.
+
 - **Automated TSX Market Quotes & Bank of Canada Valet FX**:
   - Automated, zero-cost price quotes for Toronto Stock Exchange (TSX) and TSX Venture (`.TO`, `.V`) equities and ETFs.
   - Integration with the official **Bank of Canada Valet API** for daily USD/CAD exchange rates (`FXUSDCAD`) and automated portfolio revaluation.

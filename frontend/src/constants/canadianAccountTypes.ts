@@ -345,18 +345,19 @@ export const CANADIAN_ACCOUNT_TYPES: Record<AccountType, CanadianAccountTypeMeta
   },
   LINE_OF_CREDIT: {
     type: "LINE_OF_CREDIT",
-    name: "Line of Credit / HELOC",
+    name: "Line of Credit",
     shortName: "Line of Credit",
     category: "DEBT",
     classification: "LIABILITY",
     defaultIcon: "scale",
     defaultColor: "#EC4899", // Pink
     badge: "Revolving LOC / Prime-Linked",
-    description: "Revolving debt facility with interest charged only on the drawn balance, often tied to Canadian Prime rate.",
+    description: "Personal or home equity line (HELOC). Interest is charged only on the drawn balance, often at Canadian Prime plus a margin.",
     keyRules: [
       "Variable interest rate expressed as Canadian Prime + margin.",
       "Home Equity Lines of Credit (HELOCs) are capped at 65% Loan-to-Value (LTV) in Canada.",
-      "Flexible interest-only minimum monthly payments allowed.",
+      "No fixed term or maturity: the balance revolves as you draw and repay.",
+      "Minimum monthly payment is usually interest-only; some lenders require a percentage of the balance.",
     ],
     craUrl: "https://www.canada.ca/en/financial-consumer-agency/services/mortgages/home-equity-line-credit.html",
     supportsAmortization: true,
@@ -527,6 +528,11 @@ export function isAssetAccount(type: AccountType): boolean {
 export function isInvestmentAccount(type: AccountType): boolean {
   const meta = CANADIAN_ACCOUNT_TYPES[type];
   return meta ? !!meta.supportsInvestments : type === "INVESTMENT";
+}
+
+/** Revolving credit: no term or original principal, only a minimum payment. */
+export function isRevolvingAccount(type: AccountType): boolean {
+  return type === "LINE_OF_CREDIT";
 }
 
 export function isLoanAccount(type: AccountType): boolean {

@@ -1,9 +1,12 @@
 from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 from app.core.money import from_cents
-from app.models.account import Account, AccountType
+from app.models.account import REVOLVING_TYPES, Account, AccountType
 from app.schemas.budget import CashFlowForecastPoint, CashFlowForecastResponse
-from app.services.loans.amortization import generate_amortization_schedule
+from app.services.loans.amortization import (
+    generate_amortization_schedule,
+    generate_revolving_schedule,
+)
 from app.services.analytics.engine import monthly_income_expense_cents
 
 
@@ -107,7 +110,11 @@ def project_cash_flow(
     scheduled_loan_payments: dict[date, list[tuple[str, float]]] = {}
     for loan in loans:
         try:
-            sched_resp = generate_amortization_schedule(loan)
+            sched_resp = (
+                generate_revolving_schedule(loan, months=days // 28 + 2)
+                if loan.type in REVOLVING_TYPES
+                else generate_amortization_schedule(loan)
+            )
             for row in sched_resp.schedule:
                 row_date = datetime.strptime(row.payment_date, "%Y-%m-%d").date()
                 if today <= row_date <= end_date:

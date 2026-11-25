@@ -78,7 +78,7 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
-      <div className="w-full max-w-xl rounded-xl bg-surface border border-default shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="w-full max-w-xl rounded-xl bg-surface border border-default shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95">
         {/* Header */}
         <div className="px-5 py-4 border-b border-subtle flex items-start justify-between gap-4">
           <div>

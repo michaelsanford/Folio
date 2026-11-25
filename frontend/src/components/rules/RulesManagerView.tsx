@@ -10,6 +10,7 @@ import type {
   ClassificationTier,
 } from "../../types";
 import { api } from "../../services/api";
+import { NumberField } from "../common/NumberField";
 
 const PATTERN_TYPE_LABELS: Record<RulePatternType, string> = {
   CONTAINS: "Contains",
@@ -51,7 +52,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
     category_id: string;
     pattern: string;
     pattern_type: RulePatternType;
-    priority: number;
+    priority: number | null;
     normalized_payee_override: string;
   }>({
     category_id: categories[0]?.id || "",
@@ -66,7 +67,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
 
   // Simple Rule Matcher Sandbox (inside Active Rules tab)
   const [testPayee, setTestPayee] = useState("");
-  const [testAmount, setTestAmount] = useState(-25.5);
+  const [testAmount, setTestAmount] = useState<number | null>(-25.5);
   const [testResult, setTestResult] = useState<{
     matched: boolean;
     suggested_category_id?: string;
@@ -140,7 +141,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
   const handleCreateRule = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.createRule(newRule);
+      await api.createRule({ ...newRule, priority: newRule.priority ?? 10 });
       setIsModalOpen(false);
       setNewRule({
         category_id: categories[0]?.id || "",
@@ -172,7 +173,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
     try {
       const res = await api.testRule({
         raw_payee: testPayee,
-        amount: Number(testAmount),
+        amount: testAmount ?? 0,
       });
       setTestResult(res);
     } catch (err: any) {
@@ -359,13 +360,12 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                 className={`${inputClass} flex-1 sm:w-auto sm:min-w-[220px] font-mono`}
               />
               <div className="flex items-center gap-2">
-                <input
-                  type="number"
+                <NumberField
                   step="0.01"
                   placeholder="Amount"
                   aria-label="Amount"
                   value={testAmount}
-                  onChange={(e) => setTestAmount(parseFloat(e.target.value) || 0)}
+                  onValueChange={setTestAmount}
                   className="w-28 h-9 px-3 rounded-lg border border-default bg-input text-sm text-main tabular-nums placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
                 />
                 <button onClick={handleTestMatch} className={`${secondaryButton} flex-1 sm:flex-none`}>
@@ -863,7 +863,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
           <form
             onSubmit={handleCreateRule}
-            className="w-full max-w-md rounded-xl bg-surface border border-default shadow-xl"
+            className="w-full max-w-md rounded-xl bg-surface border border-default shadow-xl animate-in zoom-in-95"
           >
             <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-subtle">
               <h3 className="text-base font-medium text-main">New rule</h3>
@@ -911,13 +911,13 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
 
                 <div>
                   <label htmlFor="rulePriority" className={fieldLabel}>Priority (1 is highest)</label>
-                  <input
+                  <NumberField
                     id="rulePriority"
-                    type="number"
+                    integer
+                    min="1"
+                    placeholder="10"
                     value={newRule.priority}
-                    onChange={(e) =>
-                      setNewRule({ ...newRule, priority: parseInt(e.target.value) || 10 })
-                    }
+                    onValueChange={(v) => setNewRule({ ...newRule, priority: v })}
                     className={`${inputClass} tabular-nums`}
                   />
                 </div>

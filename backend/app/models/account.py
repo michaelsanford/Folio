@@ -58,6 +58,11 @@ class AccountType(str, enum.Enum):
     OTHER_ASSET = "OTHER_ASSET"
 
 
+# Revolving credit has no maturity or original principal; its balance moves up
+# and down and the lender only requires a minimum payment.
+REVOLVING_TYPES = frozenset({AccountType.LINE_OF_CREDIT})
+
+
 @with_money(
     current_balance=False,
     credit_limit=True,
@@ -88,6 +93,9 @@ class Account(Base):
     loan_original_principal_cents = Column(Integer, nullable=True)
     monthly_payment_cents = Column(Integer, nullable=True)
     escrow_payment_cents = Column(Integer, nullable=True)  # Property tax + insurance portion
+    # Revolving lines only: minimum payment as a percentage of the outstanding
+    # balance. NULL means the minimum is interest-only.
+    minimum_payment_percent = Column(Float, nullable=True)
     compounding = Column(
         Enum(LoanCompounding), nullable=False, default=LoanCompounding.MONTHLY
     )

@@ -109,3 +109,79 @@ def test_student_loan_amortization(client):
     assert schedule["account_name"] == "Canada Student Loan"
     assert len(schedule["schedule"]) == 120
 
+
+
+def _create_loc(client, **extra):
+    resp = client.post(
+        "/api/accounts",
+        json={
+            "name": "Home Equity Line",
+            "type": AccountType.LINE_OF_CREDIT.value,
+            "current_balance": -24000.0,
+            "interest_rate": 6.0,
+            # Stale term-loan fields must be ignored for a revolving line.
+            "loan_term_months": 120,
+            "loan_original_principal": 50000.0,
+            **extra,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def test_line_of_credit_defaults_to_interest_only(client):
+    loc = _create_loc(client)
+    assert loc["minimum_payment_percent"] is None
+
+    data = client.get(f"/api/accounts/{loc['id']}/amortization").json()
+    assert data["is_revolving"] is True
+    assert data["loan_term_months"] is None
+    assert data["original_principal"] is None
+    assert data["payoff_date"] is None
+    # 24,000 at 6% / 12 = 120.00 interest, and interest-only pays exactly that.
+    assert data["monthly_payment"] == 120.0
+    assert len(data["schedule"]) == 12
+    assert all(row["principal"] == 0 for row in data["schedule"])
+    assert data["schedule"][-1]["remaining_balance"] == 24000.0
+
+
+def test_line_of_credit_percentage_minimum(client):
+    loc = _create_loc(client, minimum_payment_percent=3.0)
+    assert loc["minimum_payment_percent"] == 3.0
+
+    data = client.get(f"/api/accounts/{loc['id']}/amortization").json()
+    assert data["minimum_payment_percent"] == 3.0
+    # 3% of 24,000 = 720, above the 120 of interest.
+    assert data["monthly_payment"] == 720.0
+    balances = [row["remaining_balance"] for row in data["schedule"]]
+    assert balances == sorted(balances, reverse=True)
+    assert balances[-1] < 24000.0
+
+
+def test_line_of_credit_percentage_never_below_interest(client):
+    # 0.25% of the balance is less than a month's interest at 6%.
+    loc = _create_loc(client, minimum_payment_percent=0.25)
+    data = client.get(f"/api/accounts/{loc['id']}/amortization").json()
+    assert data["monthly_payment"] == 120.0
+
+
+def test_line_of_credit_switch_back_to_interest_only(client):
+    loc = _create_loc(client, minimum_payment_percent=3.0)
+    resp = client.put(f"/api/accounts/{loc['id']}", json={"minimum_payment_percent": None})
+    assert resp.status_code == 200
+    assert resp.json()["minimum_payment_percent"] is None
+
+
+def test_line_of_credit_rejects_out_of_range_percentage(client):
+    resp = client.post(
+        "/api/accounts",
+        json={"name": "Bad LOC", "type": "LINE_OF_CREDIT", "minimum_payment_percent": 150},
+    )
+    assert resp.status_code == 422
+
+
+def test_line_of_credit_split_uses_minimum(client):
+    loc = _create_loc(client)
+    data = client.get(f"/api/accounts/{loc['id']}/suggest-split").json()
+    assert data["interest_amount"] == 120.0
+    assert data["principal_amount"] == 0.0

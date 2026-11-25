@@ -721,7 +721,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
           <form
             onSubmit={handleAddHolding}
-            className="w-full max-w-md rounded-xl bg-surface border border-default p-5 flex flex-col gap-4 shadow-xl"
+            className="w-full max-w-md rounded-xl bg-surface border border-default p-5 flex flex-col gap-4 shadow-xl animate-in zoom-in-95"
           >
             <h3 className="text-base font-medium text-main">Add holding</h3>
 
@@ -812,7 +812,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
           <form
             onSubmit={handleSavePrices}
-            className="w-full max-w-md rounded-xl bg-surface border border-default p-5 flex flex-col gap-4 shadow-xl"
+            className="w-full max-w-md rounded-xl bg-surface border border-default p-5 flex flex-col gap-4 shadow-xl animate-in zoom-in-95"
           >
             <div>
               <h3 className="text-base font-medium text-main">Update prices</h3>

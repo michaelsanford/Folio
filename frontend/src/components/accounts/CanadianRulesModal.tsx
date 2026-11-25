@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { ExternalLink, X } from "lucide-react";
 import type { AccountType } from "../../types";
 import { getAccountTypeMeta, CANADIAN_ACCOUNT_TYPES } from "../../constants/canadianAccountTypes";
@@ -21,9 +22,9 @@ export const CanadianRulesModal: React.FC<CanadianRulesModalProps> = ({
 
   const meta = getAccountTypeMeta(accountType);
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
-      <div className="w-full max-w-xl rounded-xl bg-surface border border-default shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="w-full max-w-xl rounded-xl bg-surface border border-default shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95">
         {/* Header */}
         <div className="px-5 py-4 border-b border-subtle flex items-start justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
@@ -117,6 +118,7 @@ export const CanadianRulesModal: React.FC<CanadianRulesModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

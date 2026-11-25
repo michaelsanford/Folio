@@ -12,6 +12,7 @@ import { api } from "../../services/api";
 import { onVaultConflict } from "../../services/notifications";
 import { DESKTOP_MEDIA_QUERY, useMediaQuery } from "../../hooks/useMediaQuery";
 import { Money } from "../common/Money";
+import { NumberField } from "../common/NumberField";
 import { formatMoney, formatNumber } from "../../utils/format";
 
 const inputClass =
@@ -26,7 +27,7 @@ const iconButton =
   "w-8 h-8 inline-flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer";
 const checkboxClass = "rounded border-default bg-input text-accent-main focus:ring-accent-main";
 const modalOverlay = "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in";
-const modalPanel = "w-full rounded-xl bg-surface border border-default shadow-xl p-6";
+const modalPanel = "w-full rounded-xl bg-surface border border-default shadow-xl p-6 animate-in zoom-in-95";
 const fieldLabel = "block text-xs text-sub mb-1";
 
 /**
@@ -82,7 +83,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
   // Split Modal State
   const [splitModalTxn, setSplitModalTxn] = useState<Transaction | null>(null);
-  const [modalSplits, setModalSplits] = useState<Array<{ category_id: string; amount: number; memo: string }>>([]);
+  const [modalSplits, setModalSplits] = useState<Array<{ category_id: string; amount: number | null; memo: string }>>([]);
 
   // Batch Categorize Toolbar State
   const [batchCategory, setBatchCategory] = useState<string>("");
@@ -165,12 +166,21 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       </span>
     );
   };
-  const [txnFormData, setTxnFormData] = useState({
+  const [txnFormData, setTxnFormData] = useState<{
+    account_id: string;
+    transaction_date: string;
+    raw_payee: string;
+    normalized_payee: string;
+    amount: number | null;
+    category_id: string;
+    notes: string;
+    assigned_member_id: string;
+  }>({
     account_id: accounts[0]?.id || "",
     transaction_date: new Date().toISOString().split("T")[0],
     raw_payee: "",
     normalized_payee: "",
-    amount: 0.0,
+    amount: null,
     category_id: "",
     notes: "",
     assigned_member_id: "",
@@ -183,7 +193,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       transaction_date: new Date().toISOString().split("T")[0],
       raw_payee: "",
       normalized_payee: "",
-      amount: 0.0,
+      amount: null,
       category_id: "",
       notes: "",
       assigned_member_id: "",
@@ -352,7 +362,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       await api.updateTransaction(splitModalTxn.id, {
         splits: modalSplits.map((s) => ({
           category_id: s.category_id,
-          amount: isNeg ? -Math.abs(s.amount) : Math.abs(s.amount),
+          amount: isNeg ? -Math.abs(s.amount ?? 0) : Math.abs(s.amount ?? 0),
           memo: s.memo || undefined,
         })),
       });
@@ -373,11 +383,11 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
           transaction_date: txnFormData.transaction_date,
           raw_payee: txnFormData.raw_payee,
           normalized_payee: txnFormData.normalized_payee || txnFormData.raw_payee,
-          amount: Number(txnFormData.amount),
+          amount: (txnFormData.amount ?? 0),
           notes: txnFormData.notes || null,
           assigned_member_id: txnFormData.assigned_member_id || null,
           splits: txnFormData.category_id
-            ? [{ category_id: txnFormData.category_id, amount: Number(txnFormData.amount) }]
+            ? [{ category_id: txnFormData.category_id, amount: (txnFormData.amount ?? 0) }]
             : undefined,
         });
       } else {
@@ -386,11 +396,11 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
           transaction_date: txnFormData.transaction_date,
           raw_payee: txnFormData.raw_payee,
           normalized_payee: txnFormData.normalized_payee || txnFormData.raw_payee,
-          amount: Number(txnFormData.amount),
+          amount: (txnFormData.amount ?? 0),
           notes: txnFormData.notes || null,
           assigned_member_id: txnFormData.assigned_member_id || undefined,
           splits: txnFormData.category_id
-            ? [{ category_id: txnFormData.category_id, amount: Number(txnFormData.amount) }]
+            ? [{ category_id: txnFormData.category_id, amount: (txnFormData.amount ?? 0) }]
             : [],
         });
       }
@@ -985,13 +995,11 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                     ))}
                   </select>
 
-                  <input
-                    type="number"
+                  <NumberField
                     step="0.01"
                     placeholder="Amount"
                     value={split.amount}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 0;
+                    onValueChange={(val) => {
                       setModalSplits((prev) =>
                         prev.map((s, i) => (i === idx ? { ...s, amount: val } : s))
                       );
@@ -1017,7 +1025,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setModalSplits([...modalSplits, { category_id: "", amount: 0, memo: "" }]);
+                  setModalSplits([...modalSplits, { category_id: "", amount: null, memo: "" }]);
                 }}
                 className="w-full h-9 inline-flex items-center justify-center gap-2 border border-dashed border-default rounded-lg text-sm text-sub hover:text-main bg-surface-hover transition-colors cursor-pointer"
               >
@@ -1096,17 +1104,11 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 </div>
                 <div>
                   <label className={fieldLabel}>Amount, negative for expenses</label>
-                  <input
-                    type="number"
+                  <NumberField
                     step="0.01"
                     placeholder="-50.00"
                     value={txnFormData.amount}
-                    onChange={(e) =>
-                      setTxnFormData({
-                        ...txnFormData,
-                        amount: parseFloat(e.target.value) || 0,
-                      })
-                    }
+                    onValueChange={(v) => setTxnFormData({ ...txnFormData, amount: v })}
                     className={`w-full tabular-nums ${inputClass}`}
                     required
                   />

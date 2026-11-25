@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
 import { Money } from "../common/Money";
+import { NumberField } from "../common/NumberField";
 import { useChartTheme } from "../../hooks/useChartTheme";
 import { formatMoney, formatMoneyCompact } from "../../utils/format";
 import type { CashFlowForecastResponse } from "../../types";
@@ -25,7 +26,7 @@ export const CashFlowForecastView: React.FC = () => {
   const [paySchedule, setPaySchedule] = useState<"BI_WEEKLY" | "SEMI_MONTHLY" | "MONTHLY" | "NONE">(
     "BI_WEEKLY"
   );
-  const [expectedPaycheck, setExpectedPaycheck] = useState<number>(3000);
+  const [expectedPaycheck, setExpectedPaycheck] = useState<number | null>(3000);
   const [nextPayDate, setNextPayDate] = useState<string>(() => {
     // Default next pay date to upcoming Friday
     const d = new Date();
@@ -45,7 +46,7 @@ export const CashFlowForecastView: React.FC = () => {
       const data = await api.getCashFlowForecast({
         days,
         pay_schedule: paySchedule,
-        expected_paycheck_net: paySchedule !== "NONE" ? expectedPaycheck : 0,
+        expected_paycheck_net: paySchedule !== "NONE" ? expectedPaycheck ?? 0 : 0,
         next_pay_date: paySchedule !== "NONE" ? nextPayDate : undefined,
       });
       setForecast(data);
@@ -221,13 +222,12 @@ export const CashFlowForecastView: React.FC = () => {
 
           <div>
             <label className="block text-xs text-sub mb-2">Expected net paycheck</label>
-            <input
-              type="number"
+            <NumberField
               step="50"
               min="0"
               value={expectedPaycheck}
               disabled={paySchedule === "NONE"}
-              onChange={(e) => setExpectedPaycheck(parseFloat(e.target.value) || 0)}
+              onValueChange={setExpectedPaycheck}
               className={`${inputClass} tabular-nums`}
             />
           </div>

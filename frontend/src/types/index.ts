@@ -44,10 +44,12 @@ export interface Account {
   credit_limit?: number;
   interest_rate?: number;
   loan_origination_date?: string;
-  loan_term_months?: number;
-  loan_original_principal?: number;
-  monthly_payment?: number;
+  loan_term_months?: number | null;
+  loan_original_principal?: number | null;
+  monthly_payment?: number | null;
   escrow_payment?: number;
+  /** Revolving lines only: minimum payment as % of balance; null = interest-only. */
+  minimum_payment_percent?: number | null;
   owner_member_id?: string | null;
   owner_member?: HouseholdMember;
   is_active: boolean;
@@ -291,16 +293,20 @@ export interface AmortizationScheduleRow {
 export interface AmortizationScheduleResponse {
   account_id: string;
   account_name: string;
-  original_principal: number;
+  /** Null for a revolving line of credit, which has no original principal. */
+  original_principal: number | null;
   current_balance: number;
   interest_rate: number;
-  loan_term_months: number;
+  /** Null for a revolving line of credit, which has no maturity. */
+  loan_term_months: number | null;
   monthly_payment: number;
   escrow_payment: number;
   total_interest: number;
   total_cost: number;
-  payoff_date: string;
+  payoff_date: string | null;
   schedule: AmortizationScheduleRow[];
+  is_revolving?: boolean;
+  minimum_payment_percent?: number | null;
 }
 
 export interface LoanSplitSuggestion {

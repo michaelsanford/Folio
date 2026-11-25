@@ -38,3 +38,26 @@ def test_cash_flow_forecast_endpoint(client: TestClient, db_session: Session):
     assert "lowest_projected_balance" in data
     assert "is_overdraft_risk" in data
     assert not data["is_overdraft_risk"]  # should not be overdraft with $5k and bi-weekly pay
+
+
+def test_cash_flow_forecast_includes_line_of_credit_minimum(client: TestClient, db_session: Session):
+    checking = Account(
+        name="Chequing",
+        type=AccountType.CHECKING,
+        currency="CAD",
+        current_balance_cents=500000,
+    )
+    heloc = Account(
+        name="HELOC",
+        type=AccountType.LINE_OF_CREDIT,
+        currency="CAD",
+        current_balance_cents=-2400000,
+        interest_rate=6.0,
+    )
+    db_session.add_all([checking, heloc])
+    db_session.commit()
+
+    resp = client.get("/api/budgets/forecast/cash-flow?days=45&pay_cycle=MONTHLY&pay_amount=0")
+    assert resp.status_code == 200
+    notes = [n for p in resp.json()["points"] for n in p.get("notes", [])]
+    assert any(n.startswith("HELOC Payment: -$120.00") for n in notes)

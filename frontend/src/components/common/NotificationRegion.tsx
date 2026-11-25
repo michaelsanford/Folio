@@ -58,7 +58,7 @@ export const NotificationRegion: React.FC = () => {
         return (
           <div
             key={n.id}
-            className="pointer-events-auto flex items-start gap-3 p-4 rounded-xl bg-surface border border-default shadow-xl text-sm text-main animate-in fade-in"
+            className="pointer-events-auto flex items-start gap-3 p-4 rounded-xl bg-surface border border-default shadow-xl text-sm text-main animate-in fade-in slide-in-from-bottom-2"
           >
             <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${toneClass}`} strokeWidth={1.5} aria-hidden="true" />
             <span className="flex-1">{n.message}</span>

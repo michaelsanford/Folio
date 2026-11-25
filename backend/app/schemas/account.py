@@ -20,6 +20,7 @@ class AccountBase(BaseModel):
     loan_original_principal: float | None = None
     monthly_payment: float | None = None
     escrow_payment: float | None = None
+    minimum_payment_percent: float | None = Field(None, gt=0, le=100)
     compounding: LoanCompounding = LoanCompounding.MONTHLY
     owner_member_id: str | None = None
     is_active: bool = True
@@ -45,6 +46,7 @@ class AccountUpdate(BaseModel):
     loan_original_principal: float | None = None
     monthly_payment: float | None = None
     escrow_payment: float | None = None
+    minimum_payment_percent: float | None = Field(None, gt=0, le=100)
     compounding: LoanCompounding | None = None
     owner_member_id: str | None = None
     is_active: bool | None = None

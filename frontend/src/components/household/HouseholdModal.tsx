@@ -107,7 +107,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
-      <div className="relative w-full max-w-2xl bg-surface border border-default rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-2xl bg-surface border border-default rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-subtle">
           <div>
