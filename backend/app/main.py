@@ -4,7 +4,6 @@ from ipaddress import ip_address
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.datastructures import MutableHeaders
@@ -38,6 +37,11 @@ from app.core.s3_sync import (  # noqa: E402
 from app.core.security_headers import build_csp, security_headers  # noqa: E402
 from app.core.spa import mount_spa  # noqa: E402
 from app.core.sync_scheduler import sync_scheduler  # noqa: E402
+from app.core.vault_middleware import (  # noqa: E402
+    VaultSyncMiddleware,
+    vault_conflict_response,
+    vault_sync_failed_response,
+)
 import app.models  # noqa: F401,E402 - registers SQLAlchemy models with Base metadata
 
 from app.api.auth import router as auth_router  # noqa: E402
@@ -59,12 +63,6 @@ from app.api.people import router as people_router  # noqa: E402
 
 logger = logging.getLogger("folio.app")
 
-MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
-VAULT_CONFLICT_MESSAGE = (
-    "The vault was changed from another session. Your last change was not saved; "
-    "the latest data has been reloaded."
-)
-VAULT_SYNC_FAILED_MESSAGE = "Your change wasn't saved. Please try again."
 
 
 def seeding_needed(db: Session) -> bool:
@@ -164,22 +162,10 @@ app = FastAPI(
 )
 
 
-def vault_conflict_response() -> JSONResponse:
-    return JSONResponse(
-        status_code=409,
-        content={"detail": {"code": "vault_conflict", "message": VAULT_CONFLICT_MESSAGE}},
-    )
-
-
-def vault_sync_failed_response() -> JSONResponse:
-    return JSONResponse(
-        status_code=503,
-        content={"detail": {"code": "vault_sync_failed", "message": VAULT_SYNC_FAILED_MESSAGE}},
-    )
-
-
 @app.exception_handler(VaultConflictError)
 async def handle_vault_conflict(request: Request, exc: VaultConflictError):
+    # A handler that uploaded by itself lost a race: VaultSyncMiddleware replays it.
+    request.state.vault_conflict = True
     return vault_conflict_response()
 
 
@@ -215,29 +201,6 @@ def _build_csp() -> str:
     return build_csp()
 
 
-@app.middleware("http")
-async def flush_vault_on_lambda(request: Request, call_next):
-    """Lambda freezes the container once a response is sent, so nothing can
-    upload afterwards. Upload synchronously before a mutating request returns.
-
-    A save is either durable or visibly rejected:
-    - a conflicting writer turns the response into 409 vault_conflict;
-    - any other upload failure discards this container's local change (the
-      vault is re-downloaded from S3) and turns it into 503 vault_sync_failed.
-    """
-    response = await call_next(request)
-    if (
-        (request.method in MUTATING_METHODS or getattr(request.state, "vault_write", False))
-        and settings.s3_sync_enabled
-        and sync_scheduler.has_pending_changes()
-    ):
-        try:
-            await run_in_threadpool(sync_now)
-        except VaultConflictError:
-            return vault_conflict_response()
-        except VaultSyncFailedError:
-            return vault_sync_failed_response()
-    return response
 
 
 class SecurityHeadersMiddleware:
@@ -318,6 +281,9 @@ class OriginVerifyMiddleware:
         await response(scope, receive, send)
 
 
+# Innermost: holds each response until the vault is uploaded, replaying a
+# write that lost a race with another container (core/vault_middleware.py).
+app.add_middleware(VaultSyncMiddleware)
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,

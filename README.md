@@ -557,10 +557,10 @@ You can sign out and lock the session at any time using the **Sign out** button 
 4. **Invite-Only AWS Cognito + Built-in Sign-In & MFA**: Provisioned with `AllowAdminCreateUserOnly: true`, case-insensitive email usernames, 20-char passphrases, mandatory TOTP MFA (`SOFTWARE_TOKEN_MFA`), the Plus tier with threat protection, and deletion protection. The pool is retained when the stack is deleted. The web app handles email/password login, first-login passphrase replacement, inline SVG QR TOTP enrollment, `HttpOnly` session + refresh cookies, and sidebar/mobile sign-out; pass `-DisableCognito -MasterPassword` to use single Master Passphrase mode instead.
 5. **Generated secrets**: `FolioSessionSecret` (session signing key) and `FolioOriginSecret` (origin-verify value) are generated once by CloudFormation in Secrets Manager and stay the same across deploys.
 6. **S3 vault durability across instances**:
-   - The S3 object `database/folio.db` is the durable copy. Each instance restores it into `/tmp` at startup. Startup fails closed: any S3 error other than "object not found" stops the instance from starting, so it can never begin with an empty vault and upload it over the real one.
+   - The S3 object `database/folio.db.zst` (the SQLite file compressed with zstd, typically 4 to 5 times smaller) is the durable copy. Each instance restores it into `/tmp` at startup. A vault written by an older release as plain `database/folio.db` is read once and rewritten under the new key at startup; deploy this change while nobody is editing, because an instance still running the old release would keep writing the old key. Startup fails closed: any S3 error other than "object not found" stops the instance from starting, so it can never begin with an empty vault and upload it over the real one.
    - Every database commit that changes data marks the vault as changed. On Lambda, a mutating request (`POST`, `PUT`, `PATCH`, `DELETE`) uploads the vault before its response is returned, because Lambda freezes the instance as soon as it responds.
    - Snapshots are taken with SQLite's online backup API, so a concurrent write cannot produce a torn file.
-   - Uploads are S3 conditional writes (`If-Match` on the ETag the instance last saw). If another instance changed the vault first, S3 rejects the upload; the request returns `409` with code `vault_conflict`, the instance reloads the current vault from S3, and the web app shows a notice asking the user to retry the change.
+   - Uploads are S3 conditional writes (`If-Match` on the ETag the instance last saw). If another instance changed the vault first (two people saving at the same moment), S3 rejects the upload and the instance reloads the current vault. The losing change was made on a copy that has just been discarded, so the server runs the same request again on the reloaded vault and uploads that, after a short randomized pause, up to three attempts in all. Both people's changes land. Only when every attempt loses does the request return `409` with code `vault_conflict`, and the web app shows a notice asking the user to retry. Requests with effects outside the vault (sending an invitation, fetching quotes) are never repeated: they return `409` straight away. To make the replay possible, the request body is held in memory, and every response waits until its upload is done.
    - If the upload fails for any other reason (for example S3 is unreachable), the change is discarded and the request returns `503` with code `vault_sync_failed`; the web app shows "Your change wasn't saved. Please try again." A save is therefore either stored in S3 or visibly rejected, never silently kept only in one instance. If the instance can't reload the vault either, it answers `503` until S3 is reachable again. These failures are logged as `s3_sync_failed` and raise the sync-failure alarm.
    - Before opening a database session, an instance checks the S3 ETag (at most once per second, and not while it has unsynced changes) and reloads the vault if another instance has written a newer one.
    - Default categories and rules use deterministic UUIDv5 IDs, so separate instances seeding a fresh vault agree on them.
@@ -593,7 +593,7 @@ For a single household the deployment typically costs a few dollars a month:
 - **Baseline, roughly $0-3/month**: Lambda and S3 usage for a household fits within or close to the free tiers, CloudFront stays within its always-free allowance, and the 6 alarms fit within CloudWatch's 10 free alarms unless your account already uses them (each extra alarm is about $0.10/month).
 - **Secrets Manager, about $0.80/month**: two secrets at about $0.40 each.
 - **Cognito Plus**: billed per monthly active user, roughly $0.02 per MAU at the time of writing. Cognito's free tier applies to the Lite and Essentials tiers, not Plus, so check current Cognito pricing. A `-DisableCognito` deployment has no Cognito cost.
-- **S3 versions**: Every write uploads the whole vault, and noncurrent versions are kept for 5 days, so storage is roughly database size × writes in 5 days. Even a heavy day of 500 edits on a 20 MB vault is about 50 GB at most, around $1/month.
+- **S3 versions**: Every write uploads the whole compressed vault, and noncurrent versions are kept for 5 days, so storage is roughly compressed size × writes in 5 days. Even a heavy day of 500 edits on a 20 MB vault (about 4 to 5 MB compressed) is about 10 to 12 GB at most, well under $1/month.
 - **Bounded storage**: The ECR lifecycle policy keeps at most 5 images, and logs are kept for 90 days.
 
 ### Tearing Down
@@ -611,7 +611,7 @@ For a single household the deployment typically costs a few dollars a month:
 
 `teardown.ps1` deletes the stack (waiting for the CloudFront distribution to be removed, which can take several minutes) and then offers to delete what the stack leaves behind: the vault bucket, the Cognito user pool, the stack's secrets, the SAM ECR companion stack and images, and legacy log groups. Parameters: `-Region`, `-StackName` (default `folio-prod`), `-Environment`, `-Profile`, `-DeleteAll`, `-Force`, `-SkipVaultBackup`.
 
-- **Vault backup first**: Before a vault bucket is emptied, `database/folio.db` is downloaded to `.\folio-vault-backup-<bucket>-<yyyyMMdd-HHmmss>.db` in the current directory. If the download fails, the bucket is kept, even with `-Force`. Pass `-SkipVaultBackup` to skip the download on purpose.
+- **Vault backup first**: Before a vault bucket is emptied, the vault is downloaded to `.\folio-vault-backup-<bucket>-<yyyyMMdd-HHmmss>.db.zst` in the current directory (`.db` for a bucket an older release last wrote). Decompress it with `scripts/vault_zstd.py` (see [Backups & Restore](#backups--restore)). If the download fails, the bucket is kept, even with `-Force`. Pass `-SkipVaultBackup` to skip the download on purpose.
 - **Typed confirmation**: Deleting a vault bucket requires typing its exact name, including with `-DeleteAll`. Only `-Force` skips this.
 - **Reused buckets are protected**: A bucket attached through `ExistingVaultBucketName` predates the stack and is never selected by `-DeleteAll` or `-Force`; it can only be deleted interactively.
 - **Cognito user pool**: The stack retains the pool with deletion protection on. When you choose to delete it (or use `-DeleteAll` / `-Force`), the script turns deletion protection off and deletes the pool with all of its users. Users must then be re-invited and re-enrol MFA. A pool matched only by name, not by the stack, is never deleted by `-DeleteAll` or `-Force`.
@@ -624,28 +624,36 @@ For a single household the deployment typically costs a few dollars a month:
 
 **What exists**:
 
-- **S3 versions** (AWS only): the vault bucket keeps every previous version of `database/folio.db` for 5 days. This is a short-term backstop for noticing and undoing a bad write, not an archive.
+- **S3 versions** (AWS only): the vault bucket keeps every previous version of `database/folio.db.zst` for 5 days. This is a short-term backstop for noticing and undoing a bad write, not an archive.
 - **Pre-migration copies**: `<db>.pre-migrate-<rev>-<timestamp>.bak` next to the database (last 3 kept), and in S3 `backups/pre-migrate-<rev>-<timestamp>.db` (expire after 7 days). On Lambda the local copies live in `/tmp` and disappear with the instance, so use the S3 copies.
-- **Teardown backups**: `folio-vault-backup-<bucket>-<timestamp>.db` files written by `teardown.ps1`.
+- **Teardown backups**: `folio-vault-backup-<bucket>-<timestamp>.db.zst` files written by `teardown.ps1`.
+
+The cloud vault and teardown backups are zstd-compressed SQLite. `backend/scripts/vault_zstd.py` converts between the two forms and checks the database while doing so:
+
+```powershell
+cd backend
+uv run python scripts/vault_zstd.py decompress ..\folio-restore.db.zst ..\folio-restore.db   # open or inspect locally
+uv run python scripts/vault_zstd.py compress ..\folio.db.pre-migrate-0010.bak ..\folio.db.zst  # prepare an upload
+```
 
 **Restore a previous version on AWS**:
 
 1. Find the version to restore (note its `VersionId` and `LastModified`):
 
    ```powershell
-   aws s3api list-object-versions --bucket <bucket> --prefix database/folio.db
+   aws s3api list-object-versions --bucket <bucket> --prefix database/folio.db.zst
    ```
 
 2. Optionally download it first to inspect it:
 
    ```powershell
-   aws s3api get-object --bucket <bucket> --key database/folio.db --version-id <id> folio-restore.db
+   aws s3api get-object --bucket <bucket> --key database/folio.db.zst --version-id <id> folio-restore.db.zst
    ```
 
 3. Copy that version over the current object. This creates a new current version; the version it replaces stays available for 5 days, so the restore itself can be undone.
 
    ```powershell
-   aws s3api copy-object --bucket <bucket> --key database/folio.db --copy-source "<bucket>/database/folio.db?versionId=<id>"
+   aws s3api copy-object --bucket <bucket> --key database/folio.db.zst --copy-source "<bucket>/database/folio.db.zst?versionId=<id>"
    ```
 
 4. Running instances notice the new ETag on their next request that opens a database session (the freshness check runs at most once per second) and reload the vault. An instance that still holds an unsynced change cannot overwrite the restored copy: its conditional upload fails with `vault_conflict` and it reloads. To be certain every instance starts from the restored file, force new instances by redeploying, or by changing the function configuration, for example:
@@ -656,9 +664,9 @@ For a single household the deployment typically costs a few dollars a month:
 
    Do this while nobody is editing, and expect any edit made between the restored version and now to be lost.
 
-To restore a pre-migration copy, upload it over `database/folio.db` the same way (`aws s3 cp <file> s3://<bucket>/database/folio.db`) and force new instances.
+To restore a pre-migration copy (plain SQLite), compress it first with `scripts/vault_zstd.py compress`, upload the result over `database/folio.db.zst` (`aws s3 cp folio.db.zst s3://<bucket>/database/folio.db.zst`) and force new instances.
 
-**Restore on Docker**: Stop the container, copy a `.bak` file over `backend/data/folio.db`, delete `backend/data/folio.db-wal` and `backend/data/folio.db-shm` if they exist, and start the container again. To debug locally with a copy of the cloud vault, download an S3 version with `aws s3api get-object` and copy it in the same way; Docker never uploads it back.
+**Restore on Docker**: Stop the container, copy a `.bak` file over `backend/data/folio.db`, delete `backend/data/folio.db-wal` and `backend/data/folio.db-shm` if they exist, and start the container again. To debug locally with a copy of the cloud vault, download an S3 version with `aws s3api get-object`, decompress it with `scripts/vault_zstd.py decompress`, and copy it in the same way; Docker never uploads it back.
 
 ---
 

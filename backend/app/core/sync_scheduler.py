@@ -2,8 +2,8 @@
 
 Committing a change marks the database dirty (see the session events in
 app.core.database). Lambda freezes the execution environment as soon as a
-response is sent, so nothing uploads in the background: the HTTP middleware in
-app.main calls flush() synchronously before a mutating request returns, and
+response is sent, so nothing uploads in the background: VaultSyncMiddleware
+(app.core.vault_middleware) calls flush() before a mutating request returns, and
 endpoints that must not lose work (an import commit) call it through sync_now.
 
 Docker and local runs never sync to S3 (Settings.s3_sync_enabled is False

@@ -1,7 +1,7 @@
 """Investment holdings, prices, activity, and performance."""
 from datetime import date
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
@@ -461,11 +461,15 @@ class FxRateResponse(BaseModel):
 
 @router.post("/quotes/fetch-automated", response_model=AutomatedQuotesResponse)
 def fetch_automated_quotes(
+    request: Request,
     payload: list[str] | dict | None = Body(None),
     as_of: date | None = Query(None, description="Price quote date"),
     db: Session = Depends(get_db),
 ):
     """Fetches automated market quotes for TSX/US tickers and Bank of Canada FX."""
+    # Fetching takes seconds; after a lost save race, ask the person to retry
+    # rather than fetching everything again inside the same request.
+    request.state.no_replay = True
     symbols: list[str] | None = None
     if isinstance(payload, list):
         symbols = payload

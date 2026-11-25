@@ -1,7 +1,10 @@
 """SQLite vault persistence in S3 (AWS Lambda only).
 
-The S3 object ``database/folio.db`` is the durable copy of the vault. Each
-Lambda container works on a local file in /tmp and uploads snapshots of it.
+The S3 object ``database/folio.db.zst`` (the SQLite file, zstd-compressed)
+is the durable copy of the vault. Each Lambda container works on a local file
+in /tmp and uploads compressed snapshots of it. A vault written by an older
+release as plain ``database/folio.db`` is read once and rewritten under the
+new key.
 Docker and local runs never reach this module's network paths: they are
 development environments and keep the vault on local disk only (see
 ``Settings.s3_sync_enabled``).
@@ -25,6 +28,7 @@ Consistency rules:
   the real one. As a second guard, an upload is refused when the remote object
   exists but this process never established its ETag.
 """
+import io
 import logging
 import os
 import shutil
@@ -35,6 +39,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from compression import zstd
+
 from app.core.logging import (
     EVENT_S3_RESTORE_FAILED,
     EVENT_S3_SYNC_CONFLICT,
@@ -44,7 +50,11 @@ from app.core.logging import (
 
 logger = logging.getLogger("folio.s3_sync")
 
-S3_DB_KEY = "database/folio.db"
+S3_DB_KEY = "database/folio.db.zst"
+# Where releases before compression kept the vault (plain SQLite).
+LEGACY_DB_KEY = "database/folio.db"
+ZSTD_LEVEL = 3
+CHUNK = 1024 * 1024
 BACKUP_PREFIX = "backups/"
 FRESHNESS_INTERVAL_SECONDS = 1.0
 
@@ -146,28 +156,60 @@ def get_s3_client(region: str | None = None):
         return client
 
 
+def compress_file(src: Path, dst: Path) -> None:
+    """zstd-compress ``src`` into ``dst`` (streamed, constant memory)."""
+    with src.open("rb") as fin, zstd.open(dst, "wb", level=ZSTD_LEVEL) as fout:
+        shutil.copyfileobj(fin, fout, CHUNK)
+
+
+def decompress_file(src: Path, dst: Path) -> None:
+    with zstd.open(src, "rb") as fin, dst.open("wb") as fout:
+        shutil.copyfileobj(fin, fout, CHUNK)
+
+
 def _download_object(client, bucket_name: str, db_path: Path) -> str | None:
     """Download the vault atomically and return the ETag of exactly that version.
 
     get_object returns the body and its ETag together, so the ETag we keep is
     the one for the bytes we hold (a separate HEAD could describe a newer
     version written in between).
+
+    When only the legacy plain object exists, it is restored instead and None
+    is returned: the compressed key does not exist yet, so the next upload
+    creates it (``If-None-Match: *``). The vault is marked changed so that
+    upload happens at startup rather than at the next edit.
     """
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    response = client.get_object(Bucket=bucket_name, Key=S3_DB_KEY)
+    legacy = False
+    try:
+        response = client.get_object(Bucket=bucket_name, Key=S3_DB_KEY)
+    except Exception as exc:
+        if not _is_not_found(exc):
+            raise
+        response = client.get_object(Bucket=bucket_name, Key=LEGACY_DB_KEY)
+        legacy = True
     fd, tmp_name = tempfile.mkstemp(prefix=".folio-download-", dir=str(db_path.parent))
     try:
         with os.fdopen(fd, "wb") as fh:
             body = response["Body"]
-            if hasattr(body, "read"):
-                shutil.copyfileobj(body, fh)
+            if not hasattr(body, "read"):
+                body = io.BytesIO(body)
+            if legacy:
+                shutil.copyfileobj(body, fh, CHUNK)
             else:
-                fh.write(body)
+                with zstd.open(body, "rb") as plain:
+                    shutil.copyfileobj(plain, fh, CHUNK)
         _remove_sqlite_sidecars(db_path)
         os.replace(tmp_name, db_path)
     except BaseException:
         Path(tmp_name).unlink(missing_ok=True)
         raise
+    if legacy:
+        logger.info("Restored the vault from the legacy uncompressed object; it will be rewritten compressed.")
+        from app.core.sync_scheduler import sync_scheduler
+
+        sync_scheduler.mark_dirty()
+        return None
     etag = response.get("ETag")
     return str(etag) if etag else None
 
@@ -384,11 +426,20 @@ def sync_db_to_s3(db_path: Path, bucket_name: str, region: str = "ca-central-1")
                 return False
 
         snapshot: Path | None = None
+        packed: Path | None = None
         try:
             snapshot = _snapshot(db_path)
+            packed = snapshot.with_suffix(".db.zst")
+            compress_file(snapshot, packed)
             conditions = {"IfMatch": _last_known_etag} if _last_known_etag else {"IfNoneMatch": "*"}
-            with snapshot.open("rb") as body:
-                response = client.put_object(Bucket=bucket_name, Key=S3_DB_KEY, Body=body, **conditions)
+            with packed.open("rb") as body:
+                response = client.put_object(
+                    Bucket=bucket_name,
+                    Key=S3_DB_KEY,
+                    Body=body,
+                    ContentType="application/zstd",
+                    **conditions,
+                )
             etag = response.get("ETag") if isinstance(response, dict) else None
             _last_known_etag = str(etag) if etag else _fetch_remote_etag(client, bucket_name)
             logger.info("Database snapshot uploaded to S3.")
@@ -405,8 +456,9 @@ def sync_db_to_s3(db_path: Path, bucket_name: str, region: str = "ca-central-1")
             )
             return False
         finally:
-            if snapshot is not None:
-                snapshot.unlink(missing_ok=True)
+            for path in (snapshot, packed):
+                if path is not None:
+                    path.unlink(missing_ok=True)
 
 
 def upload_backup(file_path: Path, key: str, bucket_name: str, region: str = "ca-central-1") -> bool:

@@ -3,9 +3,15 @@
 Implements conditional PutObject semantics (IfMatch / IfNoneMatch="*") and
 raises botocore ClientError with the same codes S3 returns, so tests exercise
 the real error-classification paths.
+
+Objects whose key ends in ``.zst`` (the vault) hold zstd data, as in the real
+bucket: ``seed`` takes plain bytes and compresses them, and ``read`` returns
+plain bytes, so tests keep talking about SQLite contents.
 """
 import hashlib
 import io
+
+from compression import zstd
 
 from botocore.exceptions import ClientError
 
@@ -28,9 +34,18 @@ class FakeS3:
         self.fail_put_with: Exception | None = None
 
     def seed(self, bucket: str, key: str, data: bytes) -> str:
-        etag = f'"{hashlib.md5(data).hexdigest()}"'
-        self.objects[(bucket, key)] = (data, etag)
+        """Store plain ``data`` (compressed first for a ``.zst`` key)."""
+        return self._store(bucket, key, zstd.compress(data) if key.endswith(".zst") else data)
+
+    def _store(self, bucket: str, key: str, stored: bytes) -> str:
+        etag = f'"{hashlib.md5(stored).hexdigest()}"'
+        self.objects[(bucket, key)] = (stored, etag)
         return etag
+
+    def read(self, bucket: str, key: str) -> bytes:
+        """Plain contents of an object (decompressed for a ``.zst`` key)."""
+        stored = self.objects[(bucket, key)][0]
+        return zstd.decompress(stored) if key.endswith(".zst") else stored
 
     def etag(self, bucket: str, key: str) -> str | None:
         entry = self.objects.get((bucket, key))
@@ -64,5 +79,5 @@ class FakeS3:
             raise client_error("PreconditionFailed", 412, "PutObject")
         if "IfMatch" in kwargs and (current is None or current[1] != kwargs["IfMatch"]):
             raise client_error("PreconditionFailed", 412, "PutObject")
-        etag = self.seed(Bucket, Key, data)
+        etag = self._store(Bucket, Key, data)
         return {"ETag": etag}

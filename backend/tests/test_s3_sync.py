@@ -175,7 +175,7 @@ def test_upload_snapshot_is_a_valid_database(fake_s3, tmp_path):
     db_path = _make_db(tmp_path / "folio.db", "snap")
     assert sync_db_to_s3(db_path, BUCKET) is True
     uploaded = tmp_path / "uploaded.db"
-    uploaded.write_bytes(fake_s3.objects[(BUCKET, S3_DB_KEY)][0])
+    uploaded.write_bytes(fake_s3.read(BUCKET, S3_DB_KEY))
     assert _read_value(uploaded) == "snap"
     assert not list(tmp_path.glob(".folio-snapshot-*")), "temp snapshot must be removed"
 
@@ -187,7 +187,7 @@ def test_upload_refused_when_remote_exists_but_was_never_loaded(fake_s3, tmp_pat
     with caplog.at_level(logging.ERROR, logger="folio.s3_sync"):
         assert sync_db_to_s3(db_path, BUCKET) is False
     assert fake_s3.put_calls == []
-    assert fake_s3.objects[(BUCKET, S3_DB_KEY)][0] == b"the real vault"
+    assert fake_s3.read(BUCKET, S3_DB_KEY) == b"the real vault"
     assert any(getattr(r, "event", None) == "s3_sync_failed" for r in caplog.records)
 
 
@@ -345,3 +345,41 @@ def test_untrusted_copy_cannot_be_uploaded_over_the_vault(fake_s3, tmp_path):
     s3_sync._last_known_etag = None
     assert sync_db_to_s3(db_path, BUCKET) is False
     assert fake_s3.put_calls == []
+
+
+# ------------------------------------------------------------- compression
+
+def test_uploads_are_zstd_compressed(fake_s3, tmp_path):
+    db_path = _make_db(tmp_path / "folio.db", "x" * 50_000)
+    assert sync_db_to_s3(db_path, BUCKET) is True
+    put = fake_s3.put_calls[-1]
+    assert put["Key"] == "database/folio.db.zst"
+    assert put["ContentType"] == "application/zstd"
+    assert put["size"] < db_path.stat().st_size / 4
+    restored = tmp_path / "check.db"
+    restored.write_bytes(fake_s3.read(BUCKET, S3_DB_KEY))
+    assert _read_value(restored) == "x" * 50_000
+
+
+def test_a_legacy_plain_vault_is_restored_then_rewritten_compressed(fake_s3, tmp_path, no_migrations, monkeypatch):
+    from app.core.s3_sync import LEGACY_DB_KEY
+
+    monkeypatch.setattr(settings, "S3_BUCKET_NAME", BUCKET)  # Lambda with a bucket: changes are tracked
+
+    fake_s3.seed(BUCKET, LEGACY_DB_KEY, _db_bytes(tmp_path, "from before compression"))
+    db_path = tmp_path / "folio.db"
+
+    assert restore_db_from_s3(db_path, BUCKET) is True
+    assert _read_value(db_path) == "from before compression"
+    # The compressed key does not exist yet; the vault waits to be written there.
+    assert s3_sync._last_known_etag is None
+    assert sync_scheduler.has_pending_changes() is True
+
+    assert sync_db_to_s3(db_path, BUCKET) is True
+    assert fake_s3.put_calls[-1]["IfNoneMatch"] == "*"
+    copy = tmp_path / "copy.db"
+    copy.write_bytes(fake_s3.read(BUCKET, S3_DB_KEY))
+    assert _read_value(copy) == "from before compression"
+    # From now on the compressed copy is the vault.
+    assert restore_db_from_s3(tmp_path / "again.db", BUCKET) is True
+    assert s3_sync._last_known_etag == fake_s3.etag(BUCKET, S3_DB_KEY)

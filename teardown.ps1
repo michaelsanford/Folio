@@ -14,8 +14,9 @@
     single prompt or -Force to delete all stack-associated resources without prompting.
 
     Vault safety rules:
-    - Before a vault bucket is emptied, database/folio.db is downloaded to
-      .\folio-vault-backup-<bucket>-<yyyyMMdd-HHmmss>.db in the current directory. If that
+    - Before a vault bucket is emptied, the vault (database/folio.db.zst, or the plain
+      database/folio.db of older releases) is downloaded to
+      .\folio-vault-backup-<bucket>-<yyyyMMdd-HHmmss>.db.zst (or .db) in the current directory. If that
       download fails the bucket is preserved, even with -Force. Use -SkipVaultBackup to skip
       the download deliberately.
     - Deleting a vault bucket requires typing its exact name, including with -DeleteAll. Only
@@ -55,7 +56,7 @@
     preserves the bucket).
 
 .PARAMETER SkipVaultBackup
-    Do not download database/folio.db before deleting a vault bucket.
+    Do not download the vault before deleting a vault bucket.
 
 .EXAMPLE
     .\teardown.ps1 -Region ca-central-1 -StackName Folio-QA
@@ -76,7 +77,7 @@ param (
     [switch]$DeleteAll,
     # Skip all confirmation prompts and delete the stack and all stack-associated retained resources.
     [switch]$Force,
-    # Do not download database/folio.db before deleting a vault bucket.
+    # Do not download the vault before deleting a vault bucket.
     [switch]$SkipVaultBackup
 )
 
@@ -152,21 +153,28 @@ function Confirm-TypedName {
 }
 
 function Backup-VaultDatabase {
-    # Downloads database/folio.db. Returns Ok=$false (bucket must be preserved) on any failure.
+    # Downloads the vault: database/folio.db.zst (zstd-compressed SQLite), or the plain
+    # database/folio.db an older release wrote. Returns Ok=$false (bucket must be preserved)
+    # on any failure.
     param ([string]$BucketName)
 
-    $key = "database/folio.db"
-    $head = Invoke-Aws -Arguments @("s3api", "head-object", "--bucket", $BucketName, "--key", $key, "--output", "json") -AllowFailure
-    if ($head.ExitCode -ne 0) {
-        if ($head.Output -match '\(404\)|Not Found|NoSuchKey') {
-            return [pscustomobject]@{ Ok = $true; Path = $null; Note = "no current '$key' object to back up" }
+    $key = $null
+    $head = $null
+    foreach ($candidate in @("database/folio.db.zst", "database/folio.db")) {
+        $probe = Invoke-Aws -Arguments @("s3api", "head-object", "--bucket", $BucketName, "--key", $candidate, "--output", "json") -AllowFailure
+        if ($probe.ExitCode -eq 0) { $key = $candidate; $head = $probe; break }
+        if ($probe.Output -notmatch '\(404\)|Not Found|NoSuchKey') {
+            return [pscustomobject]@{ Ok = $false; Path = $null; Note = "head-object failed: $($probe.Output)" }
         }
-        return [pscustomobject]@{ Ok = $false; Path = $null; Note = "head-object failed: $($head.Output)" }
+    }
+    if (-not $key) {
+        return [pscustomobject]@{ Ok = $true; Path = $null; Note = "no current vault object to back up" }
     }
     $expectedLength = [long](($head.Output | ConvertFrom-Json).ContentLength)
 
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $path = Join-Path (Get-Location).Path "folio-vault-backup-$BucketName-$stamp.db"
+    $extension = if ($key.EndsWith(".zst")) { ".db.zst" } else { ".db" }
+    $path = Join-Path (Get-Location).Path "folio-vault-backup-$BucketName-$stamp$extension"
     $get = Invoke-Aws -Arguments @("s3api", "get-object", "--bucket", $BucketName, "--key", $key, $path, "--output", "json") -AllowFailure
     if ($get.ExitCode -ne 0 -or -not (Test-Path $path) -or (Get-Item $path).Length -ne $expectedLength) {
         Remove-Item $path -Force -ErrorAction SilentlyContinue
@@ -800,7 +808,7 @@ foreach ($s in $secretsToPurge) {
 $skippedBuckets = @()
 foreach ($b in $bucketsToDelete) {
     if (-not $SkipVaultBackup) {
-        Write-Host "Backing up database/folio.db from '$($b.Name)'..." -ForegroundColor Gray
+        Write-Host "Backing up the vault from '$($b.Name)'..." -ForegroundColor Gray
         $backup = Backup-VaultDatabase -BucketName $b.Name
         if (-not $backup.Ok) {
             Write-Host "  Backup FAILED ($($backup.Note)). Preserving vault bucket '$($b.Name)'." -ForegroundColor Red

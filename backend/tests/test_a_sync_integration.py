@@ -238,18 +238,49 @@ def test_bucket_outside_lambda_makes_no_s3_calls(db_session, monkeypatch, caplog
     assert len(warnings) == 1
 
 
-def test_lambda_conflict_returns_409_vault_conflict(client, lambda_mode, tmp_path):
-    import sqlite3
-
-    # The local file the snapshot is taken from.
-    conn = sqlite3.connect(str(settings.SQLITE_DB_PATH))
-    conn.execute("CREATE TABLE t (v TEXT)")
+def _sqlite_bytes(path, value: str) -> bytes:
+    conn = sqlite3.connect(str(path))
+    conn.execute("CREATE TABLE IF NOT EXISTS t (v TEXT)")
+    conn.execute("INSERT INTO t VALUES (?)", (value,))
     conn.commit()
     conn.close()
+    return path.read_bytes()
 
+
+@pytest.fixture
+def no_replay_pause():
+    async def instant(_seconds):
+        return None
+
+    with patch("app.core.vault_middleware.asyncio.sleep", instant):
+        yield
+
+
+def test_lambda_conflict_is_replayed_on_the_reloaded_vault(client, lambda_mode, tmp_path, no_replay_pause):
+    """Two people save at once: the loser's request runs again on the winner's
+    vault and lands, instead of answering 409."""
+    _local_vault("mine")
     fake = FakeS3()
-    fake.seed("vault-bucket", S3_DB_KEY, b"written by another container")
+    winner = fake.seed("vault-bucket", S3_DB_KEY, _sqlite_bytes(tmp_path / "winner.db", "theirs"))
     s3_sync._last_known_etag = '"an-older-version"'
+
+    with (
+        patch("app.core.s3_sync.get_s3_client", return_value=fake),
+        patch("app.core.migrations.run_migrations"),
+        patch("app.core.database.engine.dispose"),
+    ):
+        resp = client.post("/api/household/members", json={"name": "Casey", "role": "Self"})
+
+    assert resp.status_code == 201, resp.text
+    assert [c["IfMatch"] for c in fake.put_calls] == ['"an-older-version"', winner]
+    assert sync_scheduler.has_pending_changes() is False
+
+
+def test_lambda_conflict_gives_up_after_three_attempts(client, lambda_mode, tmp_path, no_replay_pause):
+    _local_vault("mine")
+    fake = FakeS3()
+    s3_sync._last_known_etag = fake.seed("vault-bucket", S3_DB_KEY, _sqlite_bytes(tmp_path / "w.db", "theirs"))
+    fake.fail_put_with = client_error("PreconditionFailed", 412, "PutObject")
 
     with (
         patch("app.core.s3_sync.get_s3_client", return_value=fake),
@@ -260,10 +291,73 @@ def test_lambda_conflict_returns_409_vault_conflict(client, lambda_mode, tmp_pat
 
     assert resp.status_code == 409
     assert resp.json()["detail"]["code"] == "vault_conflict"
-    assert fake.put_calls[-1]["IfMatch"] == '"an-older-version"'
-    # The winner was re-downloaded and nothing is left pending.
-    assert settings.SQLITE_DB_PATH.read_bytes() == b"written by another container"
+    assert len(fake.put_calls) == 3
     assert sync_scheduler.has_pending_changes() is False
+
+
+def _temporary_route(path: str, methods: list[str], endpoint):
+    from app.main import app
+
+    app.add_api_route(path, endpoint, methods=methods)
+    # Ahead of the SPA catch-all route when a frontend build is present.
+    app.router.routes.insert(0, app.router.routes.pop())
+    return lambda: setattr(app.router, "routes", [r for r in app.router.routes if getattr(r, "path", "") != path])
+
+
+def test_replay_sends_the_same_body_and_skips_no_replay_routes(client, lambda_mode, no_replay_pause):
+    from fastapi import Request
+
+    seen: list[bytes] = []
+    outcomes = iter([VaultConflictError("lost"), True])
+
+    async def echo(request: Request):
+        seen.append(await request.body())
+        if request.query_params.get("once"):
+            request.state.no_replay = True
+        sync_scheduler.mark_dirty()
+        return {"ok": True}
+
+    def flaky_sync():
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            sync_scheduler.reset()
+            raise outcome
+        sync_scheduler.reset()
+        return True
+
+    remove = _temporary_route("/api/_test_echo", ["POST"], echo)
+    try:
+        with patch("app.core.vault_middleware.sync_now", flaky_sync):
+            resp = client.post("/api/_test_echo", content=b'{"amount": 12.5}', headers={"content-type": "application/json"})
+        assert resp.status_code == 200
+        assert seen == [b'{"amount": 12.5}', b'{"amount": 12.5}']
+
+        seen.clear()
+        outcomes = iter([VaultConflictError("lost")])
+        with patch("app.core.vault_middleware.sync_now", lambda: (_ for _ in ()).throw(next(outcomes))):
+            resp = client.post("/api/_test_echo?once=1", content=b"x")
+        assert resp.status_code == 409
+        assert seen == [b"x"], "an invitation-style request is never sent twice"
+    finally:
+        remove()
+        sync_scheduler.reset()
+
+
+def test_a_read_that_wrote_is_uploaded_before_it_returns(client, lambda_mode):
+    from fastapi import Request
+
+    def first_sign_in(request: Request):
+        request.state.vault_write = True
+        sync_scheduler.mark_dirty()
+        return {"ok": True}
+
+    remove = _temporary_route("/api/_test_first_sign_in", ["GET"], first_sign_in)
+    try:
+        with patch("app.core.s3_sync.sync_db_to_s3", return_value=True) as upload:
+            assert client.get("/api/_test_first_sign_in").status_code == 200
+        upload.assert_called_once()
+    finally:
+        remove()
 
 
 def test_vault_conflict_raised_by_an_endpoint_maps_to_409(client):
