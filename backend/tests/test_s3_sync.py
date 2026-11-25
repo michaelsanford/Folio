@@ -383,3 +383,14 @@ def test_a_legacy_plain_vault_is_restored_then_rewritten_compressed(fake_s3, tmp
     # From now on the compressed copy is the vault.
     assert restore_db_from_s3(tmp_path / "again.db", BUCKET) is True
     assert s3_sync._last_known_etag == fake_s3.etag(BUCKET, S3_DB_KEY)
+
+
+def test_archives_go_to_cold_storage_and_read_back(fake_s3, tmp_path):
+    from app.core.s3_sync import download_archive, upload_archive
+
+    archive = tmp_path / "folio-2025.db.zst"
+    archive.write_bytes(b"compressed year")
+    upload_archive(archive, "archives/2025/folio-2025.db.zst", BUCKET)
+    put = fake_s3.put_calls[-1]
+    assert put["StorageClass"] == "GLACIER_IR" and "IfMatch" not in put
+    assert download_archive("archives/2025/folio-2025.db.zst", BUCKET) == b"compressed year"

@@ -60,6 +60,8 @@ from app.api.goals import router as goals_router  # noqa: E402
 from app.api.classification import router as classification_router  # noqa: E402
 from app.api.preferences import router as preferences_router  # noqa: E402
 from app.api.people import router as people_router  # noqa: E402
+from app.api.periods import router as periods_router  # noqa: E402
+from app.core.period_lock import PeriodClosedError  # noqa: E402 - also registers the lock listener
 
 logger = logging.getLogger("folio.app")
 
@@ -167,6 +169,14 @@ async def handle_vault_conflict(request: Request, exc: VaultConflictError):
     # A handler that uploaded by itself lost a race: VaultSyncMiddleware replays it.
     request.state.vault_conflict = True
     return vault_conflict_response()
+
+
+@app.exception_handler(PeriodClosedError)
+async def handle_period_closed(request: Request, exc: PeriodClosedError):
+    return JSONResponse(
+        status_code=409,
+        content={"detail": {"code": "period_closed", "message": str(exc), "year": exc.year}},
+    )
 
 
 @app.exception_handler(VaultSyncFailedError)
@@ -317,6 +327,7 @@ app.include_router(classification_router, prefix=settings.API_V1_STR, dependenci
 app.include_router(bootstrap_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
 app.include_router(preferences_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
 app.include_router(people_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(periods_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
 
 
 @app.api_route("/api/health", methods=["GET", "HEAD"], tags=["Health"])

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import or_, desc, asc, func, select
 from app.core.database import get_db
 from app.core.money import to_cents
+from app.core.period_lock import open_period
 from app.models.transaction import Transaction, TransactionSplit, TransactionStatus
 from app.models.account import Account
 from app.models.category import Category
@@ -282,7 +283,8 @@ def batch_categorize(req: BatchCategorizeRequest, db: Session = Depends(get_db))
     transactions = (
         db.query(Transaction)
         .options(selectinload(Transaction.splits))
-        .filter(Transaction.id.in_(req.transaction_ids))
+        # Selected rows in a closed year are left as they were (see updated_count).
+        .filter(Transaction.id.in_(req.transaction_ids), open_period(db))
         .all()
     )
 

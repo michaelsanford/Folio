@@ -137,7 +137,7 @@ function AppContent() {
       setAnalytics(data.analytics);
       setHouseholdMembers(data.household_members);
       setLimits({ ...DEFAULT_LIMITS, ...data.limits });
-      setSession(data.me, data.people);
+      setSession(data.me, data.people, data.closed_through_year ?? null);
       setIsAnalyticsStale(false);
     } catch (err) {
       console.error("Data load error:", err);

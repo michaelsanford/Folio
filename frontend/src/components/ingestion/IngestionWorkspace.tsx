@@ -270,7 +270,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
 
       resp.items.forEach((item, idx) => {
         const rk = makeRowKey(item, idx);
-        if (!item.is_duplicate) {
+        if (!item.is_duplicate && !item.in_closed_period) {
           initialSelected.add(rk);
         }
         const resolvedCatId = resolveCategoryId(
@@ -556,6 +556,9 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
       if (res.transfers_linked_count > 0) {
         const label = res.transfers_linked_count === 1 ? "transfer" : "transfers";
         parts.push(`· ${res.transfers_linked_count} ${label} paired`);
+      }
+      if (res.skipped_closed_count) {
+        parts.push(`· ${res.skipped_closed_count} skipped (closed year)`);
       }
 
       setSuccessMessage(parts.join(" "));
@@ -1127,7 +1130,11 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                           ))}
                         </select>
 
-                        {item.is_duplicate ? (
+                        {item.in_closed_period ? (
+                          <span className={`${chip} bg-surface-subtle text-sub`} title="This year is closed; the row is skipped">
+                            Closed year
+                          </span>
+                        ) : item.is_duplicate ? (
                           <span className={`${chip} bg-warning-subtle text-warning`}>
                             Duplicate
                           </span>
@@ -1235,7 +1242,14 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                       </div>
 
                       <div className="w-[14%] min-w-[84px] shrink-0">
-                        {item.is_duplicate ? (
+                        {item.in_closed_period ? (
+                          <span
+                            className="inline-block rounded-md px-1.5 py-0.5 text-xs leading-snug whitespace-normal break-words bg-surface-subtle text-sub"
+                            title="This year is closed; the row is skipped"
+                          >
+                            Closed year
+                          </span>
+                        ) : item.is_duplicate ? (
                           <span className="inline-block rounded-md px-1.5 py-0.5 text-xs leading-snug whitespace-normal break-words bg-warning-subtle text-warning">
                             Duplicate
                           </span>

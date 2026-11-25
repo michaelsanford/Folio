@@ -16,7 +16,8 @@
     Vault safety rules:
     - Before a vault bucket is emptied, the vault (database/folio.db.zst, or the plain
       database/folio.db of older releases) is downloaded to
-      .\folio-vault-backup-<bucket>-<yyyyMMdd-HHmmss>.db.zst (or .db) in the current directory. If that
+      .\folio-vault-backup-<bucket>-<yyyyMMdd-HHmmss>.db.zst (or .db) in the current directory, and
+      closed-year archives (archives/) to .\folio-vault-backup-<bucket>-<yyyyMMdd-HHmmss>-archives\. If that
       download fails the bucket is preserved, even with -Force. Use -SkipVaultBackup to skip
       the download deliberately.
     - Deleting a vault bucket requires typing its exact name, including with -DeleteAll. Only
@@ -181,6 +182,31 @@ function Backup-VaultDatabase {
         return [pscustomobject]@{ Ok = $false; Path = $null; Note = "download failed or size mismatch: $($get.Output)" }
     }
     return [pscustomobject]@{ Ok = $true; Path = $path; Note = "$expectedLength bytes" }
+}
+
+function Backup-VaultArchives {
+    # Downloads closed-year archives (archives/). Returns Ok=$false (bucket must be preserved)
+    # on any failure.
+    param ([string]$BucketName)
+
+    $list = Invoke-Aws -Arguments @("s3api", "list-objects-v2", "--bucket", $BucketName, "--prefix", "archives/", "--query", "KeyCount", "--output", "text") -AllowFailure
+    if ($list.ExitCode -ne 0) {
+        return [pscustomobject]@{ Ok = $false; Path = $null; Note = "list-objects failed: $($list.Output)" }
+    }
+    $count = 0
+    [void][int]::TryParse("$($list.Output)".Trim(), [ref]$count)
+    if ($count -eq 0) {
+        return [pscustomobject]@{ Ok = $true; Path = $null; Note = "no closed-year archives" }
+    }
+
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $folder = Join-Path (Get-Location).Path "folio-vault-backup-$BucketName-$stamp-archives"
+    $sync = Invoke-Aws -Arguments @("s3", "sync", "s3://$BucketName/archives/", $folder, "--only-show-errors") -AllowFailure
+    $saved = if (Test-Path $folder) { @(Get-ChildItem -Path $folder -Recurse -File).Count } else { 0 }
+    if ($sync.ExitCode -ne 0 -or $saved -lt $count) {
+        return [pscustomobject]@{ Ok = $false; Path = $null; Note = "archive download failed ($saved of $count): $($sync.Output)" }
+    }
+    return [pscustomobject]@{ Ok = $true; Path = $folder; Note = "$saved archive file(s)" }
 }
 
 function Remove-CognitoUserPool {
@@ -821,6 +847,17 @@ foreach ($b in $bucketsToDelete) {
             $backupFiles += $backup.Path
         } else {
             Write-Host "  Nothing to back up: $($backup.Note)." -ForegroundColor DarkYellow
+        }
+        $archives = Backup-VaultArchives -BucketName $b.Name
+        if (-not $archives.Ok) {
+            Write-Host "  Archive backup FAILED ($($archives.Note)). Preserving vault bucket '$($b.Name)'." -ForegroundColor Red
+            $failedItems += "S3 vault bucket $($b.Name) preserved: archive backup failed"
+            $skippedBuckets += $b.Name
+            continue
+        }
+        if ($archives.Path) {
+            Write-Host "  Saved $($archives.Path) ($($archives.Note))." -ForegroundColor Green
+            $backupFiles += $archives.Path
         }
     }
     Write-Host "Emptying all versions and deleting S3 vault '$($b.Name)'..." -ForegroundColor Gray

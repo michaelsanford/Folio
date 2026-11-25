@@ -569,3 +569,36 @@ def sync_now() -> bool:
         return True
     discard_local_changes(settings.SQLITE_DB_PATH, settings.S3_BUCKET_NAME, settings.AWS_REGION)
     raise VaultSyncFailedError("The change could not be uploaded to S3 and was discarded.")
+
+
+# ---------------------------------------------------------------------------
+# Closed-year archives (archives/<year>/...): write-once copies, never part of
+# the conditional vault protocol above.
+# ---------------------------------------------------------------------------
+ARCHIVE_PREFIX = "archives/"
+ARCHIVE_STORAGE_CLASS = "GLACIER_IR"  # rarely read, millisecond retrieval
+
+
+def upload_archive(file_path: Path, key: str, bucket_name: str, region: str = "ca-central-1") -> None:
+    """Store a closed-year archive in cold storage. Raises on failure."""
+    client = get_s3_client(region)
+    if not client or not bucket_name:
+        raise RuntimeError("No S3 client or bucket for the archive")
+    with Path(file_path).open("rb") as body:
+        client.put_object(
+            Bucket=bucket_name,
+            Key=key,
+            Body=body,
+            ContentType="application/zstd",
+            StorageClass=ARCHIVE_STORAGE_CLASS,
+        )
+    logger.info(f"Stored archive s3://{bucket_name}/{key}")
+
+
+def download_archive(key: str, bucket_name: str, region: str = "ca-central-1") -> bytes:
+    """The stored bytes of an archive (still compressed)."""
+    client = get_s3_client(region)
+    if not client or not bucket_name:
+        raise RuntimeError("No S3 client or bucket for the archive")
+    body = client.get_object(Bucket=bucket_name, Key=key)["Body"]
+    return body.read() if hasattr(body, "read") else body

@@ -136,7 +136,8 @@ def test_batch_categorize_query_count_is_flat(client, db_session):
     assert resp.status_code == 200
     assert resp.json()["updated_count"] == 40
     selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]
-    assert len(selects) <= 8, selects
+    # +1: the closed-year boundary (one query, shared with the flush check).
+    assert len(selects) <= 9, selects
     assert db_session.query(CategorizationRule).filter(CategorizationRule.pattern.like("SHOP%")).count() == 40
 
 

@@ -17,6 +17,7 @@ from app.api.rules import auto_learn_rules_bulk, seed_default_rules
 from app.api.transactions import recalculate_account_balances
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.period_lock import locked_before
 from app.core.s3_sync import VaultConflictError, VaultSyncFailedError, sync_now
 from app.models.account import Account, AccountType, LoanCompounding
 from app.models.category import Category
@@ -118,10 +119,24 @@ def _uploads_are_ephemeral() -> bool:
 
 def _parse_statement(db: Session, ext: str, account_id: str | None, content: bytes, filename: str) -> IngestionPreviewResponse:
     if ext == ".pdf":
-        return parse_pdf_content(db, account_id, content, filename)
-    if ext in (".ofx", ".qfx", ".qbo"):
-        return parse_ofx_content(db, account_id, content, filename)
-    return parse_csv_content(db, account_id, content, filename)  # Default to CSV / text
+        preview = parse_pdf_content(db, account_id, content, filename)
+    elif ext in (".ofx", ".qfx", ".qbo"):
+        preview = parse_ofx_content(db, account_id, content, filename)
+    else:
+        preview = parse_csv_content(db, account_id, content, filename)  # Default to CSV / text
+    return _mark_closed_period(db, preview)
+
+
+def _mark_closed_period(db: Session, preview: IngestionPreviewResponse) -> IngestionPreviewResponse:
+    """Flag rows dated in a closed year; the commit leaves them out."""
+    boundary = locked_before(db)
+    if boundary is None:
+        return preview
+    for item in preview.items:
+        when = _parse_transaction_date(item.transaction_date)
+        if when is not None and when < boundary:
+            item.in_closed_period = True
+    return preview
 
 
 @router.post("/upload-preview", response_model=IngestionPreviewResponse)
@@ -277,6 +292,10 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
             )
         parsed_dates.append(trn_date)
 
+    # Rows dated in a closed year are skipped rather than failing the import.
+    closed_boundary = locked_before(db)
+    skipped_closed = 0
+
     resolutions_by_key = {r.source_account_key: r for r in req.accounts}
     referenced_keys = {it.source_account_key for it in req.items if it.source_account_key}
 
@@ -399,6 +418,10 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
         for idx, target_account, canonical_hash in staged:
             item = req.items[idx]
             _track_account(target_account)
+
+            if closed_boundary is not None and parsed_dates[idx] < closed_boundary:
+                skipped_closed += 1
+                continue
 
             if canonical_hash:
                 seen_for_acc = seen_hashes_by_account.setdefault(target_account.id, set())
@@ -531,6 +554,7 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
         accounts_created_count=len(created_account_ids),
         accounts=summaries,
         transfers_linked_count=transfers_linked,
+        skipped_closed_count=skipped_closed,
     )
 
 

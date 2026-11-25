@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.s3_sync import sync_now
 from app.models.rule import CategorizationRule
+from app.core.period_lock import open_period
 from app.models.transaction import Transaction, TransactionSplit
 from app.schemas.classification import (
     AutoClassifyUncategorizedRequest,
@@ -129,7 +130,7 @@ def auto_classify_uncategorized(
             selectinload(Transaction.splits),
             joinedload(Transaction.account),
         )
-        .filter(~has_category)
+        .filter(~has_category, open_period(db))  # closed years stay as they were
     )
     if req.account_id:
         query = query.filter(Transaction.account_id == req.account_id)

@@ -9,19 +9,26 @@ import type { Me, PersonSummary } from "../types";
 export interface SessionState {
   me: Me | null;
   names: ReadonlyMap<string, string>;
+  /** Transactions dated up to Dec 31 of this year cannot change. */
+  closedThroughYear: number | null;
 }
 
-const EMPTY: SessionState = Object.freeze({ me: null, names: new Map() });
+const EMPTY: SessionState = Object.freeze({ me: null, names: new Map(), closedThroughYear: null });
 
 let current: SessionState = EMPTY;
 const listeners = new Set<() => void>();
 
 export const getSession = (): SessionState => current;
 
-export const setSession = (me: Me | null | undefined, people: PersonSummary[] | undefined): void => {
+export const setSession = (
+  me: Me | null | undefined,
+  people: PersonSummary[] | undefined,
+  closedThroughYear: number | null = null
+): void => {
   current = {
     me: me ?? null,
     names: new Map((people ?? []).map((p) => [p.user_key, p.name])),
+    closedThroughYear,
   };
   listeners.forEach((l) => l());
 };
@@ -38,6 +45,13 @@ export const subscribeSession = (listener: () => void): (() => void) => {
 
 /** Whether the person may change the ledger (OWNER or MEMBER). */
 export const canEdit = (state: SessionState = current): boolean => state.me?.can_edit ?? true;
+
+/** Whether a transaction on this date (YYYY-MM-DD…) is in a closed year. */
+export const isClosedDate = (isoDate: string | null | undefined, state: SessionState = current): boolean => {
+  if (!isoDate || state.closedThroughYear == null) return false;
+  const year = Number(isoDate.slice(0, 4));
+  return Number.isFinite(year) && year <= state.closedThroughYear;
+};
 
 /** Display name for a user key, if known. */
 export const personName = (key: string | null | undefined, state: SessionState = current): string | null =>

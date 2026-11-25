@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.core.s3_sync import sync_now
 from app.models.rule import CategorizationRule, RulePatternType
 from app.models.category import Category
+from app.core.period_lock import open_period
 from app.models.transaction import Transaction, TransactionSplit
 from app.schemas.rule import (
     CategorizationRuleCreate,
@@ -621,7 +622,7 @@ def apply_rules_batch(db: Session = Depends(get_db)):
     uncategorized_txns = (
         db.query(Transaction)
         .options(selectinload(Transaction.splits), joinedload(Transaction.account))
-        .filter(~has_category)
+        .filter(~has_category, open_period(db))  # closed years stay as they were
         .all()
     )
 

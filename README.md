@@ -234,6 +234,7 @@ Folio provides statutory tracking for Canadian tax-advantaged accounts:
 - Multi-split transactions (e.g. mortgage payment split between principal, interest, and escrow).
 - **Automated Transfer Pairing**: Identifies offsetting transactions between accounts (e.g. Chequing debit and Visa credit), linking them via `transfer_transaction_id` so they do not artificially inflate income or expenses.
 - Inline category editing, merchant pattern rules creation, and batch categorization.
+- **Closed years** (Ledger > Closed years): once a year is over, an owner can close it. Its transactions are then locked: they cannot be added, changed, deleted or moved in or out of the year, by anyone or anything. Rule application, auto-classification and transfer pairing pass over them, imports skip rows dated in a closed year and say how many, and the ledger shows a lock instead of the edit buttons. Closing a year also locks every year before it. Closing writes a read-only archive of the year: a SQLite file with that year's transactions, splits, budgets and month-end balances, plus the accounts, categories and household members they refer to. It is compressed and checksummed and kept in long-term storage. Anyone can download an archive, and an owner can reopen the latest closed year, which keeps its archive. Nothing is removed from the live vault.
 
 ---
 
@@ -419,7 +420,7 @@ Folio implements a defense-in-depth security model for hosting financial data:
   - On AWS, a CloudFront response headers policy mirrors these values. It always adds HSTS, and fills in the other headers only where the app did not answer (for example a CloudFront error page). The CSP comes from the app only.
 - **Structured Logs**: Every request writes one JSON access line (`folio.access`: method, path without the query string, status, duration, request ID, client IP). Uvicorn's startup and error lines are JSON too, and `GET`/`HEAD` both work on `/` and `/api/health`.
 - **S3 Vault Protection**: The vault bucket blocks all public access, enforces bucket-owner object ownership (`BucketOwnerEnforced`, ACLs disabled), encrypts objects with SSE-S3 (`AES256`), keeps versions, and has a bucket policy that denies any request not made over TLS.
-- **Least-Privilege IAM**: The Lambda role can read and write only `database/*` and `backups/*` in the vault bucket, list only those prefixes, and read only the stack's two secrets. With Cognito on, it may create, look up, disable, enable, sign out and delete users in the stack's own user pool only, for in-app people management. `bedrock:InvokeModel` is granted only when `EnableBedrock` is `true`, and only for the configured model or inference profile.
+- **Least-Privilege IAM**: The Lambda role can read and write only `database/*`, `backups/*` and `archives/*` (closed-year archives) in the vault bucket, list only those prefixes, and read only the stack's two secrets. With Cognito on, it may create, look up, disable, enable, sign out and delete users in the stack's own user pool only, for in-app people management. `bedrock:InvokeModel` is granted only when `EnableBedrock` is `true`, and only for the configured model or inference profile.
 - **Container Non-Root Isolation**: Multi-stage Docker execution runs as an unprivileged `appuser` (UID 1000), and the Docker build context excludes `backend/data/`, databases, `.env` files and `samconfig.toml` so no vault data or secrets are baked into the image.
 
 ---
@@ -592,6 +593,7 @@ For a single household the deployment typically costs a few dollars a month:
 
 - **Baseline, roughly $0-3/month**: Lambda and S3 usage for a household fits within or close to the free tiers, CloudFront stays within its always-free allowance, and the 6 alarms fit within CloudWatch's 10 free alarms unless your account already uses them (each extra alarm is about $0.10/month).
 - **Secrets Manager, about $0.80/month**: two secrets at about $0.40 each.
+- **Closed-year archives**: stored in S3 Glacier Instant Retrieval (about a sixth of the Standard storage price, with a 90-day minimum and 128 KB minimum billable size per object). A year of household transactions is typically well under 1 MB compressed, so archives cost cents per year.
 - **Cognito Plus**: billed per monthly active user, roughly $0.02 per MAU at the time of writing. Cognito's free tier applies to the Lite and Essentials tiers, not Plus, so check current Cognito pricing. A `-DisableCognito` deployment has no Cognito cost.
 - **S3 versions**: Every write uploads the whole compressed vault, and noncurrent versions are kept for 5 days, so storage is roughly compressed size × writes in 5 days. Even a heavy day of 500 edits on a 20 MB vault (about 4 to 5 MB compressed) is about 10 to 12 GB at most, well under $1/month.
 - **Bounded storage**: The ECR lifecycle policy keeps at most 5 images, and logs are kept for 90 days.
@@ -611,7 +613,7 @@ For a single household the deployment typically costs a few dollars a month:
 
 `teardown.ps1` deletes the stack (waiting for the CloudFront distribution to be removed, which can take several minutes) and then offers to delete what the stack leaves behind: the vault bucket, the Cognito user pool, the stack's secrets, the SAM ECR companion stack and images, and legacy log groups. Parameters: `-Region`, `-StackName` (default `folio-prod`), `-Environment`, `-Profile`, `-DeleteAll`, `-Force`, `-SkipVaultBackup`.
 
-- **Vault backup first**: Before a vault bucket is emptied, the vault is downloaded to `.\folio-vault-backup-<bucket>-<yyyyMMdd-HHmmss>.db.zst` in the current directory (`.db` for a bucket an older release last wrote). Decompress it with `scripts/vault_zstd.py` (see [Backups & Restore](#backups--restore)). If the download fails, the bucket is kept, even with `-Force`. Pass `-SkipVaultBackup` to skip the download on purpose.
+- **Vault backup first**: Before a vault bucket is emptied, the vault is downloaded to `.\folio-vault-backup-<bucket>-<yyyyMMdd-HHmmss>.db.zst` in the current directory (`.db` for a bucket an older release last wrote). Decompress it with `scripts/vault_zstd.py` (see [Backups & Restore](#backups--restore)). Closed-year archives (`archives/`) are downloaded to a `...-archives` folder beside it. If either download fails, the bucket is kept, even with `-Force`. Pass `-SkipVaultBackup` to skip the download on purpose.
 - **Typed confirmation**: Deleting a vault bucket requires typing its exact name, including with `-DeleteAll`. Only `-Force` skips this.
 - **Reused buckets are protected**: A bucket attached through `ExistingVaultBucketName` predates the stack and is never selected by `-DeleteAll` or `-Force`; it can only be deleted interactively.
 - **Cognito user pool**: The stack retains the pool with deletion protection on. When you choose to delete it (or use `-DeleteAll` / `-Force`), the script turns deletion protection off and deletes the pool with all of its users. Users must then be re-invited and re-enrol MFA. A pool matched only by name, not by the stack, is never deleted by `-DeleteAll` or `-Force`.
@@ -626,7 +628,8 @@ For a single household the deployment typically costs a few dollars a month:
 
 - **S3 versions** (AWS only): the vault bucket keeps every previous version of `database/folio.db.zst` for 5 days. This is a short-term backstop for noticing and undoing a bad write, not an archive.
 - **Pre-migration copies**: `<db>.pre-migrate-<rev>-<timestamp>.bak` next to the database (last 3 kept), and in S3 `backups/pre-migrate-<rev>-<timestamp>.db` (expire after 7 days). On Lambda the local copies live in `/tmp` and disappear with the instance, so use the S3 copies.
-- **Teardown backups**: `folio-vault-backup-<bucket>-<timestamp>.db.zst` files written by `teardown.ps1`.
+- **Teardown backups**: `folio-vault-backup-<bucket>-<timestamp>.db.zst` files (and `-archives` folders) written by `teardown.ps1`.
+- **Closed-year archives**: one read-only `folio-<year>-<timestamp>.db.zst` per closing, in `archives/<year>/` in the vault bucket (Glacier Instant Retrieval, never expired) or `backend/data/archives/<year>/` on Docker and local installs. Each closing records the file's SHA-256, which the download returns in the `X-Archive-SHA256` header. These are a record of the year as closed, not a way to roll the vault back.
 
 The cloud vault and teardown backups are zstd-compressed SQLite. `backend/scripts/vault_zstd.py` converts between the two forms and checks the database while doing so:
 

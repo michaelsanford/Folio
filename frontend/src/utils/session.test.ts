@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { attributionLine, canEdit, clearSession, getSession, setSession } from "./session";
+import { attributionLine, canEdit, clearSession, getSession, isClosedDate, setSession } from "./session";
 import type { Me } from "../types";
 
 const me = (role: Me["role"]): Me => ({
@@ -35,5 +35,14 @@ describe("session", () => {
   it("says nothing when only one person uses the vault", () => {
     setSession(me("OWNER"), [people[0]]);
     expect(attributionLine("cognito:a", "cognito:a", getSession())).toBeNull();
+  });
+
+  it("knows which dates fall in a closed year", () => {
+    setSession(me("OWNER"), people, 2024);
+    expect(isClosedDate("2024-12-31T23:00:00")).toBe(true);
+    expect(isClosedDate("2023-05-01")).toBe(true);
+    expect(isClosedDate("2025-01-01")).toBe(false);
+    setSession(me("OWNER"), people, null);
+    expect(isClosedDate("2020-01-01")).toBe(false);
   });
 });

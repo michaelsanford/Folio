@@ -35,6 +35,8 @@ import type {
   Person,
   PersonRole,
   PeopleListResponse,
+  PeriodsResponse,
+  YearClosure,
   PreferencesResponse,
   UiPreferences,
 } from "../types";
@@ -308,6 +310,13 @@ export const api = {
   },
 
   // Household & Multi-User Collaboration
+  periods: {
+    list: () => request<PeriodsResponse>("/periods"),
+    close: (year: number) => request<YearClosure>(`/periods/${year}/close`, { method: "POST" }),
+    reopen: (year: number) => request<YearClosure>(`/periods/${year}/reopen`, { method: "POST" }),
+    /** The archive file (zstd-compressed SQLite). */
+    downloadArchive: async (year: number): Promise<Blob> => (await send(`/periods/${year}/archive`)).blob(),
+  },
   people: {
     list: () => request<PeopleListResponse>("/people"),
     me: () => request<Me>("/people/me"),

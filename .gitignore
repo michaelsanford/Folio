@@ -33,6 +33,7 @@ backend/data/*.db-shm
 backend/data/.*
 backend/data/*.log
 backend/data/uploads/*
+backend/data/archives/
 !backend/data/uploads/.gitkeep
 
 # IDE: JetBrains (PyCharm / WebStorm / IDEA)

@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, aliased
+from app.core.period_lock import locked_before
 from app.models.transaction import Transaction
 from app.models.account import Account
 from app.core.money import to_cents
@@ -41,6 +42,7 @@ def find_potential_transfers(
             Transaction.transaction_date <= end_date,
             Transaction.amount_cents == opposing_cents,
             Transaction.transfer_transaction_id.is_(None),  # Not already paired
+            *_open_dates(db, Transaction),
         )
         .first()
     )
@@ -58,6 +60,12 @@ def find_potential_transfers(
 
 
 _ID_CHUNK = 500
+
+
+def _open_dates(db: Session, *tables) -> list:
+    """Conditions keeping closed years out: their transactions cannot be paired."""
+    boundary = locked_before(db)
+    return [t.transaction_date >= boundary for t in tables] if boundary is not None else []
 
 
 def _candidate_pairs(db: Session, window_days: int, anchor_ids: list[str] | None) -> list[tuple]:
@@ -86,7 +94,7 @@ def _candidate_pairs(db: Session, window_days: int, anchor_ids: list[str] | None
                 b.transaction_date <= func.datetime(a.transaction_date, f"+{slack} days"),
             ),
         )
-        .filter(a.transfer_transaction_id.is_(None), a.amount_cents != 0)
+        .filter(a.transfer_transaction_id.is_(None), a.amount_cents != 0, *_open_dates(db, a, b))
     )
 
     window = timedelta(days=window_days)

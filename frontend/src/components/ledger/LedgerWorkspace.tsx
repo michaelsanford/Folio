@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Search, Plus, Split, Trash2, Layers, Sparkles, Edit2, CheckCircle2, X } from "lucide-react";
+import { Search, Plus, Split, Trash2, Layers, Sparkles, Edit2, CheckCircle2, X, Lock } from "lucide-react";
 import type {
   Account,
   Category,
@@ -14,8 +14,9 @@ import { DESKTOP_MEDIA_QUERY, useMediaQuery } from "../../hooks/useMediaQuery";
 import { Money } from "../common/Money";
 import { NumberField } from "../common/NumberField";
 import { formatMoney, formatNumber } from "../../utils/format";
-import { useCanEdit } from "../../hooks/useSession";
-import { attributionLine, getSession } from "../../utils/session";
+import { useCanEdit, useSession } from "../../hooks/useSession";
+import { attributionLine, getSession, isClosedDate } from "../../utils/session";
+import { ClosedYearsModal } from "./ClosedYearsModal";
 
 const inputClass =
   "h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]";
@@ -55,6 +56,11 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
   onDataModified,
 }) => {
   const canEdit = useCanEdit();
+  const session = useSession();
+  // A row can change when you may edit and its year is not closed.
+  const isRowLocked = (txn: Transaction) => isClosedDate(txn.transaction_date, session);
+  const canEditRow = (txn: Transaction) => canEdit && !isRowLocked(txn);
+  const [isClosedYearsOpen, setIsClosedYearsOpen] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [page, setPage] = useState(1);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
@@ -545,6 +551,15 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
         {/* Action buttons */}
         <div className="flex items-center justify-end gap-2 shrink-0 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={() => setIsClosedYearsOpen(true)}
+            className={`w-full sm:w-auto ${secondaryButton}`}
+            title="Lock finished years and keep an archived copy"
+          >
+            <Lock className="w-4 h-4 text-muted" strokeWidth={1.5} />
+            <span>Closed years</span>
+          </button>
           {canEdit && (<>
           <button
             type="button"
@@ -713,6 +728,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                           <select
                             value={txn.splits?.[0]?.category_id || ""}
                             onChange={(e) => handleInlineCategoryChange(txn, e.target.value)}
+                            disabled={!canEditRow(txn)}
                             aria-label="Category"
                             className={`max-w-[120px] truncate ${compactSelectClass}`}
                           >
@@ -728,7 +744,12 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                       )}
 
                       <div className="ml-auto flex items-center gap-1">
-                        {canEdit && (
+                        {isRowLocked(txn) && (
+                          <span title="In a closed year" aria-label="In a closed year" className="h-8 w-8 flex items-center justify-center text-muted">
+                            <Lock className="w-4 h-4" strokeWidth={1.5} />
+                          </span>
+                        )}
+                        {canEditRow(txn) && (<>
                         <button
                           type="button"
                           onClick={() => handleOpenEditTxn(txn)}
@@ -738,7 +759,6 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                         >
                           <Edit2 className="w-4 h-4" strokeWidth={1.5} />
                         </button>
-                        )}
                         <button
                           type="button"
                           onClick={() => handleOpenSplitModal(txn)}
@@ -748,6 +768,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                         >
                           <Split className="w-4 h-4" strokeWidth={1.5} />
                         </button>
+                        </>)}
                       </div>
                     </div>
                   </div>
@@ -873,6 +894,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                             <select
                               value={txn.splits?.[0]?.category_id || ""}
                               onChange={(e) => handleInlineCategoryChange(txn, e.target.value)}
+                            disabled={!canEditRow(txn)}
                               aria-label="Category"
                               className={`min-w-0 flex-1 max-w-full truncate ${compactSelectClass}`}
                             >
@@ -899,7 +921,12 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                       </td>
                       <td className="px-2 py-2 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          {canEdit && (<>
+                          {isRowLocked(txn) && (
+                            <span title="In a closed year" aria-label="In a closed year" className="h-8 w-8 flex items-center justify-center text-muted">
+                              <Lock className="w-4 h-4" strokeWidth={1.5} />
+                            </span>
+                          )}
+                          {canEditRow(txn) && (<>
                           <button
                             type="button"
                             onClick={() => handleOpenEditTxn(txn)}
@@ -1202,6 +1229,10 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       )}
 
       {/* Auto-classify uncategorized confirmation modal */}
+      {isClosedYearsOpen && (
+        <ClosedYearsModal onClose={() => setIsClosedYearsOpen(false)} onChanged={() => onDataModified("all")} />
+      )}
+
       {autoClassifyModalOpen && (
         <div className={modalOverlay}>
           <div className={`max-w-md space-y-4 ${modalPanel}`}>

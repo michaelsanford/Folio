@@ -151,7 +151,7 @@ Resources:
       LifecycleConfiguration:
         Rules:
           # Short-term backstop for the vault: every write uploads a new
-          # version, and previous versions of database/folio.db are kept for
+          # version, and previous versions of database/folio.db.zst are kept for
           # 5 days. Long enough to notice and roll back a bad write, short
           # enough that version storage stays small.
           - Id: ExpireOldSnapshots
@@ -642,6 +642,10 @@ Resources:
                 - !Sub
                   - 'arn:${AWS::Partition}:s3:::${Bucket}/backups/*'
                   - Bucket: !If [CreateVaultBucket, !Ref FolioStorageVault, !Ref ExistingVaultBucketName]
+                # Closed-year archives (Glacier Instant Retrieval), written once.
+                - !Sub
+                  - 'arn:${AWS::Partition}:s3:::${Bucket}/archives/*'
+                  - Bucket: !If [CreateVaultBucket, !Ref FolioStorageVault, !Ref ExistingVaultBucketName]
             # ListBucket lets HeadObject/GetObject return 404 (not 403) for a
             # missing vault on first start. IfExists: that implicit check
             # carries no s3:prefix, while explicit listings are limited to the
@@ -658,6 +662,7 @@ Resources:
                     - ''
                     - 'database/*'
                     - 'backups/*'
+                    - 'archives/*'
             - Sid: ReadAppSecrets
               Effect: Allow
               Action: 'secretsmanager:GetSecretValue'

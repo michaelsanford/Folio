@@ -217,6 +217,8 @@ export interface ParsedTransactionItem {
   suggested_category_name?: string | null;
   suggested_category_color?: string | null;
   is_duplicate: boolean;
+  /** Dated in a closed year: the import skips it. */
+  in_closed_period?: boolean;
   import_hash: string;
   notes?: string | null;
   source_account_key?: string | null;
@@ -277,6 +279,8 @@ export interface IngestionCommitResponse {
   accounts_created_count: number;
   accounts: CommittedAccountSummary[];
   transfers_linked_count: number;
+  /** Rows dated in a closed year, left out. */
+  skipped_closed_count?: number;
 }
 
 export interface AmortizationScheduleRow {
@@ -382,6 +386,28 @@ export interface BootstrapResponse {
   me?: Me;
   /** Everyone who has had a sign-in, to name `created_by` / `updated_by`. */
   people?: PersonSummary[];
+  /** Transactions dated up to Dec 31 of this year are locked (a closed year). */
+  closed_through_year?: number | null;
+}
+
+/** A row of `GET /api/periods`. */
+export interface YearClosure {
+  year: number;
+  closed_through: string;
+  closed_at: string;
+  closed_by_name?: string | null;
+  is_active: boolean;
+  reopened_at?: string | null;
+  archive_available: boolean;
+  archive_bytes?: number | null;
+  archive_sha256?: string | null;
+  row_counts?: Record<string, number> | null;
+}
+
+export interface PeriodsResponse {
+  closed_through_year: number | null;
+  closures: YearClosure[];
+  closable_years: number[];
 }
 
 export type PersonRole = "OWNER" | "MEMBER" | "VIEWER";

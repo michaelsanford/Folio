@@ -44,6 +44,8 @@ class ParsedTransactionItem(BaseModel):
     suggested_category_name: str | None = None
     suggested_category_color: str | None = None
     is_duplicate: bool = False
+    # Dated in a closed year: the import skips it.
+    in_closed_period: bool = False
     import_hash: str
     notes: str | None = None
     source_account_key: str | None = None
@@ -130,6 +132,8 @@ class IngestionCommitResponse(BaseModel):
     accounts_created_count: int = 0
     accounts: list[CommittedAccountSummary] = Field(default_factory=list)
     transfers_linked_count: int = 0
+    # Rows dated in a closed year, left out of the import.
+    skipped_closed_count: int = 0
 
 
 class StatementFileResponse(BaseModel):
