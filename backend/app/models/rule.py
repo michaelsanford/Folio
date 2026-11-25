@@ -4,6 +4,7 @@ import enum
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, Enum, ForeignKey
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from app.models.attribution import AttributedMixin
 from app.models.money_fields import with_money
 
 
@@ -15,7 +16,7 @@ class RulePatternType(str, enum.Enum):
 
 
 @with_money(min_amount=True, max_amount=True)
-class CategorizationRule(Base):
+class CategorizationRule(AttributedMixin, Base):
     __tablename__ = "categorization_rules"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

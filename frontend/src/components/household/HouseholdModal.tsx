@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { X, Plus, Trash2, Edit2, Check, Shield } from "lucide-react";
 import type { HouseholdMember } from "../../types";
 import { api } from "../../services/api";
+import { useSession } from "../../hooks/useSession";
+import { PeoplePanel } from "./PeoplePanel";
 
 interface HouseholdModalProps {
   isOpen: boolean;
@@ -34,6 +36,8 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { me } = useSession();
+  const canEdit = me?.can_edit ?? true;
 
   if (!isOpen) return null;
 
@@ -113,7 +117,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
           <div>
             <h2 className="text-base font-medium text-main">Household</h2>
             <p className="text-xs text-muted mt-1">
-              Members for CRA limits, account ownership and spending attribution
+              Members for CRA limits, account ownership and spending attribution, and who can sign in
             </p>
           </div>
           <button
@@ -175,6 +179,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                         </div>
                       </div>
                     </div>
+                    {canEdit && (
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => handleStartEdit(m)}
@@ -193,6 +198,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                         <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                       </button>
                     </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -200,6 +206,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
           </div>
 
           {/* Add / Edit Form */}
+          {canEdit && (
           <form onSubmit={handleSave} className="p-4 rounded-xl border border-default bg-surface-subtle space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="text-base font-medium text-main">
@@ -306,6 +313,9 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
               </button>
             </div>
           </form>
+          )}
+
+          <PeoplePanel me={me} members={members} onChanged={onMembersModified} />
         </div>
 
         <div className="px-5 py-4 border-t border-subtle flex justify-end">

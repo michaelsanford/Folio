@@ -4,6 +4,7 @@ import { Check, ChevronDown } from "lucide-react";
 import { AccountIcon } from "../common/AccountIcon";
 import { ACCOUNT_FAMILIES, accountFamily, type AccountFamily } from "../../constants/canadianAccountTypes";
 import type { Account } from "../../types";
+import { useSession } from "../../hooks/useSession";
 
 interface AccountFilterBarProps {
   accounts: Account[];
@@ -61,6 +62,19 @@ export const AccountFilterBar: React.FC<AccountFilterBarProps> = ({
 
   const hiddenCount = accounts.filter((a) => hidden.has(a.id)).length;
 
+  // "Mine": your accounts plus shared ones (no owner), once you are linked to a
+  // member and the household has accounts that belong to someone else.
+  const myMemberId = useSession().me?.member_id ?? null;
+  const notMine = useMemo(
+    () => (myMemberId ? accounts.filter((a) => a.owner_member_id && a.owner_member_id !== myMemberId) : []),
+    [accounts, myMemberId]
+  );
+  const showMine = !!myMemberId && notMine.length > 0 && notMine.length < accounts.length;
+  const mineOnly =
+    showMine &&
+    notMine.every((a) => hidden.has(a.id)) &&
+    accounts.every((a) => notMine.includes(a) || !hidden.has(a.id));
+
   // Accounts menu, portaled so no card's overflow or stacking clips it.
   const [isOpen, setIsOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -111,6 +125,18 @@ export const AccountFilterBar: React.FC<AccountFilterBarProps> = ({
       >
         All accounts
       </button>
+
+      {showMine && (
+        <button
+          type="button"
+          aria-pressed={mineOnly}
+          title="Your accounts and shared ones without an owner"
+          onClick={() => commit(mineOnly ? new Set() : new Set(notMine.map((a) => a.id)))}
+          className={`${pill} ${mineOnly ? pillOn : pillOff}`}
+        >
+          Mine
+        </button>
+      )}
 
       {families.length > 1 &&
         families.map(({ id, label, members, state }) => (

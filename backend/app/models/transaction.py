@@ -4,6 +4,7 @@ import enum
 from sqlalchemy import Column, String, Integer, DateTime, Enum, ForeignKey, Index, text
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from app.models.attribution import AttributedMixin
 from app.core.config import settings
 from app.models.money_fields import with_money
 
@@ -15,7 +16,7 @@ class TransactionStatus(str, enum.Enum):
 
 
 @with_money(amount=False)
-class Transaction(Base):
+class Transaction(AttributedMixin, Base):
     __tablename__ = "transactions"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

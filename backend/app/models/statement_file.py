@@ -3,9 +3,10 @@ from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from app.models.attribution import AttributedMixin
 
 
-class StatementFile(Base):
+class StatementFile(AttributedMixin, Base):
     __tablename__ = "statement_files"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

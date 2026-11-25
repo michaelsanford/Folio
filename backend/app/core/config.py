@@ -192,6 +192,8 @@ class Settings(BaseSettings):
     COGNITO_USER_POOL_ID: str = os.getenv("COGNITO_USER_POOL_ID", "")
     COGNITO_CLIENT_ID: str = os.getenv("COGNITO_CLIENT_ID", "")
     COGNITO_REGION: str = os.getenv("COGNITO_REGION", os.getenv("AWS_DEFAULT_REGION", "ca-central-1"))
+    # This email always signs in as a household owner (deploy.ps1 -OwnerEmail).
+    FOLIO_OWNER_EMAIL: str = os.getenv("FOLIO_OWNER_EMAIL", "")
     
     @property
     def is_cognito_enabled(self) -> bool:

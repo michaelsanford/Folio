@@ -413,7 +413,8 @@ def test_bootstrap_matches_the_four_initial_requests(client):
     boot = client.get("/api/bootstrap")
     assert boot.status_code == 200, boot.text
     body = boot.json()
-    assert set(body) == {"accounts", "categories", "analytics", "household_members", "limits"}
+    assert set(body) == {"accounts", "categories", "analytics", "household_members", "limits", "me", "people"}
+    assert body["me"] == client.get("/api/people/me").json()
     assert body["accounts"] == client.get("/api/accounts").json()
     assert body["categories"] == client.get("/api/categories").json()
     assert body["household_members"] == client.get("/api/household/members").json()

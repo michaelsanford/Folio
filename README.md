@@ -108,6 +108,9 @@ Folio is architected for Canadian legal, tax, and banking realities:
 
 - **Multi-Member Collaborative Vault**:
   - Supports multi-user household collaboration with entities (`HouseholdMember`).
+  - **People with access** (Household > People with access): everyone who signs in shares the one household ledger. Each person has a role. An **Owner** edits everything and manages who has access. A person who **Can edit** adds and changes accounts, transactions, budgets and goals. A **View only** person sees everything and changes nothing: their edit buttons, Import and Rules are hidden, and the server refuses their changes either way. Owners invite people by email from the app, change roles, pause access (which signs the person out everywhere at once) and remove sign-ins. The last owner cannot be demoted or removed.
+  - **Who you are**: link your sign-in to a household member. New transactions and goals you add are then assigned to you, and the dashboard gets a **Mine** quick filter (your accounts plus shared ones without an owner).
+  - **Who changed what**: accounts, transactions, budgets, goals, holdings, rules and imports record who added them and who last changed them. The transaction editor shows "Added by Sarah · edited by Michael" once more than one person uses the vault.
   - Canadian statutory ownership rules: Registered accounts (**TFSA**, **RRSP**, **FHSA**, **RESP**) are legally individual, while **Chequing**, **Savings**, and **Mortgages** support joint ownership.
   - Granular household member filtering across the ledger, account balances, and goal tracking.
   - **Dashboard account filter**: choose which accounts the dashboard counts. Quick filters cover whole families (chequing and savings, credit cards, loans and lines, registered, investments, property) and appear only for families you have; a menu picks single accounts. Every figure follows the selection: net worth and its history, income, spending, cash flow and top categories. The choice is saved with your preferences, and new accounts are counted until you hide them.
@@ -416,7 +419,7 @@ Folio implements a defense-in-depth security model for hosting financial data:
   - On AWS, a CloudFront response headers policy mirrors these values. It always adds HSTS, and fills in the other headers only where the app did not answer (for example a CloudFront error page). The CSP comes from the app only.
 - **Structured Logs**: Every request writes one JSON access line (`folio.access`: method, path without the query string, status, duration, request ID, client IP). Uvicorn's startup and error lines are JSON too, and `GET`/`HEAD` both work on `/` and `/api/health`.
 - **S3 Vault Protection**: The vault bucket blocks all public access, enforces bucket-owner object ownership (`BucketOwnerEnforced`, ACLs disabled), encrypts objects with SSE-S3 (`AES256`), keeps versions, and has a bucket policy that denies any request not made over TLS.
-- **Least-Privilege IAM**: The Lambda role can read and write only `database/*` and `backups/*` in the vault bucket, list only those prefixes, and read only the stack's two secrets. `bedrock:InvokeModel` is granted only when `EnableBedrock` is `true`, and only for the configured model or inference profile.
+- **Least-Privilege IAM**: The Lambda role can read and write only `database/*` and `backups/*` in the vault bucket, list only those prefixes, and read only the stack's two secrets. With Cognito on, it may create, look up, disable, enable, sign out and delete users in the stack's own user pool only, for in-app people management. `bedrock:InvokeModel` is granted only when `EnableBedrock` is `true`, and only for the configured model or inference profile.
 - **Container Non-Root Isolation**: Multi-stage Docker execution runs as an unprivileged `appuser` (UID 1000), and the Docker build context excludes `backend/data/`, databases, `.env` files and `samconfig.toml` so no vault data or secrets are baked into the image.
 
 ---
@@ -490,7 +493,7 @@ sam validate -t template.yaml --lint
 | `-Environment` | `prod` | Stage name (`[a-z0-9-]`, 1-21 chars). Selects the saved settings and names the vault bucket, user pool and log group. |
 | `-StackName` | Saved value, else `folio-<Environment>` | CloudFormation stack name. |
 | `-Region` | Saved value, else `ca-central-1` | AWS region. |
-| `-OwnerEmail` | | Invite this email to the Cognito pool (idempotent). Not valid with Cognito disabled. |
+| `-OwnerEmail` | | Invite this email to the Cognito pool (idempotent). The first one given is saved as the household owner (`OwnerEmail`), who always signs in as an owner. Not valid with Cognito disabled. |
 | `-DisableCognito` | Off | Single Master Passphrase mode. Needs `-MasterPassword` (or a saved hash). `-DisableCognito:$false` re-enables Cognito. |
 | `-MasterPassword` | | Hashed locally with bcrypt; only the hash is sent (`MasterPasswordHash`). |
 | `-EnableBedrock` | Off | Tier 4 Bedrock classification. `-EnableBedrock:$false` turns it off. |
@@ -534,7 +537,11 @@ When deploying with `-OwnerEmail you@example.com`, Cognito emails an invitation 
 2. Choose a permanent passphrase (**20+ characters**, at least one lowercase letter).
 3. Scan the rendered **TOTP QR code** (or copy the manual setup key) into your authenticator app and enter the 6-digit verification code to issue `HttpOnly` session and refresh cookies.
 
-To invite additional household members later, re-run `deploy.ps1` with their email (`-OwnerEmail member@example.com`); existing users are skipped idempotently. If an invitation email was missed or expired while a user is in `FORCE_CHANGE_PASSWORD` status, resend it via:
+The first `-OwnerEmail` is saved as the household owner. Without one, the first person to sign in becomes the owner.
+
+To invite more people, open **Household** and use **Invite someone** under **People with access**: choose what they can do (Owner, Can edit, View only) and, optionally, which household member they are. They receive the same invitation email. An invitation that was missed or expired can be sent again from the same list (the circular arrow). Everyone already in the user pool before this feature existed joins as **Can edit** on their next sign-in.
+
+Re-running `deploy.ps1 -OwnerEmail member@example.com` still invites someone (as **Can edit**), and the AWS CLI works too:
 
 ```powershell
 aws cognito-idp admin-create-user --user-pool-id <CognitoUserPoolId> --username you@example.com --message-action RESEND --desired-delivery-mediums EMAIL --region ca-central-1
@@ -691,6 +698,7 @@ The script lists the function's published versions (marking the one `live` serve
 | `COGNITO_USER_POOL_ID` | Output from SAM (`-OwnerEmail` invites users) | `""` | AWS Cognito User Pool ID |
 | `COGNITO_CLIENT_ID` | Output from SAM | `""` | AWS Cognito App Client ID |
 | `COGNITO_REGION` | `AWS::Region` (`-Region`) | `ca-central-1` | AWS region for Cognito IDP / JWKS verification |
+| `FOLIO_OWNER_EMAIL` | `OwnerEmail` (first `-OwnerEmail`) | `""` | This email always signs in as a household owner. Empty: the first person to sign in becomes the owner |
 | `AWS_REGION` / `AWS_DEFAULT_REGION` | `AWS::Region` (`-Region`) | `ca-central-1` | AWS region for S3 vault sync and Secrets Manager |
 | `S3_BUCKET_NAME` | `ExistingVaultBucketName` (`-ExistingVaultBucket`) | Auto-created (`folio-vault-<env>-<acct>-<region>`) | Private S3 vault bucket (reuse an existing bucket or let SAM create one). Used only on AWS Lambda; ignored by Docker and local installs |
 | `FOLIO_CORS_ORIGINS` | `AllowedOrigin` (`-AllowedOrigin`) | `""` | Comma-separated allowed CORS origins. When empty: the localhost dev-server origins in development, and no origins in production mode. The CloudFront deployment is same-origin and needs none |

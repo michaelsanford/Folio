@@ -63,6 +63,9 @@ class TransactionResponse(TransactionBase):
     statement_file_id: str | None = None
     created_at: datetime
     updated_at: datetime
+    # User keys of who added and last changed it (names: bootstrap ``people``).
+    created_by: str | None = None
+    updated_by: str | None = None
     splits: list[TransactionSplitResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

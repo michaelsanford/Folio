@@ -3,11 +3,12 @@ from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from app.models.attribution import AttributedMixin
 from app.models.money_fields import with_money
 
 
 @with_money(total_income_target=False, total_expense_target=False)
-class Budget(Base):
+class Budget(AttributedMixin, Base):
     __tablename__ = "budgets"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

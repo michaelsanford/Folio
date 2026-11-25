@@ -456,6 +456,11 @@ if ($PSBoundParameters.ContainsKey("EnableBedrock")) { $Overrides["EnableBedrock
 if ($PSBoundParameters.ContainsKey("BedrockModelId")) { $Overrides["BedrockModelId"] = $BedrockModelId.Trim() }
 if ($PSBoundParameters.ContainsKey("AlarmEmail")) { $Overrides["AlarmEmail"] = $AlarmEmail.Trim().ToLowerInvariant() }
 if ($PSBoundParameters.ContainsKey("MonthlyBudgetUsd")) { $Overrides["MonthlyBudgetUsd"] = "$MonthlyBudgetUsd" }
+# The first -OwnerEmail becomes the household owner and is remembered; later
+# -OwnerEmail invitations (and invitations from the app) do not change it.
+if ($OwnerEmail.Trim() -and -not $Overrides.Contains("OwnerEmail")) {
+    $Overrides["OwnerEmail"] = $OwnerEmail.Trim().ToLowerInvariant()
+}
 
 # Empty values are dropped so the template default applies.
 foreach ($k in @($Overrides.Keys)) {

@@ -27,8 +27,8 @@ from app.core.migrations import run_migrations  # noqa: E402
 from app.core.security import (  # noqa: E402
     ORIGIN_FORBIDDEN_DETAIL,
     origin_header_valid,
-    require_auth,
 )
+from app.core.actor import authorize  # noqa: E402 - also registers the attribution listener
 from app.core.s3_sync import (  # noqa: E402
     VaultConflictError,
     VaultSyncFailedError,
@@ -55,6 +55,7 @@ from app.api.household import router as household_router  # noqa: E402
 from app.api.goals import router as goals_router  # noqa: E402
 from app.api.classification import router as classification_router  # noqa: E402
 from app.api.preferences import router as preferences_router  # noqa: E402
+from app.api.people import router as people_router  # noqa: E402
 
 logger = logging.getLogger("folio.app")
 
@@ -226,7 +227,7 @@ async def flush_vault_on_lambda(request: Request, call_next):
     """
     response = await call_next(request)
     if (
-        request.method in MUTATING_METHODS
+        (request.method in MUTATING_METHODS or getattr(request.state, "vault_write", False))
         and settings.s3_sync_enabled
         and sync_scheduler.has_pending_changes()
     ):
@@ -334,21 +335,22 @@ app.add_middleware(RequestContextMiddleware)
 # Public Auth router
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 
-# Protected API routers (require authentication)
-app.include_router(accounts_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
-app.include_router(categories_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
-app.include_router(transactions_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
-app.include_router(rules_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
-app.include_router(ingestion_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
-app.include_router(budgets_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
-app.include_router(analytics_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
-app.include_router(maintenance_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
-app.include_router(investments_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
-app.include_router(household_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
-app.include_router(goals_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
-app.include_router(classification_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
-app.include_router(bootstrap_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
-app.include_router(preferences_router, prefix=settings.API_V1_STR, dependencies=[Depends(require_auth)])
+# Protected API routers: signed in, enabled, and allowed by role (core/actor.py)
+app.include_router(accounts_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(categories_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(transactions_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(rules_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(ingestion_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(budgets_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(analytics_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(maintenance_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(investments_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(household_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(goals_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(classification_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(bootstrap_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(preferences_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(people_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
 
 
 @app.api_route("/api/health", methods=["GET", "HEAD"], tags=["Health"])

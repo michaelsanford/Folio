@@ -28,6 +28,7 @@ import { Money } from "../common/Money";
 import { FolioMark } from "../common/FolioMark";
 import { formatMoney } from "../../utils/format";
 import { useFormatPrefs } from "../../hooks/useFormatPrefs";
+import { useCanEdit } from "../../hooks/useSession";
 
 export type NavTab =
   | "dashboard"
@@ -95,6 +96,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   onApplyUpdate,
   children,
 }) => {
+  const canEdit = useCanEdit();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
   const { resolvedMode, toggleMode, activeThemeDef, sidebarCollapsed, setSidebarCollapsed } = useTheme();
@@ -122,7 +124,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     { id: "investments" as NavTab, label: "Investments", icon: TrendingUp },
     { id: "ingestion" as NavTab, label: "Import", icon: UploadCloud },
     { id: "rules" as NavTab, label: "Rules", icon: Sliders },
-  ];
+    // View-only people cannot import or change rules.
+  ].filter((item) => canEdit || (item.id !== "ingestion" && item.id !== "rules"));
 
   const ModeIcon = resolvedMode === "dark" ? Sun : Moon;
 

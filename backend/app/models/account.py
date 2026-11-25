@@ -4,6 +4,7 @@ import enum
 from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime, Enum, ForeignKey
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from app.models.attribution import AttributedMixin
 from app.core.config import settings
 from app.models.money_fields import with_money
 
@@ -93,7 +94,7 @@ def balance_from_ledger_cents(account_type: "AccountType", ledger_sum_cents: int
     monthly_payment=True,
     escrow_payment=True,
 )
-class Account(Base):
+class Account(AttributedMixin, Base):
     __tablename__ = "accounts"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

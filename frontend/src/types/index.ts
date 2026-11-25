@@ -31,7 +31,7 @@ export type AccountType =
   | "VEHICLE_ASSET"
   | "OTHER_ASSET";
 
-export interface Account {
+export interface Account extends Attributed {
   id: string;
   name: string;
   type: AccountType;
@@ -88,7 +88,7 @@ export interface TransactionSplit {
   category?: Category;
 }
 
-export interface Transaction {
+export interface Transaction extends Attributed {
   id: string;
   account_id: string;
   transfer_transaction_id?: string | null;
@@ -378,6 +378,58 @@ export interface BootstrapResponse {
   analytics: DashboardAnalyticsResponse;
   household_members: HouseholdMember[];
   limits: ServerLimits;
+  /** The signed-in person (absent from older servers). */
+  me?: Me;
+  /** Everyone who has had a sign-in, to name `created_by` / `updated_by`. */
+  people?: PersonSummary[];
+}
+
+export type PersonRole = "OWNER" | "MEMBER" | "VIEWER";
+export type PersonStatus = "INVITED" | "ACTIVE" | "DISABLED";
+
+/** `GET /api/people/me`. */
+export interface Me {
+  user_key: string;
+  email?: string | null;
+  display_name?: string | null;
+  role: PersonRole;
+  member_id?: string | null;
+  can_edit: boolean;
+  is_owner: boolean;
+  /** False with a single passphrase: there is nobody to invite. */
+  can_manage_people: boolean;
+}
+
+export interface PersonSummary {
+  user_key: string;
+  name: string;
+  member_id?: string | null;
+}
+
+/** A row of `GET /api/people`. */
+export interface Person {
+  user_key: string;
+  email?: string | null;
+  display_name?: string | null;
+  role: PersonRole;
+  status: PersonStatus;
+  member_id?: string | null;
+  member_name?: string | null;
+  invited_by_name?: string | null;
+  created_at: string;
+  last_sign_in_at?: string | null;
+  is_me: boolean;
+}
+
+export interface PeopleListResponse {
+  people: Person[];
+  can_manage_people: boolean;
+}
+
+/** Who added and last changed a row (user keys). */
+export interface Attributed {
+  created_by?: string | null;
+  updated_by?: string | null;
 }
 
 export interface AuthStatusResponse {
@@ -579,7 +631,7 @@ export type GoalType =
   | "HBP_REPAYMENT"
   | "DEBT_PAYOFF";
 
-export interface Goal {
+export interface Goal extends Attributed {
   id: string;
   name: string;
   type: GoalType;

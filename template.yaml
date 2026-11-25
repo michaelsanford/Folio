@@ -19,6 +19,15 @@ Parameters:
       authentication. A hash, not the passphrase: Lambda environment variables
       are readable by anyone holding lambda:GetFunctionConfiguration.
 
+  OwnerEmail:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[^@\s]+@[^@\s]+\.[^@\s]+$'
+    Description: >-
+      Email that always signs in as a household owner. Optional: without it,
+      the first person to sign in becomes the owner. Owners invite everyone
+      else from the app (Settings > People).
+
   AllowedOrigin:
     Type: String
     Default: ''
@@ -587,6 +596,7 @@ Resources:
           COGNITO_USER_POOL_ID: !If [UseCognito, !Ref FolioUserPool, '']
           COGNITO_CLIENT_ID: !If [UseCognito, !Ref FolioUserPoolClient, '']
           COGNITO_REGION: !Ref AWS::Region
+          FOLIO_OWNER_EMAIL: !Ref OwnerEmail
           # Only AllowedOrigin, never the CloudFront domain: the distribution
           # depends on this function's URL, so referencing it here would be a
           # circular dependency. The SPA and API share the CloudFront host, so
@@ -654,6 +664,22 @@ Resources:
               Resource:
                 - !Ref FolioSessionSecret
                 - !Ref FolioOriginSecret
+        # People management from the app (invite, disable, remove), limited
+        # to this deployment's user pool.
+        - !If
+          - UseCognito
+          - Statement:
+              - Sid: ManageHouseholdPeople
+                Effect: Allow
+                Action:
+                  - 'cognito-idp:AdminCreateUser'
+                  - 'cognito-idp:AdminGetUser'
+                  - 'cognito-idp:AdminDisableUser'
+                  - 'cognito-idp:AdminEnableUser'
+                  - 'cognito-idp:AdminDeleteUser'
+                  - 'cognito-idp:AdminUserGlobalSignOut'
+                Resource: !GetAtt FolioUserPool.Arn
+          - !Ref AWS::NoValue
         - !If
           - UseBedrock
           - Statement:

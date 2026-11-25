@@ -14,6 +14,8 @@ import { usePreferencesSync } from "./hooks/usePreferencesSync";
 import { useHiddenAccounts } from "./hooks/useHiddenAccounts";
 import { setHiddenAccounts } from "./utils/dashboardFilter";
 import { takeInitialView } from "./utils/initialView";
+import { clearSession, setSession } from "./utils/session";
+import { useCanEdit } from "./hooks/useSession";
 
 // Each view is its own chunk, so the first paint only downloads the shell and
 // the view the user is looking at.
@@ -95,6 +97,7 @@ function AppContent() {
   });
 
   const { updateReady, applyUpdate } = usePwaUpdate();
+  const canEdit = useCanEdit();
   // Appearance settings follow the signed-in user (stored in their profile).
   usePreferencesSync(!authStatus.is_loading && authStatus.authenticated);
   const isLocked = !authStatus.is_loading && authStatus.auth_required && !authStatus.authenticated;
@@ -134,6 +137,7 @@ function AppContent() {
       setAnalytics(data.analytics);
       setHouseholdMembers(data.household_members);
       setLimits({ ...DEFAULT_LIMITS, ...data.limits });
+      setSession(data.me, data.people);
       setIsAnalyticsStale(false);
     } catch (err) {
       console.error("Data load error:", err);
@@ -226,6 +230,7 @@ function AppContent() {
     setCategories([]);
     setHouseholdMembers([]);
     setAnalytics(null);
+    clearSession();
     setAuthStatus((prev) => ({
       ...prev,
       authenticated: false,
@@ -270,8 +275,14 @@ function AppContent() {
       updateReady={updateReady}
       onApplyUpdate={applyUpdate}
     >
+      {!canEdit && (
+        <div role="status" className="mb-4 px-4 py-2.5 rounded-lg bg-surface-subtle text-xs text-sub">
+          You have view-only access to this household. Ask an owner if you need to make changes.
+        </div>
+      )}
+
       {/* Empty State Banner if no accounts configured */}
-      {accounts.length === 0 && !isLoading && activeTab !== "ingestion" && (
+      {accounts.length === 0 && !isLoading && canEdit && activeTab !== "ingestion" && (
         <div className="mb-6 p-5 rounded-xl bg-surface border border-default flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <div className="text-base font-medium text-main">Welcome to Folio</div>

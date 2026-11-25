@@ -22,6 +22,7 @@ import { formatMoney, formatMoneyCompact, getDateLocale } from "../../utils/form
 import { CashFlowForecastView } from "./CashFlowForecastView";
 import type { Budget, BudgetItem, Category, Transaction } from "../../types";
 import { api } from "../../services/api";
+import { useCanEdit } from "../../hooks/useSession";
 
 interface BudgetingViewProps {
   categories: Category[];
@@ -72,6 +73,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
   categories,
   onCategoriesModified,
 }) => {
+  const canEdit = useCanEdit();
   const chartTheme = useChartTheme();
 
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -634,6 +636,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
         </div>
 
         <div className="flex items-center flex-wrap gap-2">
+          {canEdit && (
           <button
             onClick={() => {
               setIsAddModalOpen(true);
@@ -646,6 +649,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             <Plus className="w-4 h-4" strokeWidth={1.5} />
             <span>Add category</span>
           </button>
+          )}
 
           {/* Month switcher */}
           <div className="flex items-center h-9 px-0.5 rounded-lg border border-default bg-surface">

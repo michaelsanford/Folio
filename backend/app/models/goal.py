@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, Date, DateTime, Enum, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from app.models.attribution import AttributedMixin
 from app.models.money_fields import with_money
 
 
@@ -17,7 +18,7 @@ class GoalType(str, enum.Enum):
 
 
 @with_money(target_amount=False, current_amount=True)
-class Goal(Base):
+class Goal(AttributedMixin, Base):
     __tablename__ = "goals"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

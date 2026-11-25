@@ -27,6 +27,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.models.attribution import AttributedMixin
 from app.models.money_fields import with_money
 
 # 8 decimal places covers fractional-share brokers and crypto without float error.
@@ -87,7 +88,7 @@ class Security(Base):
     holdings = relationship("Holding", back_populates="security", cascade="all, delete-orphan")
 
 
-class Holding(Base):
+class Holding(AttributedMixin, Base):
     """One security held within one investment account."""
 
     __tablename__ = "holdings"
@@ -108,7 +109,7 @@ class Holding(Base):
 
 
 @with_money(cost_basis=False, fee=False)
-class Lot(Base):
+class Lot(AttributedMixin, Base):
     """A purchase tranche, kept separate so cost basis can be tracked per lot."""
 
     __tablename__ = "lots"
@@ -176,7 +177,7 @@ class PriceQuote(Base):
 
 
 @with_money(amount=False, fee=False)
-class InvestmentActivity(Base):
+class InvestmentActivity(AttributedMixin, Base):
     """A buy, sale, dividend, contribution, withdrawal, or fee."""
 
     __tablename__ = "investment_activities"

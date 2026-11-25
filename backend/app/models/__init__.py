@@ -9,6 +9,7 @@ from app.models.snapshot import AccountBalanceSnapshot
 from app.models.household import HouseholdMember
 from app.models.goal import Goal, GoalType
 from app.models.user_preference import UserPreference
+from app.models.app_user import AppRole, AppUser, AppUserStatus
 from app.models.investment import (
     AssetClass,
     Holding,
@@ -38,6 +39,9 @@ __all__ = [
     "Goal",
     "GoalType",
     "UserPreference",
+    "AppUser",
+    "AppRole",
+    "AppUserStatus",
     "Security",
     "AssetClass",
     "Holding",

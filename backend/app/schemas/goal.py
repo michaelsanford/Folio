@@ -49,6 +49,9 @@ class GoalResponse(BaseModel):
     notes: str | None = None
     created_at: datetime
     updated_at: datetime
+    # User keys of who added and last changed it (names: bootstrap ``people``).
+    created_by: str | None = None
+    updated_by: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -19,6 +19,7 @@ import { Money } from "../common/Money";
 import { NumberField } from "../common/NumberField";
 import { CreditUsage } from "./CreditUsage";
 import { formatMoney } from "../../utils/format";
+import { useCanEdit } from "../../hooks/useSession";
 
 const card = "rounded-xl bg-surface border border-subtle";
 const fieldLabel = "block text-sm text-sub mb-2";
@@ -104,6 +105,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
   onAccountsModified,
   onManageHousehold,
 }) => {
+  const canEdit = useCanEdit();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
@@ -323,9 +325,11 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
               <Users className="w-4 h-4 text-muted" strokeWidth={1.5} /> Manage household
             </button>
           )}
+          {canEdit && (
           <button onClick={handleOpenCreate} className={primaryButton}>
             <Plus className="w-4 h-4" strokeWidth={1.5} /> Add account
           </button>
+          )}
         </div>
       </header>
 
@@ -417,6 +421,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                       >
                         <Info className="w-4 h-4" strokeWidth={1.5} />
                       </button>
+                      {canEdit && (<>
                       <button
                         type="button"
                         title="Edit account"
@@ -435,6 +440,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                       >
                         <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                       </button>
+                      </>)}
                     </div>
                   </div>
 
@@ -511,9 +517,11 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
       ) : (
         <div className={`${card} p-12 text-center flex flex-col items-center gap-4`}>
           <p className="text-muted text-sm">No accounts in this category</p>
+          {canEdit && (
           <button onClick={handleOpenCreate} className={primaryButton}>
             <Plus className="w-4 h-4" strokeWidth={1.5} /> Add account
           </button>
+          )}
         </div>
       )}
 

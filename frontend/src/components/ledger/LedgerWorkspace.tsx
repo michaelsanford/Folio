@@ -14,6 +14,8 @@ import { DESKTOP_MEDIA_QUERY, useMediaQuery } from "../../hooks/useMediaQuery";
 import { Money } from "../common/Money";
 import { NumberField } from "../common/NumberField";
 import { formatMoney, formatNumber } from "../../utils/format";
+import { useCanEdit } from "../../hooks/useSession";
+import { attributionLine, getSession } from "../../utils/session";
 
 const inputClass =
   "h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]";
@@ -52,6 +54,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
   householdMembers,
   onDataModified,
 }) => {
+  const canEdit = useCanEdit();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [page, setPage] = useState(1);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
@@ -196,7 +199,8 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       amount: null,
       category_id: "",
       notes: "",
-      assigned_member_id: "",
+      // New entries are yours, when you have linked yourself to a member.
+      assigned_member_id: getSession().me?.member_id ?? "",
     });
     setIsTxnModalOpen(true);
   };
@@ -541,6 +545,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
         {/* Action buttons */}
         <div className="flex items-center justify-end gap-2 shrink-0 w-full sm:w-auto">
+          {canEdit && (<>
           <button
             type="button"
             onClick={() => setAutoClassifyModalOpen(true)}
@@ -554,6 +559,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
           <button onClick={handleOpenCreateTxn} className={`w-full sm:w-auto ${primaryButton}`}>
             <Plus className="w-4 h-4" strokeWidth={1.5} /> Add transaction
           </button>
+          </>)}
         </div>
       </div>
 
@@ -722,6 +728,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                       )}
 
                       <div className="ml-auto flex items-center gap-1">
+                        {canEdit && (
                         <button
                           type="button"
                           onClick={() => handleOpenEditTxn(txn)}
@@ -731,6 +738,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                         >
                           <Edit2 className="w-4 h-4" strokeWidth={1.5} />
                         </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleOpenSplitModal(txn)}
@@ -891,6 +899,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                       </td>
                       <td className="px-2 py-2 text-center">
                         <div className="flex items-center justify-center gap-1">
+                          {canEdit && (<>
                           <button
                             type="button"
                             onClick={() => handleOpenEditTxn(txn)}
@@ -909,6 +918,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                           >
                             <Split className="w-4 h-4" strokeWidth={1.5} />
                           </button>
+                          </>)}
                         </div>
                       </td>
                     </tr>
@@ -1061,6 +1071,11 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
             <div className="flex items-center justify-between border-b border-subtle pb-4">
               <h3 className="text-base font-medium text-main">
                 {editingTxn ? "Edit transaction" : "Add transaction"}
+                {editingTxn && attributionLine(editingTxn.created_by, editingTxn.updated_by) && (
+                  <span className="block text-xs font-normal text-muted mt-0.5">
+                    {attributionLine(editingTxn.created_by, editingTxn.updated_by)}
+                  </span>
+                )}
               </h3>
               <button
                 type="button"

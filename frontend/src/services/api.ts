@@ -31,6 +31,10 @@ import type {
   ClassificationStatus,
   AutoClassifyResult,
   BootstrapResponse,
+  Me,
+  Person,
+  PersonRole,
+  PeopleListResponse,
   PreferencesResponse,
   UiPreferences,
 } from "../types";
@@ -203,6 +207,9 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
       // The server could not store the change and discarded it; say so with
       // the server's own wording. (A mutating 503 is never retried.)
       notify(error.message, "error");
+    } else if (error.status === 403 && (error.code === "read_only" || error.code === "account_disabled")) {
+      // Views hide what a viewer cannot do; this covers anything that slips through.
+      notify(error.message, error.code === "read_only" ? "warning" : "error");
     }
     throw error;
   }
@@ -301,6 +308,23 @@ export const api = {
   },
 
   // Household & Multi-User Collaboration
+  people: {
+    list: () => request<PeopleListResponse>("/people"),
+    me: () => request<Me>("/people/me"),
+    updateMe: (body: { display_name?: string | null; member_id?: string | null }) =>
+      request<Me>("/people/me", { method: "PATCH", body: JSON.stringify(body) }),
+    invite: (body: { email: string; role: PersonRole; member_id?: string | null; display_name?: string | null }) =>
+      request<Person>("/people", { method: "POST", body: JSON.stringify(body) }),
+    update: (
+      userKey: string,
+      body: { role?: PersonRole; status?: "ACTIVE" | "DISABLED"; member_id?: string | null; display_name?: string | null }
+    ) =>
+      request<Person>(`/people/${encodeURIComponent(userKey)}`, { method: "PATCH", body: JSON.stringify(body) }),
+    resend: (userKey: string) =>
+      request<void>(`/people/${encodeURIComponent(userKey)}/resend`, { method: "POST" }),
+    remove: (userKey: string) =>
+      request<void>(`/people/${encodeURIComponent(userKey)}`, { method: "DELETE" }),
+  },
   household: {
     getMembers: () =>
       request<HouseholdMember[]>("/household/members"),

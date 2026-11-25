@@ -1,8 +1,14 @@
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Response, Request, status
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from app.core.actor import record_sign_in
+from app.core.database import get_db
 from app.core.cognito import (
     CognitoAuthError,
     cognito_global_sign_out,
@@ -18,6 +24,7 @@ from app.core.security import (
     check_master_password,
     create_access_token,
     decode_access_token,
+    decode_cognito_token,
     get_token_from_request,
     hash_password,
     is_auth_configured,
@@ -25,6 +32,7 @@ from app.core.security import (
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+logger = logging.getLogger("folio.auth")
 
 
 def _is_secure_request(request: Request) -> bool:
@@ -141,13 +149,26 @@ class TokenResponse(BaseModel):
     expires_in_days: int
 
 
+def _register_sign_in(db: Session, access_token: str, email: str | None) -> None:
+    """Add the person to the household on their first sign-in; stamp the time."""
+    try:
+        claims = decode_cognito_token(access_token)
+    except HTTPException:
+        claims = None  # identity provider unreachable: registration waits for the next request
+    if claims:
+        record_sign_in(db, claims, email=email)
+
+
 def _finish_cognito_result(
     result: dict,
     request: Request,
     response: Response,
+    db: Session | None = None,
 ) -> CognitoAuthResponse:
     """Set HttpOnly cookies on completed Cognito login or serialize the next challenge."""
     if result["status"] == "authenticated":
+        if db is not None:
+            _register_sign_in(db, result["access_token"], result.get("username"))
         _set_session_cookies(
             response,
             request,
@@ -241,7 +262,12 @@ def get_auth_status(request: Request, response: Response):
 
 
 @router.post("/cognito/login", response_model=CognitoAuthResponse)
-def cognito_login(request_data: CognitoLoginRequest, request: Request, response: Response):
+def cognito_login(
+    request_data: CognitoLoginRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     """Authenticate an invited Cognito user with email/password and set HttpOnly cookies."""
     verify_edge_origin(request)
 
@@ -268,11 +294,16 @@ def cognito_login(request_data: CognitoLoginRequest, request: Request, response:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
     login_limiter.reset(key)
-    return _finish_cognito_result(result, request, response)
+    return _finish_cognito_result(result, request, response, db)
 
 
 @router.post("/cognito/challenge", response_model=CognitoAuthResponse)
-def cognito_challenge(request_data: CognitoChallengeRequest, request: Request, response: Response):
+def cognito_challenge(
+    request_data: CognitoChallengeRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     """Respond to Cognito NEW_PASSWORD_REQUIRED, MFA_SETUP, or SOFTWARE_TOKEN_MFA challenges."""
     verify_edge_origin(request)
 
@@ -305,7 +336,7 @@ def cognito_challenge(request_data: CognitoChallengeRequest, request: Request, r
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
     login_limiter.reset(key)
-    return _finish_cognito_result(result, request, response)
+    return _finish_cognito_result(result, request, response, db)
 
 
 @router.post("/cognito/refresh")

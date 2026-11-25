@@ -16,6 +16,7 @@ import type {
   SymbolLookupResponse,
 } from "../../types";
 import { api } from "../../services/api";
+import { useCanEdit } from "../../hooks/useSession";
 
 interface InvestmentsViewProps {
   accounts: Account[];
@@ -98,6 +99,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
   accounts,
   onDataModified,
 }) => {
+  const canEdit = useCanEdit();
   const chartTheme = useChartTheme();
 
   const investmentAccounts = useMemo(
@@ -217,7 +219,8 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
 
   // Once per browser session, refresh quotes when the page first opens.
   useEffect(() => {
-    if (investmentAccounts.length === 0 || sessionGet(AUTO_REFRESH_KEY)) return;
+    // Refreshing stores prices, which a view-only person may not do.
+    if (!canEdit || investmentAccounts.length === 0 || sessionGet(AUTO_REFRESH_KEY)) return;
     sessionSet(AUTO_REFRESH_KEY, "1");
     void refreshQuotes({ automatic: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -649,6 +652,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                 ? `Quotes updated ${formatQuoteTime(quotesRefreshedAt, Intl.DateTimeFormat().resolvedOptions().timeZone, "")}`
                 : null}
           </span>
+          {canEdit && (<>
           <button
             onClick={() => void refreshQuotes()}
             disabled={isFetchingQuotes}
@@ -667,6 +671,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           <button onClick={() => setIsAddOpen(true)} className={btnPrimary}>
             <Plus className="w-4 h-4" strokeWidth={1.5} /> Add holding
           </button>
+          </>)}
         </div>
       </div>
 

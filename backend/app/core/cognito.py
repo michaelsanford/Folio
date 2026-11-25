@@ -314,3 +314,139 @@ def cognito_global_sign_out(access_token: str | None) -> None:
         client.global_sign_out(AccessToken=access_token)
     except Exception as exc:
         logger.debug(f"Cognito global_sign_out ignored: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# Administration (people management). These calls are signed with the Lambda
+# role, which may call them only on this deployment's user pool.
+# ---------------------------------------------------------------------------
+_admin_client = None
+
+
+def get_cognito_admin_client():
+    """Signed Cognito IDP client for the Admin* APIs (cached per process)."""
+    global _admin_client
+    if _admin_client is None:
+        _admin_client = boto3.client(
+            "cognito-idp",
+            region_name=settings.COGNITO_REGION,
+            config=Config(connect_timeout=5, read_timeout=15, retries={"max_attempts": 2}),
+        )
+    return _admin_client
+
+
+def _attributes(user: dict) -> dict[str, str]:
+    raw = user.get("Attributes") or user.get("UserAttributes") or []
+    return {a["Name"]: a.get("Value", "") for a in raw}
+
+
+def _admin_error(exc: Exception, action: str) -> CognitoAuthError:
+    if isinstance(exc, ClientError):
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code == "UserNotFoundException":
+            return CognitoAuthError(404, "That person no longer has a sign-in.")
+        if code in ("TooManyRequestsException", "LimitExceededException"):
+            return CognitoAuthError(429, "Too many requests. Please wait a moment and try again.")
+        if code == "InvalidParameterException":
+            return CognitoAuthError(400, "That email address can't be used.")
+        logger.warning(f"Cognito {action} failed: {code}")
+    else:
+        logger.error(f"Cognito {action} transport error: {exc}")
+    return CognitoAuthError(502, "The sign-in service couldn't complete that. Please try again.")
+
+
+def admin_get_user(username: str) -> dict[str, str] | None:
+    """``{"sub", "email", "status", "enabled"}`` for a pool user, None if absent."""
+    try:
+        user = get_cognito_admin_client().admin_get_user(
+            UserPoolId=settings.COGNITO_USER_POOL_ID, Username=username
+        )
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "UserNotFoundException":
+            return None
+        raise _admin_error(exc, "get user") from exc
+    except BotoCoreError as exc:
+        raise _admin_error(exc, "get user") from exc
+    attrs = _attributes(user)
+    return {
+        "sub": attrs.get("sub", ""),
+        "email": attrs.get("email", "").lower(),
+        "status": user.get("UserStatus", ""),
+        "enabled": "true" if user.get("Enabled", True) else "false",
+    }
+
+
+def admin_invite_user(email: str) -> dict[str, str]:
+    """Create the person and email their invitation. Idempotent.
+
+    Returns ``{"sub", "email", "status", "created"}``. When the email already
+    has a sign-in, nothing is sent and ``created`` is "false".
+    """
+    client = get_cognito_admin_client()
+    try:
+        resp = client.admin_create_user(
+            UserPoolId=settings.COGNITO_USER_POOL_ID,
+            Username=email,
+            UserAttributes=[
+                {"Name": "email", "Value": email},
+                {"Name": "email_verified", "Value": "true"},
+            ],
+            DesiredDeliveryMediums=["EMAIL"],
+        )
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "UsernameExistsException":
+            existing = admin_get_user(email)
+            if existing is None:
+                raise _admin_error(exc, "invite") from exc
+            return {**existing, "created": "false"}
+        raise _admin_error(exc, "invite") from exc
+    except BotoCoreError as exc:
+        raise _admin_error(exc, "invite") from exc
+    user = resp.get("User", {})
+    attrs = _attributes(user)
+    return {
+        "sub": attrs.get("sub", ""),
+        "email": attrs.get("email", email).lower(),
+        "status": user.get("UserStatus", "FORCE_CHANGE_PASSWORD"),
+        "created": "true",
+    }
+
+
+def admin_resend_invite(email: str) -> None:
+    try:
+        get_cognito_admin_client().admin_create_user(
+            UserPoolId=settings.COGNITO_USER_POOL_ID,
+            Username=email,
+            MessageAction="RESEND",
+            DesiredDeliveryMediums=["EMAIL"],
+        )
+    except (ClientError, BotoCoreError) as exc:
+        raise _admin_error(exc, "resend invitation") from exc
+
+
+def admin_set_enabled(username: str, enabled: bool) -> None:
+    """Enable or disable sign-in; disabling also revokes every session."""
+    client = get_cognito_admin_client()
+    pool = settings.COGNITO_USER_POOL_ID
+    try:
+        if enabled:
+            client.admin_enable_user(UserPoolId=pool, Username=username)
+        else:
+            client.admin_disable_user(UserPoolId=pool, Username=username)
+            client.admin_user_global_sign_out(UserPoolId=pool, Username=username)
+    except (ClientError, BotoCoreError) as exc:
+        raise _admin_error(exc, "enable" if enabled else "disable") from exc
+
+
+def admin_delete_user(username: str) -> None:
+    """Delete the sign-in. Missing users are already gone."""
+    try:
+        get_cognito_admin_client().admin_delete_user(
+            UserPoolId=settings.COGNITO_USER_POOL_ID, Username=username
+        )
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "UserNotFoundException":
+            return
+        raise _admin_error(exc, "delete") from exc
+    except BotoCoreError as exc:
+        raise _admin_error(exc, "delete") from exc

@@ -24,6 +24,8 @@ import { api } from "../../services/api";
 import { Money } from "../common/Money";
 import { NumberField } from "../common/NumberField";
 import { formatMoney, getDateLocale } from "../../utils/format";
+import { useCanEdit } from "../../hooks/useSession";
+import { getSession } from "../../utils/session";
 
 interface GoalsViewProps {
   accounts: Account[];
@@ -169,6 +171,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
   householdMembers,
   onDataModified,
 }) => {
+  const canEdit = useCanEdit();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState<string>("ALL");
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
@@ -320,7 +323,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
       current_amount: null,
       target_date: "",
       linked_account_id: "",
-      owner_member_id: selectedMemberId !== "ALL" ? selectedMemberId : "",
+      owner_member_id: selectedMemberId !== "ALL" ? selectedMemberId : getSession().me?.member_id ?? "",
       notes: "",
     });
     setIsGoalModalOpen(true);
@@ -424,10 +427,12 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
             <span>Emergency fund calculator</span>
           </button>
 
+          {canEdit && (
           <button onClick={() => handleOpenCreateGoal("SAVINGS")} className={btnPrimary}>
             <Plus className="w-4 h-4" strokeWidth={1.5} />
             <span>New goal</span>
           </button>
+          )}
         </div>
       </header>
 
