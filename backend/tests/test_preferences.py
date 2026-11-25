@@ -1,13 +1,11 @@
-"""GET/PUT /me/preferences: per-user rows, validation, size limit, lenient reads, migration 0006."""
+"""GET/PUT /me/preferences: per-user rows, validation, size limit, lenient reads."""
 import json
 import sqlite3
 from datetime import datetime, timezone
 
 import pytest
-from alembic import command
 from fastapi.testclient import TestClient
 
-from app.core import migrations
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import create_access_token, require_auth, user_key_from_claims
@@ -176,13 +174,6 @@ def test_requires_auth(unauthenticated_client):
     assert unauthenticated_client.put(URL, json={"theme": "nord"}).status_code == 401
 
 
-@pytest.fixture
-def temp_db(tmp_path, monkeypatch):
-    db_path = tmp_path / "folio.db"
-    monkeypatch.setattr(settings, "SQLITE_DB_PATH", db_path)
-    monkeypatch.setattr(settings, "S3_BUCKET_NAME", "")
-    return db_path
-
 
 def _tables(db_path) -> set[str]:
     conn = sqlite3.connect(str(db_path))
@@ -190,23 +181,3 @@ def _tables(db_path) -> set[str]:
         return {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     finally:
         conn.close()
-
-
-def test_migration_0006_upgrades_and_downgrades(temp_db):
-    cfg = migrations._alembic_config()
-    command.upgrade(cfg, "0006")
-    assert "user_preferences" in _tables(temp_db)
-    conn = sqlite3.connect(str(temp_db))
-    try:
-        cols = {row[1]: row for row in conn.execute("PRAGMA table_info(user_preferences)")}
-    finally:
-        conn.close()
-    assert set(cols) == {"user_key", "data", "updated_at"}
-    assert cols["user_key"][5] == 1, "user_key is the primary key"
-    assert cols["data"][3] == 1 and cols["updated_at"][3] == 1, "NOT NULL"
-
-    command.downgrade(cfg, "0005")
-    assert "user_preferences" not in _tables(temp_db)
-    assert migrations.current_revision(temp_db) == "0005"
-    command.upgrade(cfg, "head")
-    assert "user_preferences" in _tables(temp_db)

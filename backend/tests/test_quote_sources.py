@@ -1,14 +1,10 @@
 """Symbol matching, trading hours, provider parsing, and quote provenance (no network)."""
 import logging
-import sqlite3
 from datetime import date, datetime, timezone
 
 import httpx
 import pytest
-from alembic import command
 
-from app.core import migrations
-from app.core.config import settings
 from app.models.account import Account, AccountType
 from app.models.investment import PriceQuote, Security
 import app.services.investments.quote_fetcher as qf
@@ -208,64 +204,3 @@ def test_symbol_lookup(client, monkeypatch):
     assert found["found"] is True and found["listing"] == "XEQT.TO" and found["price"] == 43.17
     missing = client.get("/api/investments/symbol-lookup?q=ZZZZ&currency=CAD").json()
     assert missing["found"] is False and "not found" in missing["reason"]
-
-
-# ------------------------------------------------------------ migration 0009
-
-@pytest.fixture
-def temp_db(tmp_path, monkeypatch):
-    db_path = tmp_path / "folio.db"
-    monkeypatch.setattr(settings, "SQLITE_DB_PATH", db_path)
-    monkeypatch.setattr(settings, "S3_BUCKET_NAME", "")
-    return db_path
-
-
-def _fill(conn, table, values):
-    cols = conn.execute(f"PRAGMA table_info({table})").fetchall()
-    for _, name, col_type, notnull, default, _pk in cols:
-        if name in values or not notnull or default is not None:
-            continue
-        t = (col_type or "").upper()
-        values[name] = 0 if any(k in t for k in ("INT", "BOOL", "NUMERIC", "FLOAT")) else (
-            "2026-01-01 00:00:00" if "DATE" in t else "x")
-    conn.execute(
-        f"INSERT INTO {table} ({', '.join(values)}) VALUES ({', '.join('?' for _ in values)})",
-        list(values.values()),
-    )
-
-
-def test_migration_0009_merges_bare_duplicates(temp_db):
-    cfg = migrations._alembic_config()
-    command.upgrade(cfg, "0008")
-    conn = sqlite3.connect(str(temp_db))
-    try:
-        _fill(conn, "accounts", {"id": "acc", "name": "TFSA", "type": "TFSA", "current_balance_cents": 0})
-        _fill(conn, "securities", {"id": "listed", "symbol": "XEQT.TO", "currency": "CAD", "asset_class": "ETF"})
-        _fill(conn, "securities", {"id": "bare", "symbol": "XEQT", "currency": "CAD", "asset_class": "ETF"})
-        _fill(conn, "securities", {"id": "other", "symbol": "VFV", "currency": "CAD", "asset_class": "ETF"})
-        _fill(conn, "holdings", {"id": "h-listed", "account_id": "acc", "security_id": "listed"})
-        _fill(conn, "holdings", {"id": "h-bare", "account_id": "acc", "security_id": "bare"})
-        _fill(conn, "lots", {"id": "l1", "holding_id": "h-listed", "trade_date": "2026-01-02", "quantity": 100,
-                             "cost_basis_cents": 500})
-        _fill(conn, "lots", {"id": "l2", "holding_id": "h-bare", "trade_date": "2026-01-02", "quantity": 1,
-                             "cost_basis_cents": 1000})
-        _fill(conn, "price_quotes", {"id": "q1", "security_id": "bare", "as_of_date": "2026-11-20", "price_cents": 4200})
-        conn.commit()
-    finally:
-        conn.close()
-
-    command.upgrade(cfg, "0009")
-
-    conn = sqlite3.connect(str(temp_db))
-    try:
-        securities = {r[0] for r in conn.execute("SELECT symbol FROM securities")}
-        holdings = conn.execute("SELECT id, security_id FROM holdings").fetchall()
-        lots = dict(conn.execute("SELECT id, holding_id FROM lots"))
-        quotes = conn.execute("SELECT security_id, source FROM price_quotes").fetchall()
-    finally:
-        conn.close()
-
-    assert securities == {"XEQT.TO", "VFV"}, "the bare XEQT merges; VFV has no listed twin"
-    assert holdings == [("h-listed", "listed")]
-    assert lots == {"l1": "h-listed", "l2": "h-listed"}
-    assert quotes == [("listed", "MANUAL")]

@@ -1,4 +1,5 @@
-"""Migration 0005: new indexes, the partial unique import-hash index, redundant drops."""
+"""The migrated schema's indexes: the query indexes, the partial unique import-hash index,
+no redundant single-column ones, and the same set create_all builds."""
 import sqlite3
 
 import pytest
@@ -73,39 +74,3 @@ def test_models_match_migrated_schema(temp_db, tmp_path):
         "only_in_migrations": migrated - created,
         "only_in_models": created - migrated,
     }
-
-
-def test_downgrade_restores_previous_indexes(temp_db):
-    command.upgrade(_cfg(), "head")
-    command.downgrade(_cfg(), "0004")
-    idx = set(_indexes(temp_db))
-    assert DROPPED <= idx
-    assert not (NEW & idx)
-    command.upgrade(_cfg(), "head")
-    assert NEW <= set(_indexes(temp_db))
-
-
-def test_existing_duplicates_skip_the_unique_index(temp_db, caplog):
-    command.upgrade(_cfg(), "0004")
-    conn = sqlite3.connect(str(temp_db))
-    try:
-        conn.execute(
-            "INSERT INTO accounts (id, name, type, currency, current_balance_cents, is_active, created_at, updated_at, icon, color, compounding) "
-            "VALUES ('acc1', 'A', 'CHECKING', 'CAD', 0, 1, '2026-01-01', '2026-01-01', 'bank', '#000', 'MONTHLY')"
-        )
-        for tid in ("t1", "t2"):
-            conn.execute(
-                "INSERT INTO transactions (id, account_id, transaction_date, raw_payee, amount_cents, currency, import_hash, status, created_at, updated_at) "
-                f"VALUES ('{tid}', 'acc1', '2026-01-01 00:00:00.000000', 'X', -100, 'CAD', 'samehash', 'CLEARED', '2026-01-01', '2026-01-01')"
-            )
-        conn.commit()
-    finally:
-        conn.close()
-
-    with caplog.at_level("WARNING"):
-        command.upgrade(_cfg(), "head")
-    idx = set(_indexes(temp_db))
-    assert "uq_transactions_account_import_hash" not in idx
-    assert "ix_transactions_account_import_hash" in idx, "the non-unique composite must remain"
-    assert {"ix_transactions_amount_date", "ix_transactions_transfer_transaction_id"} <= idx
-    assert any("uq_transactions_account_import_hash" in r.getMessage() for r in caplog.records)

@@ -27,6 +27,29 @@ def _revisions():
     return head, previous
 
 
+@pytest.fixture
+def older_vault(temp_db, tmp_path, monkeypatch):
+    """A vault one revision behind: migrated to the real head, with a no-op
+    revision added on top. Returns ``(previous, head)``."""
+    import os
+
+    real_head, _ = _revisions()
+    command.upgrade(migrations._alembic_config(), "head")
+    extra = tmp_path / "next_versions"
+    extra.mkdir()
+    _write_revision(extra, "zz_next", real_head, "    pass")
+    real_versions = migrations.ALEMBIC_INI.parent / "migrations" / "versions"
+    real_config = migrations._alembic_config
+
+    def config_with_next():
+        cfg = real_config()
+        cfg.set_main_option("version_locations", os.pathsep.join([str(real_versions), str(extra)]))
+        return cfg
+
+    monkeypatch.setattr(migrations, "_alembic_config", config_with_next)
+    return real_head, "zz_next"
+
+
 def test_fresh_database_is_migrated_then_skipped(temp_db):
     head, _ = _revisions()
     assert migrations.run_migrations() is True
@@ -38,9 +61,8 @@ def test_fresh_database_is_migrated_then_skipped(temp_db):
     upgrade.assert_not_called()
 
 
-def test_upgrade_from_an_older_revision_takes_a_backup_first(temp_db, monkeypatch):
-    head, previous = _revisions()
-    command.upgrade(migrations._alembic_config(), previous)
+def test_upgrade_from_an_older_revision_takes_a_backup_first(temp_db, older_vault, monkeypatch):
+    previous, head = older_vault
     assert migrations.current_revision(temp_db) == previous
 
     # The pre-migration copy goes to S3 only on Lambda.
@@ -63,10 +85,9 @@ def test_upgrade_from_an_older_revision_takes_a_backup_first(temp_db, monkeypatc
     assert key.startswith(f"backups/pre-migrate-{previous}-") and key.endswith(".db")
 
 
-def test_backup_is_never_uploaded_outside_lambda(temp_db, monkeypatch):
+def test_backup_is_never_uploaded_outside_lambda(temp_db, older_vault, monkeypatch):
     """Docker / local is development only: a bucket set there is ignored."""
-    _, previous = _revisions()
-    command.upgrade(migrations._alembic_config(), previous)
+    previous, _ = older_vault
 
     monkeypatch.delenv("AWS_LAMBDA_FUNCTION_NAME", raising=False)
     monkeypatch.setattr(settings, "S3_BUCKET_NAME", "vault-bucket")

@@ -1,14 +1,10 @@
 """Tests for automatic account detection/creation across CSV, OFX, and PDF ingestion."""
 import io
-from pathlib import Path
 
 import pytest
-from alembic import command
-from alembic.config import Config
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 
 from app.models.account import Account, AccountType
-from app.models.statement_file import StatementFile
 from app.models.transaction import Transaction
 from app.services.ingestion.account_detector import (
     infer_account_type,
@@ -493,39 +489,6 @@ NEWFILEUID:NONE
     assert pdf_preview.total_parsed == 1
     assert pdf_preview.items[0].amount == -54.10
 
-
-def test_alembic_0004_migration_allows_nullable_statement_file(tmp_path: Path, monkeypatch):
-    db_file = tmp_path / "mig_test.db"
-    db_url = f"sqlite:///{db_file.as_posix()}"
-
-    backend_dir = Path(__file__).resolve().parent.parent
-    cfg = Config(str(backend_dir / "alembic.ini"))
-    cfg.set_main_option("script_location", str(backend_dir / "migrations"))
-    cfg.set_main_option("sqlalchemy.url", db_url)
-
-    # Override settings.SQLITE_DB_PATH because migrations/env.py reads SQLALCHEMY_DATABASE_URI
-    from app.core.config import settings
-
-    monkeypatch.setattr(settings, "SQLITE_DB_PATH", db_file)
-    command.upgrade(cfg, "head")
-
-    engine = create_engine(db_url)
-    try:
-        with engine.begin() as conn:
-            conn.execute(
-                text(
-                    "INSERT INTO statement_files "
-                    "(id, account_id, filename, file_path, file_hash, mime_type, file_size, transaction_count, uploaded_at) "
-                    "VALUES ('sf-1', NULL, 'multi.csv', '/tmp/multi.csv', 'abc', 'text/csv', 10, 0, '2026-01-01 00:00:00')"
-                )
-            )
-            row = conn.execute(text("SELECT account_id FROM statement_files WHERE id='sf-1'")).fetchone()
-            assert row is not None and row[0] is None
-    finally:
-        engine.dispose()
-
-    command.downgrade(cfg, "0003")
-    command.upgrade(cfg, "head")
 
 
 

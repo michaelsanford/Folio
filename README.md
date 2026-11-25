@@ -328,6 +328,8 @@ The session signing key works the same way: when `FOLIO_SECRET_KEY` is unset, a 
 
 The schema is managed by Alembic and upgraded automatically on startup.
 
+- History starts at a single baseline revision (`0001_baseline`) that creates the whole schema; later changes are new revisions on top of it. A vault created by an earlier build (revisions `0002` to `0011`) is not upgraded by this build: start a fresh vault, or keep running the build it was made with.
+
 - When the database is already at the latest revision, Alembic is not invoked at all.
 - Before a real upgrade, the database is copied with the SQLite backup API to `<db>.pre-migrate-<rev>-<timestamp>.bak` next to the database file (the 3 most recent copies are kept). On AWS, the copy is also uploaded to `backups/pre-migrate-<rev>-<timestamp>.db`, where it expires after 7 days.
 - If the database is at a revision this build does not know (a newer build already migrated it), the app logs a warning and skips migrating rather than attempting a downgrade.
@@ -636,7 +638,7 @@ The cloud vault and teardown backups are zstd-compressed SQLite. `backend/script
 ```powershell
 cd backend
 uv run python scripts/vault_zstd.py decompress ..\folio-restore.db.zst ..\folio-restore.db   # open or inspect locally
-uv run python scripts/vault_zstd.py compress ..\folio.db.pre-migrate-0010.bak ..\folio.db.zst  # prepare an upload
+uv run python scripts/vault_zstd.py compress ..\folio.db.pre-migrate-<rev>-<timestamp>.bak ..\folio.db.zst  # prepare an upload
 ```
 
 **Restore a previous version on AWS**:
