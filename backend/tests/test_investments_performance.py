@@ -279,3 +279,62 @@ def test_revalue_reports_unpriced_symbols(client, investment_account):
     })
     resp = client.post("/api/investments/revalue").json()
     assert resp["unpriced_holdings"] == ["NOPRICE"]
+
+
+# ------------------------------------------------------------- return history
+
+def _hold_and_price(client, account, prices: dict[str, str], quantity="100"):
+    client.post("/api/investments/holdings", json={
+        "account_id": account.id,
+        "symbol": "XEQT",
+        "lots": [{"trade_date": "2025-01-02", "quantity": quantity, "cost_basis": "2500.00"}],
+    })
+    for as_of, price in prices.items():
+        client.post("/api/investments/prices", json={"symbol": "XEQT", "as_of_date": as_of, "price": price})
+
+
+def test_return_history_reports_monthly_values_and_returns(client, investment_account):
+    # Ten months, +2% every month.
+    prices = {f"2025-{m:02d}-28": f"{25 * 1.02 ** (m - 1):.4f}" for m in range(1, 11)}
+    _hold_and_price(client, investment_account, prices)
+
+    data = client.get(
+        f"/api/investments/return-history?account_id={investment_account.id}&as_of=2025-10-31"
+    ).json()
+
+    assert [p["month"] for p in data["points"]][:2] == ["2025-01-31", "2025-02-28"]
+    assert data["points"][0]["return_pct"] is None
+    assert data["points"][1]["return_pct"] == pytest.approx(0.02, abs=1e-4)
+    assert data["months_of_history"] == 9
+    assert data["annualized_return"] == pytest.approx(1.02 ** 12 - 1, abs=1e-3)
+    assert data["annualized_volatility"] == pytest.approx(0.0, abs=1e-3)
+
+
+def test_contributions_do_not_count_as_return(client, investment_account):
+    prices = {f"2025-{m:02d}-28": "25.00" for m in range(1, 9)}
+    _hold_and_price(client, investment_account, prices)
+    client.post("/api/investments/activities", json={
+        "account_id": investment_account.id,
+        "type": "CONTRIBUTION", "trade_date": "2025-05-10", "amount": "6000.00",
+    })
+
+    data = client.get(
+        f"/api/investments/return-history?account_id={investment_account.id}&as_of=2025-08-31"
+    ).json()
+    assert all(p["return_pct"] in (None, 0.0) for p in data["points"])
+    assert data["average_monthly_contribution"] == pytest.approx(500.0)
+
+
+def test_short_history_has_no_statistics(client, investment_account):
+    _hold_and_price(client, investment_account, {"2025-01-28": "25", "2025-02-28": "26"})
+    data = client.get(
+        f"/api/investments/return-history?account_id={investment_account.id}&as_of=2025-03-31"
+    ).json()
+    assert data["months_of_history"] == 2
+    assert data["annualized_return"] is None
+    assert data["stdev_monthly_log_return"] is None
+
+
+def test_return_history_refuses_non_investment_accounts(client, sample_checking_account):
+    resp = client.get(f"/api/investments/return-history?account_id={sample_checking_account.id}")
+    assert resp.status_code == 400

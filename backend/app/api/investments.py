@@ -24,6 +24,8 @@ from app.schemas.investment import (
     PriceQuoteBulkCreate,
     PriceQuoteCreate,
     PriceQuoteResponse,
+    ReturnHistoryPoint,
+    ReturnHistoryResponse,
     SecurityCreate,
     SecurityResponse,
 )
@@ -31,6 +33,7 @@ from app.services.investments.performance import (
     account_performance,
     holding_valuation,
     load_holdings,
+    monthly_return_history,
     value_holdings,
 )
 from app.services.investments.quote_fetcher import (
@@ -323,6 +326,35 @@ def get_performance(
         holdings=[_valuation_to_schema(v) for v in report["holdings"]],
         returns=report["returns"],
         unpriced_holdings=report["unpriced_holdings"],
+    )
+
+
+@router.get("/return-history", response_model=ReturnHistoryResponse)
+def get_return_history(
+    account_id: str,
+    as_of: date | None = Query(None, description="History up to this date (default today)"),
+    db: Session = Depends(get_db),
+):
+    """Month-end values of the current positions, with return and volatility estimates."""
+    _require_investment_account(db, account_id)
+    h = monthly_return_history(db, account_id, as_of)
+    return ReturnHistoryResponse(
+        account_id=h["account_id"],
+        as_of=h["as_of"],
+        points=[
+            ReturnHistoryPoint(
+                month=p["month"],
+                value=float(from_cents(p["value_cents"])),
+                return_pct=p["return"],
+            )
+            for p in h["points"]
+        ],
+        months_of_history=h["months_of_history"],
+        mean_monthly_log_return=h["mean_monthly_log_return"],
+        stdev_monthly_log_return=h["stdev_monthly_log_return"],
+        annualized_return=h["annualized_return"],
+        annualized_volatility=h["annualized_volatility"],
+        average_monthly_contribution=float(from_cents(h["average_monthly_contribution_cents"])),
     )
 
 

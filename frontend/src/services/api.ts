@@ -14,6 +14,7 @@ import type {
   DashboardAnalyticsResponse,
   HoldingValuation,
   PerformanceResponse,
+  ReturnHistoryResponse,
   PriceQuote,
   AuthStatusResponse,
   CognitoConfigResponse,
@@ -223,9 +224,18 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+/** `?exclude_account_id=a&exclude_account_id=b`, or "" when nothing is excluded. */
+function excludeQuery(ids: readonly string[]): string {
+  if (ids.length === 0) return "";
+  const q = new URLSearchParams();
+  ids.forEach((id) => q.append("exclude_account_id", id));
+  return `?${q.toString()}`;
+}
+
 export const api = {
   /** Accounts, categories, dashboard analytics, household members and server limits in one request. */
-  getBootstrap: () => request<BootstrapResponse>("/bootstrap"),
+  getBootstrap: (excludeAccountIds: readonly string[] = []) =>
+    request<BootstrapResponse>(`/bootstrap${excludeQuery(excludeAccountIds)}`),
 
   /** Appearance settings stored with the signed-in user's profile. */
   preferences: {
@@ -709,8 +719,8 @@ export const api = {
   },
 
   // Analytics & Dashboard
-  getDashboardAnalytics: () =>
-    request<DashboardAnalyticsResponse>("/analytics/dashboard"),
+  getDashboardAnalytics: (excludeAccountIds: readonly string[] = []) =>
+    request<DashboardAnalyticsResponse>(`/analytics/dashboard${excludeQuery(excludeAccountIds)}`),
 
   // Investments
   getHoldings: (accountId?: string, asOf?: string) => {
@@ -738,6 +748,11 @@ export const api = {
     if (asOf) q.append("as_of", asOf);
     return request<PerformanceResponse>(`/investments/performance?${q.toString()}`);
   },
+
+  getReturnHistory: (accountId: string) =>
+    request<ReturnHistoryResponse>(
+      `/investments/return-history?${new URLSearchParams({ account_id: accountId }).toString()}`
+    ),
   upsertPrices: (quotes: { symbol: string; as_of_date: string; price: string }[]) =>
     request<PriceQuote[]>("/investments/prices/bulk", {
       method: "POST",

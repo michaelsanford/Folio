@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AppLayout } from "./components/layout/AppLayout";
 import type { NavTab } from "./components/layout/AppLayout";
@@ -11,6 +11,8 @@ import { onVaultConflict } from "./services/notifications";
 import { ArrowRight } from "lucide-react";
 import { usePwaUpdate } from "./hooks/usePwaUpdate";
 import { usePreferencesSync } from "./hooks/usePreferencesSync";
+import { useHiddenAccounts } from "./hooks/useHiddenAccounts";
+import { setHiddenAccounts } from "./utils/dashboardFilter";
 import { takeInitialView } from "./utils/initialView";
 
 // Each view is its own chunk, so the first paint only downloads the shell and
@@ -74,6 +76,10 @@ function AppContent() {
   const [limits, setLimits] = useState<ServerLimits>(DEFAULT_LIMITS);
   // Set after edits that change analytics; the dashboard refetches when next shown.
   const [isAnalyticsStale, setIsAnalyticsStale] = useState(false);
+  // Accounts the dashboard leaves out; read through a ref so loaders stay stable.
+  const hiddenAccounts = useHiddenAccounts();
+  const hiddenRef = useRef(hiddenAccounts);
+  hiddenRef.current = hiddenAccounts;
 
   // Authentication State
   const [authStatus, setAuthStatus] = useState<{
@@ -122,7 +128,7 @@ function AppContent() {
 
   const loadAllData = useCallback(async () => {
     try {
-      const data = await api.getBootstrap();
+      const data = await api.getBootstrap(hiddenRef.current);
       setAccounts(data.accounts);
       setCategories(data.categories);
       setAnalytics(data.analytics);
@@ -157,11 +163,24 @@ function AppContent() {
     [loadAllData]
   );
 
+  // A changed selection makes the figures stale; a short pause lets quick
+  // chip taps settle into one request.
+  const hiddenKey = hiddenAccounts.join(",");
+  const [analyticsKey, setAnalyticsKey] = useState(hiddenKey);
+  useEffect(() => {
+    if (hiddenKey === analyticsKey) return;
+    const timer = window.setTimeout(() => {
+      setAnalyticsKey(hiddenKey);
+      setIsAnalyticsStale(true);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [hiddenKey, analyticsKey]);
+
   useEffect(() => {
     if (activeTab !== "dashboard" || !isAnalyticsStale) return;
     let cancelled = false;
     api
-      .getDashboardAnalytics()
+      .getDashboardAnalytics(hiddenRef.current)
       .then((anl) => {
         if (cancelled) return;
         setAnalytics(anl);
@@ -171,7 +190,8 @@ function AppContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, isAnalyticsStale]);
+    // analyticsKey: a newer selection restarts the fetch and drops the older reply.
+  }, [activeTab, isAnalyticsStale, analyticsKey]);
 
   useEffect(() => {
     setOnUnauthorized(() => {
@@ -291,6 +311,8 @@ function AppContent() {
           analytics={analytics}
           accounts={accounts}
           onNavigate={(tab) => setActiveTab(tab as NavTab)}
+          hiddenAccountIds={hiddenAccounts}
+          onHiddenAccountsChange={setHiddenAccounts}
         />
       )}
 

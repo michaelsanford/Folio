@@ -33,9 +33,10 @@ def test_seed_canadian_demo_dataset_creates_complete_household(db_session):
     assert hisa is not None and hisa.current_balance_cents == 1500000
     assert tfsa is not None and tfsa.current_balance_cents == 2450000
     assert rrsp is not None and rrsp.current_balance_cents == 3820000
-    assert visa is not None and visa.current_balance_cents < 0
-    assert mortgage is not None and mortgage.current_balance_cents == -38000000
-    assert car_loan is not None and car_loan.current_balance_cents == -2450000
+    # Liabilities are stored as the positive amount owed.
+    assert visa is not None and visa.current_balance_cents > 0
+    assert mortgage is not None and mortgage.current_balance_cents == 38000000
+    assert car_loan is not None and car_loan.current_balance_cents == 2450000
 
     # Transactions & Splits
     txns = db_session.query(Transaction).all()

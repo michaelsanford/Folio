@@ -144,3 +144,25 @@ class PerformanceResponse(BaseModel):
     holdings: list[HoldingValuation]
     returns: dict[str, PeriodReturn]
     unpriced_holdings: list[str]
+
+
+class ReturnHistoryPoint(BaseModel):
+    month: date
+    value: float
+    # Fractional monthly return (0.012 = 1.2%); null for the first month.
+    return_pct: float | None = None
+
+
+class ReturnHistoryResponse(BaseModel):
+    """Monthly history of the current positions, for projecting forward."""
+
+    account_id: str
+    as_of: date
+    points: list[ReturnHistoryPoint]
+    months_of_history: int
+    # Null until there are enough months to estimate them.
+    mean_monthly_log_return: float | None = None
+    stdev_monthly_log_return: float | None = None
+    annualized_return: float | None = None
+    annualized_volatility: float | None = None
+    average_monthly_contribution: float

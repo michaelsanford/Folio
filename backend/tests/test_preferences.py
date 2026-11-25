@@ -76,6 +76,17 @@ def test_owner_round_trip(owner_client, db_session):
     assert owner_client.get(URL).json()["preferences"] == {"sidebar_collapsed": True}
 
 
+def test_dashboard_hidden_accounts_round_trip(client):
+    body = {"dashboard_hidden_account_ids": ["a1", "b2"]}
+    assert client.put(URL, json=body).status_code == 200
+    assert client.get(URL).json()["preferences"] == body
+
+
+def test_dashboard_hidden_accounts_are_bounded(client):
+    assert client.put(URL, json={"dashboard_hidden_account_ids": ["x"] * 101}).status_code == 422
+    assert client.put(URL, json={"dashboard_hidden_account_ids": ["x" * 65]}).status_code == 422
+
+
 def test_cognito_users_get_separate_rows(client, db_session):
     _as_claims({"sub": "11111111-aaaa", "token_use": "access", "client_id": "c"})
     assert client.put(URL, json={"theme": "dracula"}).status_code == 200

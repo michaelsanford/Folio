@@ -542,3 +542,31 @@ export function isLoanAccount(type: AccountType): boolean {
     ["MORTGAGE", "VEHICLE_LOAN", "LINE_OF_CREDIT", "STUDENT_LOAN", "PERSONAL_LOAN", "OTHER_LIABILITY"].includes(type)
   );
 }
+
+/** Groups for the dashboard's quick filters, in display order. */
+export type AccountFamily = "CASH" | "CREDIT_CARD" | "LOANS" | "REGISTERED" | "INVESTMENT" | "PROPERTY";
+
+export const ACCOUNT_FAMILIES: ReadonlyArray<readonly [AccountFamily, string]> = [
+  ["CASH", "Chequing & savings"],
+  ["CREDIT_CARD", "Credit cards"],
+  ["LOANS", "Loans & lines"],
+  ["REGISTERED", "Registered"],
+  ["INVESTMENT", "Investments"],
+  ["PROPERTY", "Property & other"],
+];
+
+export function accountFamily(type: AccountType): AccountFamily {
+  if (type === "CREDIT_CARD") return "CREDIT_CARD";
+  switch (CANADIAN_ACCOUNT_TYPES[type]?.category) {
+    case "CASH":
+      return "CASH";
+    case "REGISTERED":
+      return "REGISTERED";
+    case "INVESTMENT":
+      return "INVESTMENT";
+    case "DEBT":
+      return "LOANS";
+    default:
+      return "PROPERTY";
+  }
+}

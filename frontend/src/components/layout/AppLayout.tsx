@@ -108,7 +108,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
   const totalLiabilities = accounts
     .filter((a) => !isAssetAccount(a.type))
-    .reduce((sum, a) => sum + Math.abs(a.current_balance), 0);
+    .reduce((sum, a) => sum + a.current_balance, 0); // owed is positive; a credit is negative
 
   const netWorth = totalAssets - totalLiabilities;
 

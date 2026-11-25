@@ -62,6 +62,29 @@ class AccountType(str, enum.Enum):
 # and down and the lender only requires a minimum payment.
 REVOLVING_TYPES = frozenset({AccountType.LINE_OF_CREDIT})
 
+# Money owed rather than owned.
+LIABILITY_TYPES = frozenset({
+    AccountType.CREDIT_CARD,
+    AccountType.LINE_OF_CREDIT,
+    AccountType.MORTGAGE,
+    AccountType.VEHICLE_LOAN,
+    AccountType.STUDENT_LOAN,
+    AccountType.PERSONAL_LOAN,
+    AccountType.OTHER_LIABILITY,
+})
+
+
+def balance_from_ledger_cents(account_type: "AccountType", ledger_sum_cents: int) -> int:
+    """An account's balance from the sum of its transactions.
+
+    Transactions keep cash-flow signs on every account: a card purchase is
+    negative (spending) and a payment to the card is positive. A liability's
+    balance, though, is the amount owed, positive while money is owed, so its
+    ledger sum is negated. An overpaid card therefore shows a negative balance
+    (a credit).
+    """
+    return -ledger_sum_cents if account_type in LIABILITY_TYPES else ledger_sum_cents
+
 
 @with_money(
     current_balance=False,

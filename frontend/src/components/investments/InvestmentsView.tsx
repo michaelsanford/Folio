@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
 import { Money } from "../common/Money";
+import { ProjectionPanel } from "./ProjectionPanel";
 import { isInvestmentAccount } from "../../constants/canadianAccountTypes";
 import { useChartTheme } from "../../hooks/useChartTheme";
 import { formatMoney, formatMoneyCompact, formatNumber } from "../../utils/format";
@@ -19,6 +20,19 @@ const percent = (value: number | null) =>
   value === null || value === undefined ? "—" : `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
 
 const todayIso = () => new Date().toISOString().split("T")[0];
+
+const ASSET_CLASS_LABELS: Record<string, string> = {
+  EQUITY: "Stocks",
+  ETF: "ETFs",
+  MUTUAL_FUND: "Mutual funds",
+  FIXED_INCOME: "Bonds",
+  CASH: "Cash",
+  CRYPTO: "Crypto",
+  OTHER: "Other",
+};
+
+/** Positions below this share of the portfolio are grouped as "Other" in the donut. */
+const SMALL_POSITION_SHARE = 0.03;
 
 export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
   accounts,
@@ -57,6 +71,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
   const [isPriceOpen, setIsPriceOpen] = useState(false);
   const [priceDate, setPriceDate] = useState(todayIso());
   const [priceText, setPriceText] = useState("");
+  const [projectionOpened, setProjectionOpened] = useState(false);
 
   useEffect(() => {
     if (!accountId && investmentAccounts.length > 0) {
@@ -95,6 +110,15 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
   useEffect(() => {
     if (accountId) load(accountId);
   }, [accountId]);
+
+  // Largest positions first; weights are shares of total market value.
+  const sortedHoldings = useMemo(
+    () => [...(performance?.holdings ?? [])].sort((a, b) => b.market_value - a.market_value),
+    [performance]
+  );
+  const totalValue = sortedHoldings.reduce((sum, h) => sum + Math.max(0, h.market_value), 0);
+  const weight = (h: HoldingValuation) =>
+    totalValue > 0 ? `${((Math.max(0, h.market_value) / totalValue) * 100).toFixed(1)}%` : "—";
 
   const handleFetchAutomatedQuotes = async () => {
     setIsFetchingQuotes(true);
@@ -219,9 +243,17 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
   };
 
   const allocationOptions = useMemo(() => {
-    const data = (performance?.holdings || [])
-      .filter((h) => h.market_value > 0)
-      .map((h) => ({ name: h.symbol, value: Number(h.market_value.toFixed(2)) }));
+    const positive = sortedHoldings.filter((h) => h.market_value > 0);
+    const total = positive.reduce((sum, h) => sum + h.market_value, 0);
+    const large = positive.filter((h) => h.market_value / total >= SMALL_POSITION_SHARE);
+    const small = positive.filter((h) => h.market_value / total < SMALL_POSITION_SHARE);
+    const data = large.map((h) => ({ name: h.symbol, value: Number(h.market_value.toFixed(2)) }));
+    // Grouping a single small position would only rename it.
+    if (small.length > 1) {
+      data.push({ name: "Other", value: Number(small.reduce((sum, h) => sum + h.market_value, 0).toFixed(2)) });
+    } else {
+      data.push(...small.map((h) => ({ name: h.symbol, value: Number(h.market_value.toFixed(2)) })));
+    }
     return {
       backgroundColor: "transparent",
       // Share chart: positions need distinct series colours.
@@ -243,7 +275,146 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         },
       ],
     };
+  }, [sortedHoldings, currency, chartTheme]);
+
+  const assetClassOptions = useMemo(() => {
+    const byClass = new Map<string, number>();
+    for (const h of performance?.holdings ?? []) {
+      if (h.market_value <= 0) continue;
+      const label = ASSET_CLASS_LABELS[h.asset_class] ?? h.asset_class;
+      byClass.set(label, (byClass.get(label) ?? 0) + h.market_value);
+    }
+    const data = [...byClass.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }));
+    return {
+      backgroundColor: "transparent",
+      color: chartTheme.palette,
+      tooltip: {
+        ...tooltipBase,
+        trigger: "item",
+        formatter: (p: any) =>
+          `${p.name}<div style="margin-top:4px;font-family:${chartTheme.figureFontFamily}">${formatMoney(p.value, { currency })} · ${p.percent}%</div>`,
+      },
+      series: [
+        {
+          type: "pie",
+          radius: ["55%", "80%"],
+          avoidLabelOverlap: true,
+          itemStyle: { borderColor: chartTheme.tooltipBg, borderWidth: 2 },
+          label: { color: chartTheme.textColor, fontSize: 11, fontFamily: chartTheme.fontFamily },
+          data,
+        },
+      ],
+    };
   }, [performance, currency, chartTheme]);
+
+  const gainLossOptions = useMemo(() => {
+    // Largest gain at the top: category axes draw bottom-up, so sort ascending.
+    const rows = [...(performance?.holdings ?? [])].sort((a, b) => a.unrealized_gain - b.unrealized_gain);
+    return {
+      backgroundColor: "transparent",
+      tooltip: {
+        ...tooltipBase,
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        formatter: (params: any[]) => {
+          const h = rows[params[0]?.dataIndex ?? 0];
+          if (!h) return "";
+          return `${h.symbol}<div style="margin-top:4px;font-family:${chartTheme.figureFontFamily}">${formatMoney(h.unrealized_gain, { currency, signed: true })} · ${percent(h.unrealized_gain_pct)}</div>`;
+        },
+      },
+      grid: { left: 8, right: 24, bottom: 8, top: 8, containLabel: true },
+      xAxis: {
+        type: "value",
+        splitLine: { lineStyle: { color: chartTheme.gridLineColor } },
+        axisLabel: {
+          color: chartTheme.subtleTextColor,
+          fontSize: 11,
+          fontFamily: chartTheme.figureFontFamily,
+          formatter: (v: number) => formatMoneyCompact(v, currency),
+        },
+      },
+      yAxis: {
+        type: "category",
+        data: rows.map((h) => h.symbol),
+        axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
+        axisTick: { show: false },
+        axisLabel: { color: chartTheme.textColor, fontSize: 11, fontFamily: chartTheme.figureFontFamily },
+      },
+      series: [
+        {
+          type: "bar",
+          barMaxWidth: 16,
+          data: rows.map((h) => ({
+            value: Number(h.unrealized_gain.toFixed(2)),
+            itemStyle: {
+              color: h.unrealized_gain >= 0 ? chartTheme.positiveColor : chartTheme.negativeColor,
+              borderRadius: h.unrealized_gain >= 0 ? [0, 3, 3, 0] : [3, 0, 0, 3],
+            },
+          })),
+        },
+      ],
+    };
+  }, [performance, currency, chartTheme]);
+
+  const returnsChartOptions = useMemo(() => {
+    if (!performance) return null;
+    const series = (
+      [
+        ["Time-weighted", "time_weighted", chartTheme.accentColor],
+        ["Money-weighted", "money_weighted", chartTheme.neutralColor],
+      ] as const
+    ).map(([name, key, color]) => ({
+      name,
+      type: "bar",
+      barMaxWidth: 18,
+      itemStyle: { color },
+      data: PERIOD_ORDER.map((p) => {
+        const v = performance.returns[p]?.[key];
+        return v === null || v === undefined
+          ? null
+          : { value: v, itemStyle: v < 0 ? { color: chartTheme.negativeColor } : undefined };
+      }),
+    }));
+    if (series.every((s) => s.data.every((d) => d === null))) return null;
+    return {
+      backgroundColor: "transparent",
+      tooltip: {
+        ...tooltipBase,
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        valueFormatter: (v: number | null) => (v === null || v === undefined ? "—" : percent(v)),
+      },
+      legend: {
+        data: series.map((s) => s.name),
+        textStyle: { color: chartTheme.textColor, fontSize: 11 },
+        icon: "circle",
+        itemWidth: 8,
+        itemHeight: 8,
+        bottom: 0,
+      },
+      grid: { left: 8, right: 16, bottom: 32, top: 12, containLabel: true },
+      xAxis: {
+        type: "category",
+        data: [...PERIOD_ORDER],
+        axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
+        axisTick: { show: false },
+        axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11, fontFamily: chartTheme.figureFontFamily },
+      },
+      yAxis: {
+        type: "value",
+        splitLine: { lineStyle: { color: chartTheme.gridLineColor } },
+        axisLabel: {
+          color: chartTheme.subtleTextColor,
+          fontSize: 11,
+          fontFamily: chartTheme.figureFontFamily,
+          formatter: (v: number) => `${v}%`,
+        },
+      },
+      series,
+    };
+  }, [performance, chartTheme]);
 
   const growthOptions = useMemo(() => {
     if (!performance) return null;
@@ -350,7 +521,10 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         <div className="flex flex-wrap items-center gap-3">
           <select
             value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
+            onChange={(e) => {
+              setAccountId(e.target.value);
+              setProjectionOpened(false);
+            }}
             className={`${inputCls} w-auto cursor-pointer`}
           >
             {investmentAccounts.map((a) => (
@@ -396,28 +570,6 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         </div>
       </div>
 
-      {/* Canadian market coverage and BoC FX context */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs text-muted">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="text-sub">Market coverage:</span>
-          <span>
-            TSX &amp; TSX-V (<code className="font-mono text-sub">.TO</code>,{" "}
-            <code className="font-mono text-sub">.V</code>)
-          </span>
-          <span aria-hidden="true">·</span>
-          <span>US equities &amp; ETFs (USD)</span>
-          <span aria-hidden="true">·</span>
-          <span>Bank of Canada Valet FX daily</span>
-        </div>
-        {fxAvailable && fxRate && (
-          <div className="flex items-center gap-2 shrink-0">
-            <span>BoC Valet daily</span>
-            <span className="tabular-nums text-main">{fxRate.rate!.toFixed(4)}</span>
-            {fxRate.as_of_date && <span className="tabular-nums">{fxRate.as_of_date}</span>}
-          </div>
-        )}
-      </div>
-
       {performance && performance.unpriced_holdings.length > 0 && (
         <div className="p-3 rounded-lg bg-warning-subtle border border-warning/30 text-sm text-warning flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" strokeWidth={1.5} />
@@ -429,6 +581,166 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           </span>
         </div>
       )}
+
+      {/* Holdings table */}
+      <section className={`${card} overflow-hidden`}>
+        <div className="flex items-center px-5 sm:px-6 h-14 border-b border-subtle">
+          <h2 className="text-base font-medium text-main">Holdings</h2>
+        </div>
+
+        {/* Mobile & tablet cards (< lg) */}
+        <div className="block lg:hidden divide-y divide-subtle">
+          {isLoading ? (
+            <div className="py-8 text-center text-sm text-muted">Loading positions…</div>
+          ) : (performance?.holdings.length ?? 0) === 0 ? (
+            <div className="py-8 text-center text-sm text-muted">
+              No holdings yet. Add one to start tracking performance.
+            </div>
+          ) : (
+            sortedHoldings.map((h) => (
+              <div key={h.holding_id} className="p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-main font-mono truncate">{h.symbol}</div>
+                    {h.name && <div className="text-xs text-muted truncate">{h.name}</div>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-right">
+                      <Money value={h.market_value} currency={currency} className="text-sm text-main" />
+                      <div className="text-xs tabular-nums">
+                        <Money
+                          value={h.unrealized_gain}
+                          currency={currency}
+                          signed
+                          className={h.unrealized_gain >= 0 ? "text-positive" : "text-negative"}
+                        />{" "}
+                        <span className="text-muted">({percent(h.unrealized_gain_pct)})</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleDelete(h)}
+                      title={`Remove ${h.symbol}`}
+                      className="p-1.5 rounded-lg text-muted hover:text-negative bg-surface-hover transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" strokeWidth={1.5} />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted tabular-nums">
+                  <span>{weight(h)} of portfolio</span>
+                  <span>·</span>
+                  <span>Qty {formatNumber(Number(h.quantity), 8)}</span>
+                  <span>·</span>
+                  <span>
+                    {h.is_priced ? (
+                      <>
+                        Price <Money value={h.price ?? 0} currency={currency} className="text-sub" />
+                      </>
+                    ) : (
+                      <span className="text-warning">No price</span>
+                    )}
+                  </span>
+                  <span>·</span>
+                  <span>
+                    Cost <Money value={h.cost_basis} currency={currency} className="text-sub" />
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop holdings table (>= lg) */}
+        <div className="hidden lg:block">
+          <table className="w-full table-fixed text-sm">
+            <thead>
+              <tr className="text-xs text-muted border-b border-subtle">
+                <th className="text-left font-normal h-9 px-3 w-[20%]">Symbol</th>
+                <th className="text-right font-normal h-9 px-3 w-[12%]">Quantity</th>
+                <th className="text-right font-normal h-9 px-3 w-[14%]">Price</th>
+                <th className="text-right font-normal h-9 px-3 w-[13%]">Cost basis</th>
+                <th className="text-right font-normal h-9 px-3 w-[14%]">Market value</th>
+                <th className="text-right font-normal h-9 px-3 w-[9%]">Weight</th>
+                <th className="text-right font-normal h-9 px-3 w-[13%]">Unrealized</th>
+                <th className="h-9 px-2 w-11"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-subtle">
+              {isLoading && (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-sm text-muted">
+                    Loading positions…
+                  </td>
+                </tr>
+              )}
+
+              {!isLoading && (performance?.holdings.length ?? 0) === 0 && (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-sm text-muted">
+                    No holdings yet. Add one to start tracking performance.
+                  </td>
+                </tr>
+              )}
+
+              {!isLoading &&
+                sortedHoldings.map((h) => (
+                  <tr key={h.holding_id} className="h-14 bg-surface-hover transition-colors">
+                    <td className="px-3 min-w-0">
+                      <div className="text-main font-mono truncate" title={h.symbol}>
+                        {h.symbol}
+                      </div>
+                      {h.name && (
+                        <div className="text-xs text-muted truncate" title={h.name}>
+                          {h.name}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 text-right text-sub tabular-nums whitespace-nowrap">
+                      {formatNumber(Number(h.quantity), 8)}
+                    </td>
+                    <td className="px-3 text-right whitespace-nowrap">
+                      {h.is_priced ? (
+                        <>
+                          <Money value={h.price ?? 0} currency={currency} className="text-main" />
+                          <div className="text-xs tabular-nums text-muted">as of {h.price_as_of}</div>
+                        </>
+                      ) : (
+                        <span className="text-xs text-warning">No price</span>
+                      )}
+                    </td>
+                    <td className="px-3 text-right whitespace-nowrap">
+                      <Money value={h.cost_basis} currency={currency} className="text-sub" />
+                    </td>
+                    <td className="px-3 text-right whitespace-nowrap">
+                      <Money value={h.market_value} currency={currency} className="text-main" />
+                    </td>
+                    <td className="px-3 text-right text-sub tabular-nums whitespace-nowrap">{weight(h)}</td>
+                    <td className="px-3 text-right whitespace-nowrap">
+                      <Money
+                        value={h.unrealized_gain}
+                        currency={currency}
+                        signed
+                        className={h.unrealized_gain >= 0 ? "text-positive" : "text-negative"}
+                      />
+                      <div className="text-xs tabular-nums text-muted">
+                        {percent(h.unrealized_gain_pct)}
+                      </div>
+                    </td>
+                    <td className="px-2 text-right">
+                      <button
+                        onClick={() => handleDelete(h)}
+                        title={`Remove ${h.symbol}`}
+                        className="p-1.5 rounded-lg text-muted hover:text-negative bg-surface-hover transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" strokeWidth={1.5} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {/* KPI row */}
       {performance && (
@@ -538,16 +850,38 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           <p className="mt-4 text-xs text-muted">
             A dash means there is not enough data for that period
           </p>
+          {returnsChartOptions && (
+            <>
+              <h3 className="mt-6 text-sm font-medium text-main">Returns by period</h3>
+              <LazyChart option={returnsChartOptions} className="h-56 mt-2" />
+            </>
+          )}
         </section>
       )}
 
-      {/* Charts */}
+      {/* Allocation */}
       {performance && performance.holdings.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <section className={`${card} p-5 sm:p-6`}>
-            <h2 className="text-base font-medium text-main">Allocation</h2>
-            <p className="mt-1 text-sm text-sub">Share of market value by position</p>
+            <h2 className="text-base font-medium text-main">Allocation by position</h2>
+            <p className="mt-1 text-sm text-sub">Share of market value. Positions under 3% are grouped</p>
             <LazyChart option={allocationOptions} className="h-64 mt-4" />
+          </section>
+
+          <section className={`${card} p-5 sm:p-6`}>
+            <h2 className="text-base font-medium text-main">Allocation by asset class</h2>
+            <p className="mt-1 text-sm text-sub">Equity, bonds, cash and the rest</p>
+            <LazyChart option={assetClassOptions} className="h-64 mt-4" />
+          </section>
+
+          <section className={`${card} p-5 sm:p-6`}>
+            <h2 className="text-base font-medium text-main">Gain and loss by position</h2>
+            <p className="mt-1 text-sm text-sub">Unrealized, against what each position cost</p>
+            <LazyChart
+              option={gainLossOptions}
+              className="mt-4"
+              style={{ height: Math.max(160, performance.holdings.length * 28 + 32) }}
+            />
           </section>
 
           <section className={`${card} p-5 sm:p-6`}>
@@ -560,161 +894,48 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         </div>
       )}
 
-      {/* Holdings table */}
-      <section className={`${card} overflow-hidden`}>
-        <div className="flex items-center px-5 sm:px-6 h-14 border-b border-subtle">
-          <h2 className="text-base font-medium text-main">Holdings</h2>
+      {/* Projection: opt-in, fetched only once opened */}
+      {performance && performance.holdings.length > 0 && (
+        <details
+          className={`${card} group`}
+          onToggle={(e) => (e.currentTarget as HTMLDetailsElement).open && setProjectionOpened(true)}
+        >
+          <summary className="flex items-center justify-between gap-3 px-5 sm:px-6 h-14 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+            <span className="text-base font-medium text-main">Projection</span>
+            <span className="flex items-center gap-2 text-sm text-sub">
+              <span className="hidden sm:inline">Where this account could be, from its own past returns</span>
+              <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180" strokeWidth={1.5} />
+            </span>
+          </summary>
+          <div className="px-5 sm:px-6 pb-6 pt-2 border-t border-subtle">
+            {projectionOpened && (
+              <ProjectionPanel accountId={accountId} currency={currency} marketValue={performance.market_value} />
+            )}
+          </div>
+        </details>
+      )}
+
+      {/* Canadian market coverage and BoC FX context */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs text-muted">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="text-sub">Market coverage:</span>
+          <span>
+            TSX &amp; TSX-V (<code className="font-mono text-sub">.TO</code>,{" "}
+            <code className="font-mono text-sub">.V</code>)
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>US equities &amp; ETFs (USD)</span>
+          <span aria-hidden="true">·</span>
+          <span>Bank of Canada Valet FX daily</span>
         </div>
-
-        {/* Mobile & tablet cards (< lg) */}
-        <div className="block lg:hidden divide-y divide-subtle">
-          {isLoading ? (
-            <div className="py-8 text-center text-sm text-muted">Loading positions…</div>
-          ) : (performance?.holdings.length ?? 0) === 0 ? (
-            <div className="py-8 text-center text-sm text-muted">
-              No holdings yet. Add one to start tracking performance.
-            </div>
-          ) : (
-            performance?.holdings.map((h) => (
-              <div key={h.holding_id} className="p-4 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm text-main font-mono truncate">{h.symbol}</div>
-                    {h.name && <div className="text-xs text-muted truncate">{h.name}</div>}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className="text-right">
-                      <Money value={h.market_value} currency={currency} className="text-sm text-main" />
-                      <div className="text-xs tabular-nums">
-                        <Money
-                          value={h.unrealized_gain}
-                          currency={currency}
-                          signed
-                          className={h.unrealized_gain >= 0 ? "text-positive" : "text-negative"}
-                        />{" "}
-                        <span className="text-muted">({percent(h.unrealized_gain_pct)})</span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleDelete(h)}
-                      title={`Remove ${h.symbol}`}
-                      className="p-1.5 rounded-lg text-muted hover:text-negative bg-surface-hover transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" strokeWidth={1.5} />
-                    </button>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted tabular-nums">
-                  <span>Qty {formatNumber(Number(h.quantity), 8)}</span>
-                  <span>·</span>
-                  <span>
-                    {h.is_priced ? (
-                      <>
-                        Price <Money value={h.price ?? 0} currency={currency} className="text-sub" />
-                      </>
-                    ) : (
-                      <span className="text-warning">No price</span>
-                    )}
-                  </span>
-                  <span>·</span>
-                  <span>
-                    Cost <Money value={h.cost_basis} currency={currency} className="text-sub" />
-                  </span>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Desktop holdings table (>= lg) */}
-        <div className="hidden lg:block">
-          <table className="w-full table-fixed text-sm">
-            <thead>
-              <tr className="text-xs text-muted border-b border-subtle">
-                <th className="text-left font-normal h-9 px-3 w-[22%]">Symbol</th>
-                <th className="text-right font-normal h-9 px-3 w-[13%]">Quantity</th>
-                <th className="text-right font-normal h-9 px-3 w-[16%]">Price</th>
-                <th className="text-right font-normal h-9 px-3 w-[14%]">Cost basis</th>
-                <th className="text-right font-normal h-9 px-3 w-[14%]">Market value</th>
-                <th className="text-right font-normal h-9 px-3 w-[14%]">Unrealized</th>
-                <th className="h-9 px-2 w-11"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-subtle">
-              {isLoading && (
-                <tr>
-                  <td colSpan={7} className="py-8 text-center text-sm text-muted">
-                    Loading positions…
-                  </td>
-                </tr>
-              )}
-
-              {!isLoading && (performance?.holdings.length ?? 0) === 0 && (
-                <tr>
-                  <td colSpan={7} className="py-8 text-center text-sm text-muted">
-                    No holdings yet. Add one to start tracking performance.
-                  </td>
-                </tr>
-              )}
-
-              {!isLoading &&
-                performance?.holdings.map((h) => (
-                  <tr key={h.holding_id} className="h-14 bg-surface-hover transition-colors">
-                    <td className="px-3 min-w-0">
-                      <div className="text-main font-mono truncate" title={h.symbol}>
-                        {h.symbol}
-                      </div>
-                      {h.name && (
-                        <div className="text-xs text-muted truncate" title={h.name}>
-                          {h.name}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 text-right text-sub tabular-nums whitespace-nowrap">
-                      {formatNumber(Number(h.quantity), 8)}
-                    </td>
-                    <td className="px-3 text-right whitespace-nowrap">
-                      {h.is_priced ? (
-                        <>
-                          <Money value={h.price ?? 0} currency={currency} className="text-main" />
-                          <div className="text-xs tabular-nums text-muted">as of {h.price_as_of}</div>
-                        </>
-                      ) : (
-                        <span className="text-xs text-warning">No price</span>
-                      )}
-                    </td>
-                    <td className="px-3 text-right whitespace-nowrap">
-                      <Money value={h.cost_basis} currency={currency} className="text-sub" />
-                    </td>
-                    <td className="px-3 text-right whitespace-nowrap">
-                      <Money value={h.market_value} currency={currency} className="text-main" />
-                    </td>
-                    <td className="px-3 text-right whitespace-nowrap">
-                      <Money
-                        value={h.unrealized_gain}
-                        currency={currency}
-                        signed
-                        className={h.unrealized_gain >= 0 ? "text-positive" : "text-negative"}
-                      />
-                      <div className="text-xs tabular-nums text-muted">
-                        {percent(h.unrealized_gain_pct)}
-                      </div>
-                    </td>
-                    <td className="px-2 text-right">
-                      <button
-                        onClick={() => handleDelete(h)}
-                        title={`Remove ${h.symbol}`}
-                        className="p-1.5 rounded-lg text-muted hover:text-negative bg-surface-hover transition-colors cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" strokeWidth={1.5} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+        {fxAvailable && fxRate && (
+          <div className="flex items-center gap-2 shrink-0">
+            <span>BoC Valet daily</span>
+            <span className="tabular-nums text-main">{fxRate.rate!.toFixed(4)}</span>
+            {fxRate.as_of_date && <span className="tabular-nums">{fxRate.as_of_date}</span>}
+          </div>
+        )}
+      </div>
 
       {/* Add holding modal */}
       {isAddOpen && (

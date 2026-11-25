@@ -15,7 +15,7 @@ Response shape::
       "limits":            {"max_upload_mb": int}
     }
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -46,7 +46,12 @@ class BootstrapResponse(BaseModel):
 
 
 @router.get("/bootstrap", response_model=BootstrapResponse)
-def get_bootstrap(db: Session = Depends(get_db)):
+def get_bootstrap(
+    exclude_account_id: list[str] = Query(
+        default_factory=list, max_length=100, description="Accounts the dashboard leaves out"
+    ),
+    db: Session = Depends(get_db),
+):
     # Arguments are passed explicitly: called directly, a parameter whose
     # default is a FastAPI Query(...) marker would receive the marker itself.
     # A plain dict: FastAPI validates it against BootstrapResponse with
@@ -55,7 +60,7 @@ def get_bootstrap(db: Session = Depends(get_db)):
         "accounts": list_accounts(is_active=None, account_type=None, owner_member_id=None, db=db),
         "categories": list_categories(db=db),
         # Same as GET /analytics/dashboard with no year/month (current month).
-        "analytics": get_dashboard_analytics(db, None, None),
+        "analytics": get_dashboard_analytics(db, None, None, exclude_account_ids=exclude_account_id),
         "household_members": list_household_members(db=db),
         "limits": {"max_upload_mb": settings.MAX_UPLOAD_MB},
     }

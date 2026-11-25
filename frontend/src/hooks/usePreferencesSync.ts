@@ -4,6 +4,8 @@ import type { ThemeId, TypeStyleId } from "../context/ThemeContext";
 import { api } from "../services/api";
 import { normalizePrefs, setFormatPrefs, type NumberFormatPrefs } from "../utils/format";
 import { useFormatPrefs } from "./useFormatPrefs";
+import { useHiddenAccounts } from "./useHiddenAccounts";
+import { setHiddenAccounts } from "../utils/dashboardFilter";
 import type { NumberFormatPreferences, UiPreferences } from "../types";
 
 /** Quiet time after the last change before it is saved (one vault sync per burst). */
@@ -30,7 +32,7 @@ const fromServerFormat = (p: NumberFormatPreferences): NumberFormatPrefs =>
 
 /**
  * Keeps appearance settings (theme, colour mode, type style, number format,
- * collapsed sidebar) in the signed-in user's profile, so they follow the user
+ * collapsed sidebar) and the dashboard's hidden accounts in the signed-in user's profile, so they follow the user
  * to any device or browser.
  *
  * localStorage still paints the first frame (the sign-in screen included).
@@ -51,6 +53,7 @@ export function usePreferencesSync(enabled: boolean): void {
     setSidebarCollapsed,
   } = useTheme();
   const format = useFormatPrefs();
+  const hiddenAccounts = useHiddenAccounts();
 
   const current = useMemo<UiPreferences>(
     () => ({
@@ -59,8 +62,9 @@ export function usePreferencesSync(enabled: boolean): void {
       type_style: typeStyle,
       number_format: toServerFormat(format),
       sidebar_collapsed: sidebarCollapsed,
+      dashboard_hidden_account_ids: [...hiddenAccounts],
     }),
-    [theme, mode, typeStyle, format, sidebarCollapsed]
+    [theme, mode, typeStyle, format, sidebarCollapsed, hiddenAccounts]
   );
   const serialized = JSON.stringify(current);
 
@@ -99,6 +103,7 @@ export function usePreferencesSync(enabled: boolean): void {
           setTypeStyle(saved.type_style as TypeStyleId);
         if (saved.number_format) setFormatPrefs(fromServerFormat(saved.number_format));
         if (typeof saved.sidebar_collapsed === "boolean") setSidebarCollapsed(saved.sidebar_collapsed);
+        if (Array.isArray(saved.dashboard_hidden_account_ids)) setHiddenAccounts(saved.dashboard_hidden_account_ids);
         // What the profile now holds, merged over this device's values: the
         // re-render that applies it is then not mistaken for a new change. Any
         // field the profile lacked differs, and is saved to fill it in.

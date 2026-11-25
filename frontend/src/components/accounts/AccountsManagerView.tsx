@@ -17,6 +17,7 @@ import { CanadianRulesModal } from "./CanadianRulesModal";
 import { InstitutionAutocomplete } from "./InstitutionAutocomplete";
 import { Money } from "../common/Money";
 import { NumberField } from "../common/NumberField";
+import { CreditUsage } from "./CreditUsage";
 import { formatMoney } from "../../utils/format";
 
 const card = "rounded-xl bg-surface border border-subtle";
@@ -243,7 +244,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
 
   const totalLiabilities = accounts
     .filter((a) => !isAssetAccount(a.type))
-    .reduce((sum, a) => sum + Math.abs(a.current_balance), 0);
+    .reduce((sum, a) => sum + a.current_balance, 0); // owed is positive; a credit is negative
 
   const filterTabs: Array<{
     id: AccountCategoryGroup | "ALL" | "ASSETS" | "LIABILITIES";
@@ -469,14 +470,26 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                 {/* Balance & Financial Details */}
                 <div className="mt-5 pt-4 border-t border-subtle space-y-2">
                   <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-xs text-muted">Current balance</span>
+                    <span className="text-xs text-muted">
+                      {isAsset ? "Current balance" : acc.current_balance < 0 ? "In credit" : "Owed"}
+                    </span>
                     <Money
-                      value={acc.current_balance}
+                      value={isAsset ? acc.current_balance : Math.abs(acc.current_balance)}
                       className={`text-lg font-medium ${
                         isAsset && acc.current_balance < 0 ? "text-negative" : "text-main"
                       }`}
                     />
                   </div>
+
+                  {acc.type === "CREDIT_CARD" && !acc.credit_limit && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEdit(acc)}
+                      className="text-xs text-muted hover:text-main underline-offset-4 hover:underline cursor-pointer"
+                    >
+                      Add a credit limit to see credit left
+                    </button>
+                  )}
 
                   {acc.interest_rate ? (
                     <div className="flex items-center justify-between text-xs text-muted">
@@ -486,9 +499,8 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                   ) : null}
 
                   {acc.credit_limit ? (
-                    <div className="flex items-center justify-between text-xs text-muted">
-                      <span>Credit limit</span>
-                      <Money value={acc.credit_limit} cents={false} className="text-sub" />
+                    <div className="pt-1">
+                      <CreditUsage balance={acc.current_balance} limit={acc.credit_limit} />
                     </div>
                   ) : null}
                 </div>
@@ -615,7 +627,9 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
 
               {/* Balance */}
               <div>
-                <label className={fieldLabel}>Current balance</label>
+                <label className={fieldLabel}>
+                  {isAssetAccount(formData.type) ? "Current balance" : "Amount owed"}
+                </label>
                 <NumberField
                   step="0.01"
                   placeholder="0.00"
@@ -630,7 +644,8 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                 <div>
                   <label className={fieldLabel}>Credit limit</label>
                   <NumberField
-                    step="100"
+                    step="0.01"
+                    min="0"
                     placeholder="10000"
                     value={formData.credit_limit}
                     onValueChange={(v) => setFormData({ ...formData, credit_limit: v })}

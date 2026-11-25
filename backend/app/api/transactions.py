@@ -34,6 +34,7 @@ def recalculate_account_balances(db: Session, account_ids: list[str]) -> dict[st
     Records today's snapshot for each. Returns ``{account_id: balance_dollars}``.
     """
     from app.core.money import from_cents
+    from app.models.account import balance_from_ledger_cents
     from app.services.snapshots.balance_history import record_snapshot
 
     ids = list(dict.fromkeys(a for a in account_ids if a))
@@ -52,7 +53,8 @@ def recalculate_account_balances(db: Session, account_ids: list[str]) -> dict[st
 
     balances: dict[str, float] = {}
     for account in accounts:
-        balance_cents = int(sums.get(account.id) or 0)
+        # Liabilities are stored as the positive amount owed.
+        balance_cents = balance_from_ledger_cents(account.type, int(sums.get(account.id) or 0))
         account.current_balance_cents = balance_cents
         record_snapshot(db, account.id, balance_cents)
         balances[account.id] = float(from_cents(balance_cents))

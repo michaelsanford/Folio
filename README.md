@@ -110,12 +110,18 @@ Folio is architected for Canadian legal, tax, and banking realities:
   - Supports multi-user household collaboration with entities (`HouseholdMember`).
   - Canadian statutory ownership rules: Registered accounts (**TFSA**, **RRSP**, **FHSA**, **RESP**) are legally individual, while **Chequing**, **Savings**, and **Mortgages** support joint ownership.
   - Granular household member filtering across the ledger, account balances, and goal tracking.
+  - **Dashboard account filter**: choose which accounts the dashboard counts. Quick filters cover whole families (chequing and savings, credit cards, loans and lines, registered, investments, property) and appear only for families you have; a menu picks single accounts. Every figure follows the selection: net worth and its history, income, spending, cash flow and top categories. The choice is saved with your preferences, and new accounts are counted until you hide them.
   - Member relationships: Self, Partner or spouse, Dependent or child, Roommate or housemate, and Other.
 
 - **Canadian Mortgage Mathematics**:
   - Implements **semi-annual compounding, not in advance**, as mandated by the Canadian *Interest Act* (s. 6), rather than the US monthly compounding convention. Using US mathematics overstates Canadian mortgage interest by thousands over a 25-year amortization.
   - Month-by-month principal, interest, and escrow (property tax and insurance) amortization schedules.
   - Supports switching to `MONTHLY` compounding for US mortgages and loans.
+
+- **Liability Balances Are the Amount Owed**:
+  - Transactions keep cash-flow signs on every account (a card purchase is negative, a payment to the card positive), but a card, loan, line or mortgage balance is stored as the positive amount owed. A card paid beyond its balance shows as in credit.
+  - Imported statements (including RBC CSV exports with Visa, MasterCard and Royal Credit Line rows) produce positive balances for those accounts. Migration `0008` flips balances recorded negative before this change; balances typed in by hand as positive are left alone.
+  - Credit cards with a limit show how much credit is left: a bar of the limit used (calm under 30% utilization, the level Canadian credit bureaus treat as healthy, amber to 75%, red above or over the limit) with the amount available. The dashboard's account list shows the amount left too.
 
 - **Revolving Lines of Credit and HELOCs**:
   - No term or original principal: the balance goes up and down as you draw and repay.
@@ -194,6 +200,14 @@ Folio provides statutory tracking for Canadian tax-advantaged accounts:
   - Reported across 1M, 3M, YTD, 1Y, and all-time windows.
 - **Capital vs. Growth Breakdown**:
   - Distinguishes cumulative net contributions from market appreciation.
+- **Holdings-First Layout and Charts**:
+  - Holdings lead the page, largest position first, with each position's weight in the portfolio.
+  - Returns follow, with the period table charted as time-weighted vs money-weighted bars.
+  - Allocation is shown by position (positions under 3% grouped as Other) and by asset class, alongside unrealized gain or loss per position and contributions vs growth.
+- **Projection with Error Bands** (collapsed until opened):
+  - Projects one account 5, 10, 20 or 30 years ahead from its own month-end history, valued with today's holdings so deposits never count as growth (`GET /api/investments/return-history`).
+  - 1,000 simulated paths drawn from the account's monthly return and volatility; the chart shades the middle 50% and 80% of outcomes around the median, with the monthly contribution (defaulting to the past year's average) adjustable.
+  - Needs at least 6 months of price history. Past returns don't predict future results, and the panel says so.
 
 ---
 
@@ -406,7 +420,7 @@ Folio implements a defense-in-depth security model for hosting financial data:
 ## Data Handling
 
 - The vault is a single SQLite file that holds financial personal information: payees, amounts, dates, balances, account names and masked account numbers (`*XXXX`). Treat the database file, the S3 bucket and any backup copies accordingly.
-- Appearance settings (theme, light or dark mode, type style, number format and the collapsed sidebar) are stored per user in the vault, in the `user_preferences` table, so they follow you to any device or browser and are backed up with the vault. Each Cognito user has their own row, keyed by their Cognito user ID; the master passphrase owner has one. The browser also keeps a copy so the sign-in screen opens in your colours, and changes are saved about a second after you stop adjusting them.
+- Appearance settings (theme, light or dark mode, type style, number format, the collapsed sidebar and the accounts hidden from the dashboard) are stored per user in the vault, in the `user_preferences` table, so they follow you to any device or browser and are backed up with the vault. Each Cognito user has their own row, keyed by their Cognito user ID; the master passphrase owner has one. The browser also keeps a copy so the sign-in screen opens in your colours, and changes are saved about a second after you stop adjusting them.
 - On AWS, uploaded statements are parsed in memory and are not archived: `/tmp` is not synced to S3 and disappears with the instance. Only the parsed transactions are stored in the vault. Docker and local installs keep a copy of each uploaded statement in the uploads directory.
 - With Bedrock enabled, transactions that the local tiers cannot classify are sent to the configured Bedrock model: raw payee text, amount, currency, account type and date, plus your category names. A cross-region inference profile (for example `us.amazon.nova-micro-v1:0`) may process that data outside `ca-central-1`. If that matters to you, leave Bedrock off (the default) or choose a model that runs in your region.
 

@@ -15,10 +15,13 @@ interface LazyChartProps {
   option: Record<string, unknown>;
   /** Tailwind height class for both the chart and its placeholder. */
   className?: string;
+  /** For a height that depends on the data (e.g. one row per position). */
+  style?: React.CSSProperties;
 }
 
-const ChartSkeleton: React.FC<{ className?: string }> = ({ className }) => (
+const ChartSkeleton: React.FC<{ className?: string; style?: React.CSSProperties }> = ({ className, style }) => (
   <div
+    style={style}
     className={`${className ?? ""} w-full rounded-lg bg-surface-subtle flex items-center justify-center`}
     role="status"
     aria-label="Chart loading"
@@ -27,9 +30,9 @@ const ChartSkeleton: React.FC<{ className?: string }> = ({ className }) => (
   </div>
 );
 
-export const LazyChart: React.FC<LazyChartProps> = ({ option, className }) => (
-  <Suspense fallback={<ChartSkeleton className={className} />}>
-    <div className={`${className ?? ""} w-full`}>
+export const LazyChart: React.FC<LazyChartProps> = ({ option, className, style }) => (
+  <Suspense fallback={<ChartSkeleton className={className} style={style} />}>
+    <div className={`${className ?? ""} w-full`} style={style}>
       <ReactECharts
         option={option}
         style={{ height: "100%", width: "100%" }}

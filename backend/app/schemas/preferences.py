@@ -1,8 +1,8 @@
 """UI appearance preferences stored per user (GET/PUT /me/preferences)."""
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_serializer, field_validator
 
 
 class NumberFormatPreferences(BaseModel):
@@ -30,6 +30,11 @@ class UiPreferences(BaseModel):
     type_style: Literal["broadsheet", "modern", "friendly", "terminal"] | None = None
     number_format: NumberFormatPreferences | None = None
     sidebar_collapsed: bool | None = None
+    # Accounts left out of the dashboard. Stored as exclusions so a new account
+    # shows up until the user hides it.
+    dashboard_hidden_account_ids: list[Annotated[str, StringConstraints(max_length=64)]] | None = Field(
+        None, max_length=100
+    )
 
 
 class PreferencesResponse(BaseModel):

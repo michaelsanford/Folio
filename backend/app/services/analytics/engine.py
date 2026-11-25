@@ -1,7 +1,8 @@
+from collections.abc import Collection
 from datetime import datetime
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from app.models.account import Account, AccountType
+from app.models.account import LIABILITY_TYPES, Account, AccountType
 from app.models.transaction import Transaction, TransactionSplit
 from app.models.category import Category
 from app.core.money import from_cents
@@ -39,15 +40,6 @@ ASSET_TYPES = {
     AccountType.OTHER_ASSET,
 }
 
-LIABILITY_TYPES = {
-    AccountType.CREDIT_CARD,
-    AccountType.LINE_OF_CREDIT,
-    AccountType.MORTGAGE,
-    AccountType.VEHICLE_LOAN,
-    AccountType.STUDENT_LOAN,
-    AccountType.PERSONAL_LOAN,
-    AccountType.OTHER_LIABILITY,
-}
 
 
 def _month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
@@ -60,6 +52,7 @@ def monthly_income_expense_cents(
     db: Session,
     year: int | None = None,
     month: int | None = None,
+    exclude_account_ids: Collection[str] = (),
 ) -> tuple[int, int]:
     """(income, expenses) in cents for one calendar month, transfers excluded.
 
@@ -76,9 +69,10 @@ def monthly_income_expense_cents(
         .join(Transaction, TransactionSplit.transaction_id == Transaction.id)
         .outerjoin(Category, TransactionSplit.category_id == Category.id)
         .filter(Transaction.transaction_date >= start, Transaction.transaction_date < end)
-        .group_by(kind)
-        .all()
     )
+    if exclude_account_ids:
+        rows = rows.filter(Transaction.account_id.notin_(list(exclude_account_ids)))
+    rows = rows.group_by(kind).all()
     income_cents = 0
     expenses_cents = 0
     for row in rows:
@@ -95,18 +89,25 @@ def get_dashboard_analytics(
     year: int | None = None,
     month: int | None = None,
     history_months: int = 12,
+    exclude_account_ids: Collection[str] = (),
 ) -> DashboardAnalyticsResponse:
     """
     Computes real-time dashboard analytics including Net Worth, Cash Flow, Spend by Category, and Sankey diagram data.
+
+    ``exclude_account_ids`` leaves those accounts out of every figure: their
+    balances, their net-worth history and their transactions.
     """
+    excluded = set(exclude_account_ids)
     now = datetime.now()
     target_year = year or now.year
     target_month = month or now.month
 
     # 1. Accounts & Net Worth
-    accounts = db.query(Account).filter(Account.is_active.is_(True)).all()
+    accounts = [
+        a for a in db.query(Account).filter(Account.is_active.is_(True)).all() if a.id not in excluded
+    ]
     assets_cents = sum(a.current_balance_cents for a in accounts if a.type in ASSET_TYPES)
-    liabilities_cents = sum(abs(a.current_balance_cents) for a in accounts if a.type in LIABILITY_TYPES)
+    liabilities_cents = sum(a.current_balance_cents for a in accounts if a.type in LIABILITY_TYPES)
     net_worth_cents = assets_cents - liabilities_cents
 
     # Real net worth history from recorded balance snapshots. If an account has
@@ -115,7 +116,7 @@ def get_dashboard_analytics(
     net_worth_history: list[NetWorthPoint] = [
         NetWorthPoint(date=label, assets=assets, liabilities=liabilities, net_worth=nw)
         for label, assets, liabilities, nw in net_worth_series(
-            db, ASSET_TYPES, LIABILITY_TYPES, months=history_months
+            db, ASSET_TYPES, LIABILITY_TYPES, months=history_months, exclude_account_ids=excluded
         )
     ]
 
@@ -145,6 +146,7 @@ def get_dashboard_analytics(
         .filter(
             Transaction.transaction_date >= start_of_month,
             Transaction.transaction_date < end_of_month,
+            *([Transaction.account_id.notin_(list(excluded))] if excluded else []),
         )
         .group_by(
             kind,

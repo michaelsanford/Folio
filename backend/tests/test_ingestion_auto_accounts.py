@@ -205,6 +205,17 @@ def test_empty_workspace_multi_account_rbc_csv_preview_commit_and_reimport(clien
     assert commit_data["transfers_linked_count"] == 2  # +/-450.00 and +/-200.00
     assert len(commit_data["accounts"]) == 6
 
+    # Liabilities come out as the positive amount owed; bank accounts keep their sign.
+    balances = {a.account_number_mask: float(a.current_balance) for a in db_session.query(Account).all()}
+    assert balances["*4401"] == pytest.approx(2550.00)
+    assert balances["*7704"] == pytest.approx(18.90), "a MasterCard purchase is owed, not negative"
+    assert balances["*9906"] == pytest.approx(500.00), "a credit line draw is owed, not negative"
+    # The Visa was paid 450 against a 10 purchase: it is 440 in credit.
+    assert balances["*8805"] == pytest.approx(-440.00)
+    mastercard_id = next(a.id for a in db_session.query(Account).all() if a.account_number_mask == "*7704")
+    summary = {a["account_id"]: a["new_account_balance"] for a in commit_data["accounts"]}
+    assert summary[mastercard_id] == pytest.approx(18.90), "the import summary shows the amount owed"
+
     db_session.expire_all()
     assert db_session.query(Account).count() == 6
     assert db_session.query(Transaction).count() == 10

@@ -3,6 +3,7 @@ import { act, renderHook } from "@testing-library/react";
 import React from "react";
 import { ThemeProvider, useTheme } from "../context/ThemeContext";
 import { getFormatPrefs, setFormatPrefs, DEFAULT_FORMAT_PREFS } from "../utils/format";
+import { getHiddenAccounts, setHiddenAccounts } from "../utils/dashboardFilter";
 import { PREFERENCES_SAVE_DELAY_MS, usePreferencesSync } from "./usePreferencesSync";
 
 const { get, put } = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }));
@@ -26,6 +27,7 @@ describe("usePreferencesSync", () => {
   beforeEach(() => {
     localStorage.clear();
     setFormatPrefs(DEFAULT_FORMAT_PREFS);
+    setHiddenAccounts([]);
     get.mockReset();
     put.mockReset();
     put.mockResolvedValue({ preferences: {}, updated_at: "2026-11-24T00:00:00Z" });
@@ -65,6 +67,28 @@ describe("usePreferencesSync", () => {
     // Applying the profile is not a change of its own.
     await act(async () => vi.advanceTimersByTime(PREFERENCES_SAVE_DELAY_MS * 2));
     expect(put).not.toHaveBeenCalled();
+  });
+
+  it("applies the dashboard's hidden accounts from the profile", async () => {
+    get.mockResolvedValue({
+      preferences: { theme: "nord", dashboard_hidden_account_ids: ["b", "a"] },
+      updated_at: "2026-11-24T00:00:00Z",
+    });
+    renderSync();
+    await flush();
+    expect(getHiddenAccounts()).toEqual(["a", "b"]);
+    expect(JSON.parse(localStorage.getItem("folio.dashboard.hidden")!)).toEqual(["a", "b"]);
+  });
+
+  it("saves a change to the hidden accounts", async () => {
+    get.mockResolvedValue({ preferences: { theme: "nord" }, updated_at: "2026-11-24T00:00:00Z" });
+    renderSync();
+    await flush();
+    put.mockClear();
+    act(() => setHiddenAccounts(["acc-1"]));
+    await act(async () => vi.advanceTimersByTime(PREFERENCES_SAVE_DELAY_MS + 10));
+    expect(put).toHaveBeenCalledTimes(1);
+    expect(put.mock.calls[0][0].dashboard_hidden_account_ids).toEqual(["acc-1"]);
   });
 
   it("uploads this device's settings when the profile has none", async () => {

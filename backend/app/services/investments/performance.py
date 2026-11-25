@@ -10,8 +10,11 @@ Two different returns are reported because they answer two different questions:
 Reporting only one of them is how personal-finance tools mislead people: a large
 contribution just before a rally flatters MWR while TWR is unchanged.
 """
+import math
 from datetime import date, timedelta
 from decimal import Decimal
+
+from dateutil.relativedelta import relativedelta
 
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, selectinload
@@ -368,4 +371,98 @@ def account_performance(db: Session, account_id: str, as_of: date | None = None)
         "holdings": valuations,
         "returns": returns,
         "unpriced_holdings": [v["symbol"] for v in valuations if not v["is_priced"]],
+    }
+
+
+# --------------------------------------------------------------------------
+# Monthly return history (feeds the projection)
+# --------------------------------------------------------------------------
+
+MIN_MONTHS_FOR_STATS = 6
+
+
+def _month_ends(first: date, last: date) -> list[date]:
+    """Every month end from ``first``'s month up to ``last`` (``last`` itself closes the run)."""
+    ends: list[date] = []
+    cursor = date(first.year, first.month, 1)
+    while True:
+        next_first = date(cursor.year + (cursor.month == 12), cursor.month % 12 + 1, 1)
+        month_end = next_first - timedelta(days=1)
+        if month_end >= last:
+            ends.append(last)
+            return ends
+        ends.append(month_end)
+        cursor = next_first
+
+
+def monthly_return_history(
+    db: Session,
+    account_id: str,
+    end: date | None = None,
+    max_months: int = 120,
+) -> dict:
+    """Month-end values and monthly returns of the account's *current* positions.
+
+    Each month is valued with today's quantities at that month's last known
+    prices, so contributions and withdrawals never show up as growth, and the
+    volatility describes the portfolio the investor holds now. The summary
+    statistics are drawn from monthly log returns; with fewer than
+    ``MIN_MONTHS_FOR_STATS`` returns they are ``None``.
+    """
+    end = end or date.today()
+    holdings = load_holdings(db, [account_id])
+    security_ids = [h.security_id for h in holdings]
+
+    first_price = None
+    if security_ids:
+        first_price = (
+            db.query(func.min(PriceQuote.as_of_date))
+            .filter(PriceQuote.security_id.in_(security_ids), PriceQuote.as_of_date <= end)
+            .scalar()
+        )
+
+    points: list[dict] = []
+    if first_price is not None:
+        start = max(first_price, end - relativedelta(months=max_months))
+        previous = None
+        for month_end in _month_ends(start, end):
+            value = sum(v["market_value_cents"] for v in value_holdings(db, holdings, month_end))
+            ret = None
+            if previous:
+                ret = value / previous - 1.0
+            points.append({"month": month_end, "value_cents": value, "return": ret})
+            previous = value
+
+    log_returns = [math.log1p(p["return"]) for p in points if p["return"] is not None and p["return"] > -1]
+
+    mean = stdev = None
+    if len(log_returns) >= MIN_MONTHS_FOR_STATS:
+        mean = sum(log_returns) / len(log_returns)
+        stdev = math.sqrt(sum((r - mean) ** 2 for r in log_returns) / (len(log_returns) - 1))
+
+    # Recent saving habit: net external flows over the last year, per month.
+    year_ago = end - timedelta(days=365)
+    flows = (
+        db.query(func.coalesce(func.sum(InvestmentActivity.amount_cents), 0))
+        .filter(
+            InvestmentActivity.account_id == account_id,
+            InvestmentActivity.trade_date > year_ago,
+            InvestmentActivity.trade_date <= end,
+            InvestmentActivity.type.in_(
+                [InvestmentActivityType.CONTRIBUTION, InvestmentActivityType.WITHDRAWAL]
+            ),
+        )
+        .scalar()
+    )
+
+    return {
+        "account_id": account_id,
+        "as_of": end,
+        "points": points,
+        "months_of_history": len(log_returns),
+        "mean_monthly_log_return": mean,
+        "stdev_monthly_log_return": stdev,
+        "annualized_return": math.expm1(12 * mean) if mean is not None else None,
+        "annualized_volatility": stdev * math.sqrt(12) if stdev is not None else None,
+        "average_monthly_contribution_cents": int(flows or 0) // 12,
     }

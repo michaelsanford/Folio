@@ -467,6 +467,28 @@ export interface PerformanceResponse {
   unpriced_holdings: string[];
 }
 
+/** One month-end value of the account's current positions. */
+export interface ReturnHistoryPoint {
+  month: string;
+  value: number;
+  /** Fractional monthly return (0.012 = 1.2%); null for the first month. */
+  return_pct: number | null;
+}
+
+/** `GET /investments/return-history`: the inputs for projecting an account forward. */
+export interface ReturnHistoryResponse {
+  account_id: string;
+  as_of: string;
+  points: ReturnHistoryPoint[];
+  months_of_history: number;
+  /** Null until there are enough months to estimate them. */
+  mean_monthly_log_return: number | null;
+  stdev_monthly_log_return: number | null;
+  annualized_return: number | null;
+  annualized_volatility: number | null;
+  average_monthly_contribution: number;
+}
+
 export interface PriceQuote {
   id: string;
   security_id: string;
@@ -618,6 +640,8 @@ export interface UiPreferences {
   type_style?: string;
   number_format?: NumberFormatPreferences;
   sidebar_collapsed?: boolean;
+  /** Accounts the dashboard leaves out of every figure. */
+  dashboard_hidden_account_ids?: string[];
 }
 
 export interface PreferencesResponse {

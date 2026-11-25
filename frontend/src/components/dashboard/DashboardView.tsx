@@ -2,6 +2,8 @@ import React from "react";
 import { LazyChart } from "../common/LazyChart";
 import { AccountIcon } from "../common/AccountIcon";
 import { Money } from "../common/Money";
+import { AccountFilterBar } from "./AccountFilterBar";
+import { CreditUsage } from "../accounts/CreditUsage";
 import { isAssetAccount } from "../../constants/canadianAccountTypes";
 import { useChartTheme } from "../../hooks/useChartTheme";
 import { formatMoney, formatMoneyCompact, getDateLocale } from "../../utils/format";
@@ -11,6 +13,9 @@ interface DashboardViewProps {
   analytics: DashboardAnalyticsResponse | null;
   accounts: Account[];
   onNavigate: (tab: string) => void;
+  /** Accounts left out of every figure (persisted as a preference). */
+  hiddenAccountIds?: readonly string[];
+  onHiddenAccountsChange?: (ids: string[]) => void;
 }
 
 const card = "rounded-xl bg-surface border border-subtle";
@@ -31,8 +36,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   analytics,
   accounts,
   onNavigate,
+  hiddenAccountIds = [],
+  onHiddenAccountsChange,
 }) => {
   const chartTheme = useChartTheme();
+  const hidden = new Set(hiddenAccountIds);
+  const hiddenCount = accounts.filter((a) => hidden.has(a.id)).length;
 
   if (!analytics) {
     return (
@@ -175,7 +184,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-[28px] leading-tight font-medium text-main">{monthTitle}</h1>
-          <p className="mt-1 text-sm text-sub">Household overview</p>
+          <p className="mt-1 text-sm text-sub">
+            {hiddenCount === 0 ? (
+              "Household overview"
+            ) : (
+              <>
+                <span className="tabular-nums">
+                  {accounts.length - hiddenCount} of {accounts.length}
+                </span>{" "}
+                accounts
+                {onHiddenAccountsChange && (
+                  <>
+                    {" · "}
+                    <button
+                      type="button"
+                      onClick={() => onHiddenAccountsChange([])}
+                      className="text-accent-subtle hover:underline underline-offset-4 cursor-pointer"
+                    >
+                      Show all
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+          </p>
         </div>
         <div className="sm:text-right">
           <div className="text-sm text-sub">Net worth</div>
@@ -199,6 +231,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </header>
+
+      {onHiddenAccountsChange && (
+        <AccountFilterBar
+          accounts={accounts}
+          hiddenAccountIds={hiddenAccountIds}
+          onHiddenAccountsChange={onHiddenAccountsChange}
+        />
+      )}
 
       {/* Main chart */}
       <section className={`${card} p-5 sm:p-6`}>
@@ -311,8 +351,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <ul className="divide-y divide-[var(--border-subtle)] max-h-96 overflow-y-auto">
           {accounts.map((acc) => {
             const isLiability = !isAssetAccount(acc.type);
+            const isHidden = hidden.has(acc.id);
             return (
-              <li key={acc.id} className="flex items-center justify-between gap-4 px-5 sm:px-6 h-14">
+              <li
+                key={acc.id}
+                className={`flex items-center justify-between gap-4 px-5 sm:px-6 h-14 transition-opacity ${
+                  isHidden ? "opacity-50" : ""
+                }`}
+                title={isHidden ? "Not counted on the dashboard" : undefined}
+              >
                 <div className="flex items-center gap-3 min-w-0">
                   <AccountIcon type={acc.type} icon={acc.icon} color={acc.color} size="md" />
                   <div className="min-w-0">
@@ -321,11 +368,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       {acc.institution}
                       {acc.account_number_mask ? ` ··${acc.account_number_mask}` : ""}
                       {acc.interest_rate ? ` · ${acc.interest_rate}% APR` : ""}
+                      {acc.credit_limit ? (
+                        <>
+                          {" · "}
+                          <CreditUsage compact balance={acc.current_balance} limit={acc.credit_limit} />
+                        </>
+                      ) : null}
                     </div>
                   </div>
                 </div>
                 <Money
-                  value={isLiability ? -Math.abs(acc.current_balance) : acc.current_balance}
+                  value={isLiability ? -acc.current_balance : acc.current_balance}
                   className={`text-sm ${isLiability ? "text-sub" : "text-main"}`}
                 />
               </li>

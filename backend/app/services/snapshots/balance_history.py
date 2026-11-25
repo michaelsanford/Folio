@@ -12,7 +12,7 @@ from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.core.money import from_cents
-from app.models.account import Account
+from app.models.account import LIABILITY_TYPES, Account
 from app.models.snapshot import AccountBalanceSnapshot
 from app.models.transaction import Transaction
 
@@ -43,6 +43,9 @@ def backfill_account_history(db: Session, account: Account, months: int = 24) ->
     """
     today = datetime.now().date()
     balance_cents = account.current_balance_cents or 0
+    # A liability's balance is the ledger sum negated (see balance_from_ledger_cents),
+    # so undoing a month's activity moves it the other way.
+    direction = -1 if account.type in LIABILITY_TYPES else 1
     written = 0
 
     # Month-end boundaries, most recent first.
@@ -65,7 +68,7 @@ def backfill_account_history(db: Session, account: Account, months: int = 24) ->
             .scalar()
         ) or 0
 
-        balance_cents -= net_cents
+        balance_cents -= direction * net_cents
         cursor = period_start
 
     return written
@@ -84,6 +87,7 @@ def net_worth_series(
     asset_types: set,
     liability_types: set,
     months: int = 12,
+    exclude_account_ids=(),
 ) -> list[tuple[str, float, float, float]]:
     """Build (label, assets, liabilities, net_worth) points from recorded snapshots.
 
@@ -91,7 +95,10 @@ def net_worth_series(
     month with no activity carries the last known balance forward rather than
     dropping to zero.
     """
-    accounts = db.query(Account).filter(Account.is_active.is_(True)).all()
+    excluded = set(exclude_account_ids)
+    accounts = [
+        a for a in db.query(Account).filter(Account.is_active.is_(True)).all() if a.id not in excluded
+    ]
     if not accounts:
         return []
 
@@ -156,7 +163,7 @@ def net_worth_series(
             if account.type in asset_types:
                 assets_cents += balance
             elif account.type in liability_types:
-                liabilities_cents += abs(balance)
+                liabilities_cents += balance  # owed is positive; a card in credit is negative
 
         points.append((
             label,

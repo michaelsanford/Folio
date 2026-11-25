@@ -188,3 +188,33 @@ describe("Canadian rules modal", () => {
     expect(within(overlay).getAllByRole("button", { name: "Close" }).length).toBeGreaterThan(0);
   });
 });
+
+describe("AccountsManagerView credit cards", () => {
+  const card = (overrides: Partial<Account>): Account => ({
+    id: "visa",
+    name: "Visa Infinite",
+    type: "CREDIT_CARD",
+    currency: "CAD",
+    current_balance: 3200,
+    is_active: true,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    ...overrides,
+  });
+
+  it("shows what is owed and how much credit is left", () => {
+    render(
+      <AccountsManagerView accounts={[card({ credit_limit: 15000 })]} householdMembers={[]} onAccountsModified={vi.fn()} />
+    );
+    expect(screen.getByText("Owed")).toBeDefined();
+    expect(screen.getByRole("meter", { name: "Credit used" })).toBeDefined();
+    expect(screen.getByText(/\$11,800 available/)).toBeDefined();
+  });
+
+  it("invites adding a limit when there is none", () => {
+    render(<AccountsManagerView accounts={[card({})]} householdMembers={[]} onAccountsModified={vi.fn()} />);
+    expect(screen.queryByRole("meter")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Add a credit limit to see credit left" }));
+    expect(screen.getByText("Amount owed")).toBeDefined();
+  });
+});

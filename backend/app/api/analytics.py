@@ -11,6 +11,9 @@ router = APIRouter(prefix="/analytics", tags=["Analytics"])
 def get_dashboard(
     year: int | None = Query(None, description="Target year"),
     month: int | None = Query(None, description="Target month (1-12)"),
+    exclude_account_id: list[str] = Query(
+        default_factory=list, max_length=100, description="Accounts to leave out of every figure"
+    ),
     db: Session = Depends(get_db),
 ):
-    return get_dashboard_analytics(db, year, month)
+    return get_dashboard_analytics(db, year, month, exclude_account_ids=exclude_account_id)

@@ -42,7 +42,7 @@ def credit_card_account(db_session):
         name="Household Visa",
         type=AccountType.CREDIT_CARD,
         institution="RBC",
-        current_balance=-500.0,
+        current_balance=500.0,  # owed
         credit_limit=10000.0,
     )
     db_session.add(account)
