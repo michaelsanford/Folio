@@ -22,6 +22,15 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _commit_data_on_serverless() -> None:
+    """The serverless database refuses DDL in a transaction that changed rows:
+    commit the data step before the next schema change (Postgres keeps the
+    whole revision in one transaction)."""
+    bind = op.get_bind()
+    if bind.dialect.name == "auroradsql":
+        bind.connection.dbapi_connection.commit()
+
+
 def upgrade() -> None:
     op.create_table(
         "account_owners",
@@ -37,6 +46,7 @@ def upgrade() -> None:
         "INSERT INTO account_owners (account_id, member_id) "
         "SELECT id, owner_member_id FROM accounts WHERE owner_member_id IS NOT NULL"
     )
+    _commit_data_on_serverless()
     op.drop_column("accounts", "owner_member_id")
 
 
@@ -47,6 +57,7 @@ def downgrade() -> None:
         "UPDATE accounts SET owner_member_id = ("
         "SELECT min(member_id) FROM account_owners WHERE account_owners.account_id = accounts.id)"
     )
+    _commit_data_on_serverless()
     op.create_foreign_key(
         "accounts_owner_member_id_fkey", "accounts", "household_members", ["owner_member_id"], ["id"], ondelete="SET NULL"
     )
