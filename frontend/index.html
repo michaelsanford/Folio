@@ -17,7 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=Source+Sans+3:wght@400;500;600;700&family=Inter:opsz,wght@14..32,400..700&family=Figtree:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Shown until the app renders (React replaces it), so the first paint is never blank. -->
+    <div id="root"><div style="min-height:100vh;display:flex;align-items:center;justify-content:center"><img src="/folio-icon.svg" alt="Folio" width="40" height="40" /></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

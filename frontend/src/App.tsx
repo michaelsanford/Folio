@@ -6,7 +6,7 @@ import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { NotificationRegion } from "./components/common/NotificationRegion";
 import type { LedgerRefreshScope } from "./components/ledger/LedgerWorkspace";
 import type { Account, Category, DashboardAnalyticsResponse, HouseholdMember, ServerLimits } from "./types";
-import { api, setOnUnauthorized } from "./services/api";
+import { api, ApiError, setOnUnauthorized } from "./services/api";
 import { onWriteConflict } from "./services/notifications";
 import { ArrowRight } from "lucide-react";
 import { usePwaUpdate } from "./hooks/usePwaUpdate";
@@ -17,6 +17,8 @@ import { takeInitialView } from "./utils/initialView";
 import { clearSession, setSession } from "./utils/session";
 import { useCanEdit, useSession } from "./hooks/useSession";
 import { WelcomeDialog } from "./components/household/WelcomeDialog";
+import { ShellLoading, StartupSplash } from "./components/common/StartupSplash";
+import { clearSessionHint, readSessionHint, writeSessionHint } from "./utils/sessionHint";
 
 // Each view is its own chunk, so the first paint only downloads the shell and
 // the view the user is looking at.
@@ -70,6 +72,51 @@ const ViewFallback: React.FC = () => (
 
 const WELCOME_SKIPPED_KEY = "folio:welcome-skipped";
 
+/**
+ * How long the first session check keeps trying before saying the server isn't
+ * responding. A server starting after a quiet spell takes a few seconds; the
+ * deadline matches the server's own request timeout.
+ */
+export const startupPolicy = { deadlineMs: 30_000, maxDelayMs: 5_000, baseDelayMs: 1_000 };
+
+const pause = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+
+type AuthMode = "cognito" | "master_password" | "unconfigured";
+
+interface AuthState {
+  authenticated: boolean;
+  auth_required: boolean;
+  auth_mode: AuthMode;
+  /** No answer yet and nothing to draw (no hint from last time). */
+  is_loading: boolean;
+  /** The server has answered on this load (until then a hint may stand in). */
+  confirmed: boolean;
+  /** The server could not be reached before the deadline. */
+  unreachable: boolean;
+}
+
+/** Signed in last time: draw the app now and let the check confirm it. */
+function initialAuthState(): AuthState {
+  const hint = readSessionHint();
+  return hint
+    ? {
+        authenticated: true,
+        auth_required: true,
+        auth_mode: hint.auth_mode,
+        is_loading: false,
+        confirmed: false,
+        unreachable: false,
+      }
+    : {
+        authenticated: false,
+        auth_required: false,
+        auth_mode: "master_password",
+        is_loading: true,
+        confirmed: false,
+        unreachable: false,
+      };
+}
+
 function AppContent() {
   const [activeTab, setActiveTab] = useState<NavTab>(takeInitialView);
   // Every account the server returns, including others' "totals only" ones
@@ -80,6 +127,7 @@ function AppContent() {
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
   const [analytics, setAnalytics] = useState<DashboardAnalyticsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [isHouseholdModalOpen, setIsHouseholdModalOpen] = useState(false);
   const { me } = useSession();
   const [welcomeSkipped, setWelcomeSkipped] = useState(() => {
@@ -98,22 +146,12 @@ function AppContent() {
   hiddenRef.current = hiddenAccounts;
 
   // Authentication State
-  const [authStatus, setAuthStatus] = useState<{
-    authenticated: boolean;
-    auth_required: boolean;
-    auth_mode: "cognito" | "master_password" | "unconfigured";
-    is_loading: boolean;
-  }>({
-    authenticated: false,
-    auth_required: false,
-    auth_mode: "master_password",
-    is_loading: true,
-  });
+  const [authStatus, setAuthStatus] = useState<AuthState>(initialAuthState);
 
   const { updateReady, applyUpdate } = usePwaUpdate();
   const canEdit = useCanEdit();
   // Appearance settings follow the signed-in user (stored in their profile).
-  usePreferencesSync(!authStatus.is_loading && authStatus.authenticated);
+  usePreferencesSync(authStatus.confirmed && authStatus.authenticated);
   const isLocked = !authStatus.is_loading && authStatus.auth_required && !authStatus.authenticated;
   // On the lock screen there is nothing to lose, so take a waiting update at
   // once: nobody signs in to an outdated build.
@@ -121,25 +159,40 @@ function AppContent() {
     if (updateReady && isLocked) applyUpdate();
   }, [updateReady, isLocked, applyUpdate]);
 
+  /**
+   * Asks the server who is signed in. Only an answer decides that: an error
+   * (the server starting up, a dropped connection) is retried with backoff
+   * until the deadline, then reported as "not responding", never as signed out.
+   */
   const checkAuth = async () => {
-    try {
-      const status = await api.auth.getStatus();
-      setAuthStatus({
-        authenticated: status.authenticated,
-        auth_required: status.auth_required,
-        auth_mode: status.auth_mode || "master_password",
-        is_loading: false,
-      });
-      if (status.authenticated || !status.auth_required) {
-        loadAllData();
+    setAuthStatus((prev) => (prev.unreachable ? { ...prev, unreachable: false } : prev));
+    const deadline = Date.now() + startupPolicy.deadlineMs;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const status = await api.auth.getStatus();
+        const mode = status.auth_mode || "master_password";
+        if (status.authenticated) writeSessionHint({ auth_mode: mode });
+        else clearSessionHint();
+        setAuthStatus({
+          authenticated: status.authenticated,
+          auth_required: status.auth_required,
+          auth_mode: mode,
+          is_loading: false,
+          confirmed: true,
+          unreachable: false,
+        });
+        if (status.authenticated || !status.auth_required) {
+          loadAllData();
+        }
+        return;
+      } catch {
+        const delay = Math.min(startupPolicy.maxDelayMs, startupPolicy.baseDelayMs * 2 ** attempt);
+        if (Date.now() + delay > deadline) {
+          setAuthStatus((prev) => ({ ...prev, unreachable: true }));
+          return;
+        }
+        await pause(delay);
       }
-    } catch {
-      setAuthStatus({
-        authenticated: false,
-        auth_required: true,
-        auth_mode: "master_password",
-        is_loading: false,
-      });
     }
   };
 
@@ -153,8 +206,11 @@ function AppContent() {
       setLimits({ ...DEFAULT_LIMITS, ...data.limits });
       setSession(data.me, data.people, data.closed_through_year ?? null);
       setIsAnalyticsStale(false);
+      setLoadFailed(false);
     } catch (err) {
       console.error("Data load error:", err);
+      // A 401 has already switched to the sign-in screen; anything else is worth saying.
+      if (!(err instanceof ApiError && err.status === 401)) setLoadFailed(true);
     } finally {
       setIsLoading(false);
     }
@@ -213,7 +269,14 @@ function AppContent() {
 
   useEffect(() => {
     setOnUnauthorized(() => {
-      setAuthStatus((prev) => ({ ...prev, authenticated: false, auth_required: true }));
+      clearSessionHint();
+      setAuthStatus((prev) => ({
+        ...prev,
+        authenticated: false,
+        auth_required: true,
+        is_loading: false,
+        confirmed: true,
+      }));
     });
     checkAuth();
   }, []);
@@ -245,6 +308,7 @@ function AppContent() {
     setHouseholdMembers([]);
     setAnalytics(null);
     clearSession();
+    clearSessionHint();
     setAuthStatus((prev) => ({
       ...prev,
       authenticated: false,
@@ -252,14 +316,13 @@ function AppContent() {
     }));
   };
 
-  // Auth Loading
+  if (authStatus.unreachable) {
+    return <StartupSplash unreachable onRetry={() => void checkAuth()} />;
+  }
+
+  // First answer still pending, and nothing remembered to draw meanwhile.
   if (authStatus.is_loading) {
-    return (
-      <div className="min-h-screen bg-canvas flex items-center justify-center gap-3 text-sm text-muted">
-        <Spinner />
-        Checking session…
-      </div>
-    );
+    return <StartupSplash />;
   }
 
   // If Auth Required and Unauthenticated -> Render Lock Screen
@@ -289,6 +352,25 @@ function AppContent() {
       updateReady={updateReady}
       onApplyUpdate={applyUpdate}
     >
+      {loadFailed && !isLoading && (
+        <div
+          role="alert"
+          className="mb-4 px-4 py-2.5 rounded-lg bg-surface-subtle text-xs text-sub flex items-center justify-between gap-3"
+        >
+          <span>Folio isn&rsquo;t responding. Some figures may be missing.</span>
+          <button
+            type="button"
+            onClick={() => {
+              setIsLoading(true);
+              void loadAllData();
+            }}
+            className="h-7 px-3 rounded-lg border border-default bg-surface bg-surface-hover text-main text-xs font-medium transition-colors cursor-pointer"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
       {!canEdit && (
         <div role="status" className="mb-4 px-4 py-2.5 rounded-lg bg-surface-subtle text-xs text-sub">
           You have view-only access to this household. Ask an owner if you need to make changes.
@@ -296,7 +378,7 @@ function AppContent() {
       )}
 
       {/* Empty State Banner if no accounts configured */}
-      {accounts.length === 0 && !isLoading && canEdit && activeTab !== "ingestion" && (
+      {accounts.length === 0 && !isLoading && !loadFailed && canEdit && activeTab !== "ingestion" && (
         <div className="mb-6 p-5 rounded-xl bg-surface border border-default flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <div className="text-base font-medium text-main">Welcome to Folio</div>
@@ -331,7 +413,8 @@ function AppContent() {
       {/* Dynamic Tab Views */}
       <ErrorBoundary key={activeTab} fallbackTitle={`Error loading ${activeTab} view`}>
         <Suspense fallback={<ViewFallback />}>
-        {activeTab === "dashboard" && (
+        {isLoading && <ShellLoading />}
+        {!isLoading && activeTab === "dashboard" && (
         <DashboardView
           analytics={analytics}
           accounts={allAccounts}
@@ -341,7 +424,7 @@ function AppContent() {
         />
       )}
 
-      {activeTab === "ledger" && (
+      {!isLoading && activeTab === "ledger" && (
         <LedgerWorkspace
           accounts={accounts}
           categories={categories}
@@ -350,7 +433,7 @@ function AppContent() {
         />
       )}
 
-      {activeTab === "ingestion" && (
+      {!isLoading && activeTab === "ingestion" && (
         <IngestionWorkspace
           accounts={accounts}
           categories={categories}
@@ -359,11 +442,11 @@ function AppContent() {
         />
       )}
 
-      {activeTab === "budgeting" && (
+      {!isLoading && activeTab === "budgeting" && (
         <BudgetingView categories={categories} onCategoriesModified={loadAllData} />
       )}
 
-      {activeTab === "goals" && (
+      {!isLoading && activeTab === "goals" && (
         <GoalsView
           accounts={accounts}
           categories={categories}
@@ -372,15 +455,15 @@ function AppContent() {
         />
       )}
 
-      {activeTab === "investments" && (
+      {!isLoading && activeTab === "investments" && (
         <InvestmentsView accounts={accounts} onDataModified={loadAllData} />
       )}
 
-      {activeTab === "loans" && (
+      {!isLoading && activeTab === "loans" && (
         <LoanAmortizationView accounts={accounts} />
       )}
 
-      {activeTab === "rules" && (
+      {!isLoading && activeTab === "rules" && (
         <RulesManagerView
           categories={categories}
           accounts={accounts}
@@ -388,7 +471,7 @@ function AppContent() {
         />
       )}
 
-      {activeTab === "accounts" && (
+      {!isLoading && activeTab === "accounts" && (
         <AccountsManagerView
           accounts={allAccounts}
           householdMembers={householdMembers}

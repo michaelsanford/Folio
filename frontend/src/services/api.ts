@@ -80,8 +80,9 @@ export const WRITE_CONFLICT_MESSAGE =
 
 /**
  * Retry policy for transient responses. 429 means the request was rejected
- * before it ran, so any method may be retried. 503 may arrive after a mutating
- * request partly ran, so only idempotent methods retry on it.
+ * before it ran, so any method may be retried. 502, 503 and 504 (a server
+ * starting up, or busy) may arrive after a mutating request partly ran, so
+ * only idempotent methods retry on them.
  * Exported so tests can shrink the delays.
  */
 export const retryPolicy = {
@@ -91,10 +92,11 @@ export const retryPolicy = {
 };
 
 const IDEMPOTENT_METHODS = new Set(["GET", "HEAD"]);
+const TRANSIENT_STATUSES = new Set([502, 503, 504]);
 
 function isRetryable(status: number, method: string): boolean {
   if (status === 429) return true;
-  if (status === 503) return IDEMPOTENT_METHODS.has(method);
+  if (TRANSIENT_STATUSES.has(status)) return IDEMPOTENT_METHODS.has(method);
   return false;
 }
 

@@ -70,6 +70,22 @@ describe("request retry policy", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it.each([502, 504])("retries a GET through a %i while the server starts up", async (status) => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(status, { detail: "Gateway" }))
+      .mockResolvedValueOnce(jsonResponse(200, []));
+
+    await expect(api.getAccounts()).resolves.toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([502, 504])("does not retry a POST on %i", async (status) => {
+    fetchMock.mockResolvedValue(jsonResponse(status, { detail: "Gateway" }));
+
+    await expect(api.createAccount({ name: "Chequing" })).rejects.toBeInstanceOf(ApiError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("does not retry a POST on 503, since it may have partly run", async () => {
     fetchMock.mockResolvedValue(jsonResponse(503, { detail: "Unavailable" }));
 
