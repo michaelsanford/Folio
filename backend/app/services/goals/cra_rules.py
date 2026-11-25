@@ -141,15 +141,17 @@ def get_cra_contribution_summary(
     # 1. Query all TFSA and FHSA accounts
     q = db.query(Account).filter(Account.type.in_([AccountType.TFSA, AccountType.FHSA]), Account.is_active.is_(True))
     if member_id:
-        q = q.filter(Account.owner_member_id == member_id)
+        q = q.filter(Account.owners.any(HouseholdMember.id == member_id))
     registered_accounts = q.all()
 
     members = {m.id: m for m in db.query(HouseholdMember).all()}
 
-    # Group accounts by (account_type, owner_member_id)
+    # Group accounts by (account_type, owner). TFSA and FHSA room is personal,
+    # so a registered account counts against its first owner.
     grouped: dict[tuple[AccountType, str | None], list[Account]] = {}
     for acc in registered_accounts:
-        key = (acc.type, acc.owner_member_id)
+        owner_ids = acc.owner_member_ids
+        key = (acc.type, member_id if member_id else (owner_ids[0] if owner_ids else None))
         grouped.setdefault(key, []).append(acc)
 
     limits_info: list[CraLimitInfo] = []

@@ -1,22 +1,24 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Mail, RotateCw, UserX, UserCheck, Trash2 } from "lucide-react";
+import { RotateCw, UserX, UserCheck, Trash2 } from "lucide-react";
 import type { HouseholdMember, Me, Person, PersonRole } from "../../types";
 import { api } from "../../services/api";
 
 interface PeoplePanelProps {
   me: Me | null;
   members: HouseholdMember[];
+  /** Changes when someone was added elsewhere (the Household form): reload. */
+  refreshKey?: number;
   /** Reload the app's data after a change that affects names or roles. */
   onChanged: () => void;
 }
 
-const ROLE_LABELS: Record<PersonRole, string> = {
+export const ROLE_LABELS: Record<PersonRole, string> = {
   OWNER: "Owner",
   MEMBER: "Can edit",
   VIEWER: "View only",
 };
 
-const ROLE_HINTS: Record<PersonRole, string> = {
+export const ROLE_HINTS: Record<PersonRole, string> = {
   OWNER: "Edits everything and manages who has access",
   MEMBER: "Adds and edits accounts, transactions, budgets and goals",
   VIEWER: "Sees everything, changes nothing",
@@ -38,18 +40,16 @@ const formatDate = (iso?: string | null) =>
 
 /**
  * Who can sign in to this household. Everyone can say which household member
- * they are; owners also invite people, change what they may do, and remove
- * them. With a single passphrase only the "You are" link is shown.
+ * they are; owners change what people may do, resend invitations, pause and
+ * remove them. People are added (and invited) with the Household form. With a
+ * single passphrase only the "You are" link is shown.
  */
-export const PeoplePanel: React.FC<PeoplePanelProps> = ({ me, members, onChanged }) => {
+export const PeoplePanel: React.FC<PeoplePanelProps> = ({ me, members, onChanged, refreshKey = 0 }) => {
   const [people, setPeople] = useState<Person[]>([]);
   const [canManage, setCanManage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<PersonRole>("MEMBER");
-  const [inviteMember, setInviteMember] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -63,7 +63,7 @@ export const PeoplePanel: React.FC<PeoplePanelProps> = ({ me, members, onChanged
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshKey]);
 
   const run = async (key: string, action: () => Promise<unknown>, done?: string) => {
     setBusy(key);
@@ -95,27 +95,13 @@ export const PeoplePanel: React.FC<PeoplePanelProps> = ({ me, members, onChanged
       );
     });
 
-  const handleInvite = (e: React.FormEvent) => {
-    e.preventDefault();
-    const email = inviteEmail.trim().toLowerCase();
-    if (!email) return;
-    void run(
-      "invite",
-      () => api.people.invite({ email, role: inviteRole, member_id: inviteMember || null }),
-      `Invitation sent to ${email}. They’ll get an email with a temporary password.`
-    ).then(() => {
-      setInviteEmail("");
-      setInviteMember("");
-    });
-  };
-
   const visible = canManage ? people : people.filter((p) => p.status !== "DISABLED");
 
   return (
     <section aria-labelledby="people-heading" className="space-y-3">
       <div>
         <h3 id="people-heading" className="text-base font-medium text-main">
-          People with access
+          Sign-ins
         </h3>
         <p className="text-xs text-muted mt-1">
           Link each sign-in to a member so new entries and “Mine” filters know who you are.
@@ -295,58 +281,6 @@ export const PeoplePanel: React.FC<PeoplePanelProps> = ({ me, members, onChanged
         </ul>
       )}
 
-      {canManage && (
-        <form
-          onSubmit={handleInvite}
-          className="p-4 rounded-xl border border-default bg-surface-subtle space-y-3"
-          aria-label="Invite someone"
-        >
-          <h4 className="text-sm font-medium text-main">Invite someone</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2">
-            <input
-              type="email"
-              required
-              aria-label="Email address"
-              placeholder="name@example.com"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              className={`${inputClass} w-full placeholder:text-muted`}
-            />
-            <select
-              aria-label="What they can do"
-              className={inputClass}
-              value={inviteRole}
-              onChange={(e) => setInviteRole(e.target.value as PersonRole)}
-            >
-              {(Object.keys(ROLE_LABELS) as PersonRole[]).map((r) => (
-                <option key={r} value={r}>
-                  {ROLE_LABELS[r]}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Household member they are"
-              className={inputClass}
-              value={inviteMember}
-              onChange={(e) => setInviteMember(e.target.value)}
-            >
-              <option value="">No member</option>
-              {memberOptions("")}
-            </select>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted">{ROLE_HINTS[inviteRole]}.</p>
-            <button
-              type="submit"
-              disabled={busy === "invite" || !inviteEmail.trim()}
-              className="h-9 px-4 flex items-center gap-2 rounded-lg bg-accent-main text-accent-contrast text-sm font-medium disabled:opacity-50 cursor-pointer transition-colors active:scale-[0.98]"
-            >
-              <Mail className="w-4 h-4" strokeWidth={1.5} />
-              <span>Send invitation</span>
-            </button>
-          </div>
-        </form>
-      )}
     </section>
   );
 };

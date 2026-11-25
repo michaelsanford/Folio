@@ -39,7 +39,7 @@ const mockAccounts: Account[] = [
     type: "TFSA",
     currency: "CAD",
     current_balance: 50000,
-    owner_member_id: "member-1",
+    owner_member_ids: ["member-1"],
     is_active: true,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
@@ -50,7 +50,7 @@ const mockAccounts: Account[] = [
     type: "CHECKING",
     currency: "CAD",
     current_balance: 8500,
-    owner_member_id: null,
+    owner_member_ids: [],
     is_active: true,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
@@ -75,7 +75,7 @@ describe("AccountsManagerView Household Features", () => {
     expect(handleManage).toHaveBeenCalledTimes(1);
   });
 
-  it("displays member badge on owned account and Joint / Shared on unassigned account", () => {
+  it("shows owners on an owned account and Shared on an unassigned one", () => {
     render(
       <AccountsManagerView
         accounts={mockAccounts}
@@ -85,10 +85,10 @@ describe("AccountsManagerView Household Features", () => {
     );
 
     expect(screen.getByText("Michael")).toBeDefined();
-    expect(screen.getByText("Joint / shared")).toBeDefined();
+    expect(screen.getByText("Shared")).toBeDefined();
   });
 
-  it("renders Owner dropdown and Canadian note in modal", () => {
+  it("offers every member as an owner, with the Canadian note", () => {
     render(
       <AccountsManagerView
         accounts={mockAccounts}
@@ -100,15 +100,18 @@ describe("AccountsManagerView Household Features", () => {
     const addAccountBtn = screen.getByRole("button", { name: /Add Account/i });
     fireEvent.click(addAccountBtn);
 
-    expect(screen.getByText("Owner")).toBeDefined();
+    expect(screen.getByText("Owners")).toBeDefined();
     expect(
       screen.getByText(/In Canada, registered accounts \(TFSA, RRSP, FHSA\) are individual legal registrations/i)
     ).toBeDefined();
 
-    // Check options
-    expect(screen.getByText("Joint / shared household")).toBeDefined();
-    expect(screen.getByText("Michael (Primary)")).toBeDefined();
-    expect(screen.getByText("Sarah (Partner)")).toBeDefined();
+    // One toggle per member; none selected means shared.
+    const owners = screen.getByRole("group", { name: "Owners" });
+    const michael = within(owners).getByRole("button", { name: /Michael/ });
+    expect(michael.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(michael);
+    expect(michael.getAttribute("aria-pressed")).toBe("true");
+    expect(within(owners).getByRole("button", { name: /Sarah/ })).toBeDefined();
   });
 });
 

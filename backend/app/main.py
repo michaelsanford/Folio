@@ -30,6 +30,7 @@ from app.core.security import (  # noqa: E402
     origin_header_valid,
 )
 from app.core.actor import authorize  # noqa: E402 - also registers the attribution listener
+from app.core.visibility import totals_view  # noqa: E402 - also registers the visibility filter
 from app.core.security_headers import build_csp, security_headers  # noqa: E402
 from app.core.spa import mount_spa  # noqa: E402
 import app.models  # noqa: F401,E402 - registers SQLAlchemy models with Base metadata
@@ -286,18 +287,20 @@ app.add_middleware(RequestContextMiddleware)
 # Public Auth router
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 
-# Protected API routers: signed in, enabled, and allowed by role (core/actor.py)
+# Protected API routers: signed in, enabled, and allowed by role (core/actor.py).
+# Budgets, analytics and goals return sums: they also count accounts others
+# share as "totals only" (core/visibility.py).
 app.include_router(accounts_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
 app.include_router(categories_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
 app.include_router(transactions_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
 app.include_router(rules_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
 app.include_router(ingestion_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
-app.include_router(budgets_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
-app.include_router(analytics_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(budgets_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize), Depends(totals_view)])
+app.include_router(analytics_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize), Depends(totals_view)])
 app.include_router(maintenance_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
 app.include_router(investments_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
 app.include_router(household_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
-app.include_router(goals_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
+app.include_router(goals_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize), Depends(totals_view)])
 app.include_router(classification_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
 app.include_router(bootstrap_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])
 app.include_router(preferences_router, prefix=settings.API_V1_STR, dependencies=[Depends(authorize)])

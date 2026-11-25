@@ -62,11 +62,16 @@ export const AccountFilterBar: React.FC<AccountFilterBarProps> = ({
 
   const hiddenCount = accounts.filter((a) => hidden.has(a.id)).length;
 
-  // "Mine": your accounts plus shared ones (no owner), once you are linked to a
-  // member and the household has accounts that belong to someone else.
+  // "Mine": accounts you own (alone or jointly) plus shared ones (no owner),
+  // once you are linked to a member and some accounts belong only to others.
   const myMemberId = useSession().me?.member_id ?? null;
   const notMine = useMemo(
-    () => (myMemberId ? accounts.filter((a) => a.owner_member_id && a.owner_member_id !== myMemberId) : []),
+    () =>
+      myMemberId
+        ? accounts.filter(
+            (a) => (a.owner_member_ids?.length ?? 0) > 0 && !(a.owner_member_ids ?? []).includes(myMemberId)
+          )
+        : [],
     [accounts, myMemberId]
   );
   const showMine = !!myMemberId && notMine.length > 0 && notMine.length < accounts.length;

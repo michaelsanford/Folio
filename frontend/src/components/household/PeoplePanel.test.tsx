@@ -52,22 +52,6 @@ describe("PeoplePanel", () => {
       <PeoplePanel me={me} members={[member("m1", "Michael"), member("m2", "Sarah")]} onChanged={onChanged} />
     );
 
-  it("invites someone with a role and a member", async () => {
-    const invite = vi.spyOn(api.people, "invite").mockResolvedValue(sarah);
-    const onChanged = vi.fn();
-    renderPanel(owner, onChanged);
-    const form = await screen.findByRole("form", { name: "Invite someone" });
-    fireEvent.change(within(form).getByLabelText("Email address"), { target: { value: "Pat@Example.com" } });
-    fireEvent.change(within(form).getByLabelText("What they can do"), { target: { value: "VIEWER" } });
-    fireEvent.change(within(form).getByLabelText("Household member they are"), { target: { value: "m1" } });
-    fireEvent.submit(form);
-    await waitFor(() =>
-      expect(invite).toHaveBeenCalledWith({ email: "pat@example.com", role: "VIEWER", member_id: "m1" })
-    );
-    expect(await screen.findByText(/Invitation sent to pat@example.com/)).toBeDefined();
-    expect(onChanged).toHaveBeenCalled();
-  });
-
   it("does not offer a member someone else already is", async () => {
     renderPanel();
     const you = await screen.findByLabelText("Which household member you are");
@@ -89,7 +73,7 @@ describe("PeoplePanel", () => {
     vi.spyOn(api.people, "list").mockResolvedValue({ people: [person({ role: "MEMBER" }), sarah], can_manage_people: false });
     renderPanel({ ...owner, role: "MEMBER", is_owner: false, can_manage_people: false });
     expect(await screen.findByText("sarah@example.com")).toBeDefined();
-    expect(screen.queryByRole("form", { name: "Invite someone" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Resend/ })).toBeNull();
     expect(screen.queryByLabelText(/can do$/)).toBeNull();
     // Anyone can still say who they are.
     expect(screen.getByLabelText("Which household member you are")).toBeDefined();

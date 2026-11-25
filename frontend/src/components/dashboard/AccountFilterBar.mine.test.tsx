@@ -12,7 +12,7 @@ const acc = (id: string, owner: string | null): Account => ({
   currency: "CAD",
   current_balance: 0,
   is_active: true,
-  owner_member_id: owner,
+  owner_member_ids: owner ? [owner] : [],
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z",
 });

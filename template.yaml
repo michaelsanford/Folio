@@ -730,6 +730,8 @@ Resources:
                   - 'cognito-idp:AdminEnableUser'
                   - 'cognito-idp:AdminDeleteUser'
                   - 'cognito-idp:AdminUserGlobalSignOut'
+                  # Names captured at invitation and on first sign-in.
+                  - 'cognito-idp:AdminUpdateUserAttributes'
                 Resource: !GetAtt FolioUserPool.Arn
           - !Ref AWS::NoValue
         - !If

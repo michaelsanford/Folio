@@ -19,6 +19,6 @@ class HouseholdMember(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
-    accounts = relationship("Account", back_populates="owner_member")
+    accounts = relationship("Account", secondary="account_owners", back_populates="owners")
     transactions = relationship("Transaction", back_populates="assigned_member")
     goals = relationship("Goal", back_populates="owner_member")

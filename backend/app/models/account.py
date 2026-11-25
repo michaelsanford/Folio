@@ -1,12 +1,30 @@
 import uuid
 from datetime import datetime, timezone
 import enum
-from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime, Enum, ForeignKey, Index, Table
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.models.attribution import AttributedMixin
 from app.core.config import settings
 from app.models.money_fields import with_money
+
+
+class AccountVisibility(str, enum.Enum):
+    """Who may see an account (core/visibility.py). NULL in the database is HOUSEHOLD."""
+
+    HOUSEHOLD = "HOUSEHOLD"  # everyone sees it and its transactions
+    TOTALS = "TOTALS"  # others count it in household totals, without details
+    PRIVATE = "PRIVATE"  # only its owners know it exists
+
+
+# Which household members own an account (one or more; none is allowed).
+account_owners = Table(
+    "account_owners",
+    Base.metadata,
+    Column("account_id", String(36), ForeignKey("accounts.id", ondelete="CASCADE"), primary_key=True),
+    Column("member_id", String(36), ForeignKey("household_members.id", ondelete="CASCADE"), primary_key=True),
+    Index("ix_account_owners_member_id", "member_id"),
+)
 
 
 class LoanCompounding(str, enum.Enum):
@@ -124,15 +142,33 @@ class Account(AttributedMixin, Base):
         Enum(LoanCompounding, native_enum=False), nullable=False, default=LoanCompounding.MONTHLY
     )
     
-    owner_member_id = Column(String(36), ForeignKey("household_members.id", ondelete="SET NULL"), nullable=True)
+    # AccountVisibility value; NULL means HOUSEHOLD.
+    visibility = Column(String(16), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
-    owner_member = relationship("HouseholdMember", back_populates="accounts")
+    owners = relationship(
+        "HouseholdMember", secondary=account_owners, back_populates="accounts", order_by="HouseholdMember.name"
+    )
     transactions = relationship("Transaction", back_populates="account", cascade="all, delete-orphan")
     statement_files = relationship("StatementFile", back_populates="account", passive_deletes=True)
     balance_snapshots = relationship("AccountBalanceSnapshot", back_populates="account", cascade="all, delete-orphan")
     holdings = relationship("Holding", back_populates="account", cascade="all, delete-orphan")
     investment_activities = relationship("InvestmentActivity", back_populates="account", cascade="all, delete-orphan")
+
+    @property
+    def owner_member_ids(self) -> list[str]:
+        return [m.id for m in self.owners]
+
+    @property
+    def owner_names(self) -> list[str]:
+        return [m.name for m in self.owners]
+
+    @property
+    def effective_visibility(self) -> AccountVisibility:
+        try:
+            return AccountVisibility(self.visibility) if self.visibility else AccountVisibility.HOUSEHOLD
+        except ValueError:
+            return AccountVisibility.PRIVATE

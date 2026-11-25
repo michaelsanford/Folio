@@ -7,7 +7,7 @@ from app.core.batching import delete_in_batches, update_in_batches
 
 from app.core.config import settings
 from app.core.money import to_cents
-from app.models.account import Account, AccountType, LoanCompounding
+from app.models.account import Account, AccountType, LoanCompounding, account_owners
 from app.models.budget import Budget, BudgetItem
 from app.models.category import Category
 from app.models.goal import Goal, GoalType
@@ -68,6 +68,8 @@ def seed_canadian_demo_dataset(db: Session, force: bool = False) -> dict:
         db.query(AppUser).filter(AppUser.member_id.isnot(None)).update(
             {AppUser.member_id: None}, synchronize_session=False
         )
+        db.commit()
+        db.execute(account_owners.delete())
         db.commit()
         for model in (
             TransactionSplit,
@@ -141,7 +143,7 @@ def seed_canadian_demo_dataset(db: Session, force: bool = False) -> dict:
             institution="Wealthsimple",
             account_number_mask="*5566",
             currency="CAD",
-            owner_member_id=m_michael.id,
+            owners=[m_michael],
             current_balance_cents=0,
         )
         db.add(acc)
@@ -155,7 +157,7 @@ def seed_canadian_demo_dataset(db: Session, force: bool = False) -> dict:
             institution="TD Direct",
             account_number_mask="*3344",
             currency="CAD",
-            owner_member_id=m_sarah.id,
+            owners=[m_sarah],
             current_balance_cents=0,
         )
         db.add(acc)

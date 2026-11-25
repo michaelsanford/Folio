@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, selectinload
 from app.core.database import get_db
+from app.core.visibility import detail_scope
 from app.core.money import from_cents
 from app.models.budget import Budget, BudgetItem
 from app.models.category import Category, CategoryType
@@ -205,13 +206,16 @@ def get_cash_flow_forecast(
 ):
     """Generates day-by-day cash flow forecast considering payroll cycles and loan payments."""
     from app.services.analytics.forecast_engine import project_cash_flow
-    return project_cash_flow(
-        db,
-        days=days,
-        pay_cycle=pay_cycle,
-        pay_amount=pay_amount,
-        next_pay_date=next_pay_date,
-    )
+
+    # The forecast names accounts and payments: detail scope only.
+    with detail_scope():
+        return project_cash_flow(
+            db,
+            days=days,
+            pay_cycle=pay_cycle,
+            pay_amount=pay_amount,
+            next_pay_date=next_pay_date,
+        )
 
 
 @router.get("/current", response_model=BudgetResponse)

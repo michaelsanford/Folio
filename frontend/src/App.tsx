@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AppLayout } from "./components/layout/AppLayout";
 import type { NavTab } from "./components/layout/AppLayout";
@@ -15,7 +15,8 @@ import { useHiddenAccounts } from "./hooks/useHiddenAccounts";
 import { setHiddenAccounts } from "./utils/dashboardFilter";
 import { takeInitialView } from "./utils/initialView";
 import { clearSession, setSession } from "./utils/session";
-import { useCanEdit } from "./hooks/useSession";
+import { useCanEdit, useSession } from "./hooks/useSession";
+import { WelcomeDialog } from "./components/household/WelcomeDialog";
 
 // Each view is its own chunk, so the first paint only downloads the shell and
 // the view the user is looking at.
@@ -67,14 +68,27 @@ const ViewFallback: React.FC = () => (
   </div>
 );
 
+const WELCOME_SKIPPED_KEY = "folio:welcome-skipped";
+
 function AppContent() {
   const [activeTab, setActiveTab] = useState<NavTab>(takeInitialView);
-  const [accounts, setAccounts] = useState<Account[]>([]);
+  // Every account the server returns, including others' "totals only" ones
+  // (redacted). Views that pick or open accounts get only the full ones.
+  const [allAccounts, setAccounts] = useState<Account[]>([]);
+  const accounts = useMemo(() => allAccounts.filter((a) => !a.redacted), [allAccounts]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
   const [analytics, setAnalytics] = useState<DashboardAnalyticsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isHouseholdModalOpen, setIsHouseholdModalOpen] = useState(false);
+  const { me } = useSession();
+  const [welcomeSkipped, setWelcomeSkipped] = useState(() => {
+    try {
+      return sessionStorage.getItem(WELCOME_SKIPPED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const [limits, setLimits] = useState<ServerLimits>(DEFAULT_LIMITS);
   // Set after edits that change analytics; the dashboard refetches when next shown.
   const [isAnalyticsStale, setIsAnalyticsStale] = useState(false);
@@ -268,7 +282,7 @@ function AppContent() {
     <AppLayout
       activeTab={activeTab}
       onTabChange={(tab) => setActiveTab(tab)}
-      accounts={accounts}
+      accounts={allAccounts}
       householdMembers={householdMembers}
       onManageHousehold={() => setIsHouseholdModalOpen(true)}
       onSignOut={authStatus.auth_required ? handleSignOut : undefined}
@@ -320,7 +334,7 @@ function AppContent() {
         {activeTab === "dashboard" && (
         <DashboardView
           analytics={analytics}
-          accounts={accounts}
+          accounts={allAccounts}
           onNavigate={(tab) => setActiveTab(tab as NavTab)}
           hiddenAccountIds={hiddenAccounts}
           onHiddenAccountsChange={setHiddenAccounts}
@@ -376,7 +390,7 @@ function AppContent() {
 
       {activeTab === "accounts" && (
         <AccountsManagerView
-          accounts={accounts}
+          accounts={allAccounts}
           householdMembers={householdMembers}
           onAccountsModified={loadAllData}
           onManageHousehold={() => setIsHouseholdModalOpen(true)}
@@ -384,6 +398,22 @@ function AppContent() {
       )}
         </Suspense>
       </ErrorBoundary>
+
+      {/* First sign-in: who are you? Asked again next session if skipped. */}
+      {me?.needs_welcome && !welcomeSkipped && (
+        <WelcomeDialog
+          me={me}
+          onSaved={() => void loadAllData()}
+          onSkip={() => {
+            try {
+              sessionStorage.setItem(WELCOME_SKIPPED_KEY, "1");
+            } catch {
+              // Private mode: it just asks again next time.
+            }
+            setWelcomeSkipped(true);
+          }}
+        />
+      )}
 
       {/* Household Management Modal: mounted only while open so its chunk loads on demand */}
       {isHouseholdModalOpen && (

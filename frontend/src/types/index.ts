@@ -50,12 +50,20 @@ export interface Account extends Attributed {
   escrow_payment?: number;
   /** Revolving lines only: minimum payment as % of balance; null = interest-only. */
   minimum_payment_percent?: number | null;
-  owner_member_id?: string | null;
-  owner_member?: HouseholdMember;
+  /** Household members who own it (one or more; none means shared). */
+  owner_member_ids?: string[];
+  owner_names?: string[];
+  /** Missing means HOUSEHOLD. */
+  visibility?: AccountVisibility;
+  /** Someone else's "totals only" account: name, details and transactions withheld. */
+  redacted?: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
 }
+
+/** Who may see an account: everyone, totals only, or its owners only. */
+export type AccountVisibility = "HOUSEHOLD" | "TOTALS" | "PRIVATE";
 
 export type CategoryType = "INCOME" | "EXPENSE" | "TRANSFER";
 
@@ -424,6 +432,28 @@ export interface Me {
   is_owner: boolean;
   /** False with a single passphrase: there is nobody to invite. */
   can_manage_people: boolean;
+  /** No name and no household member yet: ask once who they are. */
+  needs_welcome?: boolean;
+  /** Several people sign in, so accounts can be hidden from each other. */
+  shared_household?: boolean;
+}
+
+export type Relationship = "Self" | "Partner" | "Dependent" | "Roommate" | "Other";
+
+/** `POST /api/people/add`: a member, and optionally their sign-in. */
+export interface PersonAdd {
+  name: string;
+  relationship: Relationship;
+  color?: string | null;
+  access: "invite" | "none";
+  email?: string | null;
+  role?: PersonRole | null;
+}
+
+export interface PersonAddResponse {
+  member_id: string;
+  member_name: string;
+  person?: Person | null;
 }
 
 export interface PersonSummary {

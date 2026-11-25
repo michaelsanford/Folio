@@ -24,7 +24,7 @@ from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, 
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.archive_store import ARCHIVE_PREFIX, compress_file, download_archive, upload_archive
+from app.core.archive_store import ARCHIVE_PREFIX, compress_file, decompress_file, download_archive, upload_archive
 from app.models.account import Account
 from app.models.budget import Budget, BudgetItem
 from app.models.category import Category
@@ -142,3 +142,19 @@ def read_year_archive(key: str) -> bytes:
     if settings.archives_in_s3:
         return download_archive(key, settings.S3_BUCKET_NAME, settings.AWS_REGION)
     return (_local_archive_dir() / key.removeprefix(ARCHIVE_PREFIX)).read_bytes()
+
+
+def archive_account_ids(data: bytes) -> set[str]:
+    """Ids of the accounts in a stored (compressed) archive."""
+    import sqlite3
+
+    with tempfile.TemporaryDirectory(prefix="folio-archive-read-") as tmp:
+        packed = Path(tmp) / "archive.db.zst"
+        plain = Path(tmp) / "archive.db"
+        packed.write_bytes(data)
+        decompress_file(packed, plain)
+        conn = sqlite3.connect(plain)
+        try:
+            return {row[0] for row in conn.execute("SELECT id FROM accounts")}
+        finally:
+            conn.close()

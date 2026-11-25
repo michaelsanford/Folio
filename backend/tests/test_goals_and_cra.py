@@ -89,7 +89,7 @@ def test_cra_contribution_room_summary(client: TestClient, db_session: Session):
     db_session.add(partner)
     db_session.commit()
 
-    tfsa = Account(name="Camille's TFSA", type=AccountType.TFSA, owner_member_id=partner.id, currency="CAD", current_balance_cents=300000)
+    tfsa = Account(name="Camille's TFSA", type=AccountType.TFSA, owners=[partner], currency="CAD", current_balance_cents=300000)
     db_session.add(tfsa)
     db_session.commit()
 

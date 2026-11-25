@@ -33,7 +33,10 @@ import type {
   BootstrapResponse,
   Me,
   Person,
+  PersonAdd,
+  PersonAddResponse,
   PersonRole,
+  Relationship,
   PeopleListResponse,
   PeriodsResponse,
   YearClosure,
@@ -316,6 +319,10 @@ export const api = {
       request<Me>("/people/me", { method: "PATCH", body: JSON.stringify(body) }),
     invite: (body: { email: string; role: PersonRole; member_id?: string | null; display_name?: string | null }) =>
       request<Person>("/people", { method: "POST", body: JSON.stringify(body) }),
+    add: (body: PersonAdd) =>
+      request<PersonAddResponse>("/people/add", { method: "POST", body: JSON.stringify(body) }),
+    welcome: (body: { name: string; relationship?: Relationship | null }) =>
+      request<Me>("/people/me/welcome", { method: "POST", body: JSON.stringify(body) }),
     update: (
       userKey: string,
       body: { role?: PersonRole; status?: "ACTIVE" | "DISABLED"; member_id?: string | null; display_name?: string | null }

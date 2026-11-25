@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import require_auth, user_key_from_claims
+from app.core.visibility import set_viewer
 from app.models.app_user import AppRole, AppUser, AppUserStatus
 
 logger = logging.getLogger("folio.actor")
@@ -91,25 +92,22 @@ def _claims_email(claims: dict) -> str | None:
     return None
 
 
-def _lookup_email(claims: dict) -> str | None:
-    """Email of a Cognito person whose token does not carry it.
-
-    Access tokens of an email-username pool name the person by their sub, so
-    the email is looked up once, when the person is first registered.
-    """
+def _lookup_profile(claims: dict) -> dict[str, str]:
+    """Email and name of a Cognito person, looked up once when they are first
+    registered (access tokens of an email-username pool carry neither)."""
     if not settings.is_cognito_enabled:
-        return None
+        return {}
     username = claims.get("username") or claims.get("cognito:username") or claims.get("sub")
     if not isinstance(username, str) or not username:
-        return None
+        return {}
     try:
         from app.core.cognito import admin_get_user
 
         found = admin_get_user(username)
     except Exception:
-        logger.warning("Could not look up the email of a new sign-in", exc_info=True)
-        return None
-    return (found or {}).get("email") or None
+        logger.warning("Could not look up the profile of a new sign-in", exc_info=True)
+        return {}
+    return found or {}
 
 
 def _owner_email() -> str:
@@ -158,12 +156,15 @@ def resolve_actor(db: Session, claims: dict, email: str | None = None) -> Actor:
     now = datetime.now(timezone.utc)
 
     if row is None:
-        email = email or _lookup_email(claims)
+        profile = _lookup_profile(claims)
+        email = email or profile.get("email") or None
+        profile_name = (profile.get("name") or "").strip() or None
         has_owner = db.scalar(select(AppUser.user_key).where(AppUser.role == AppRole.OWNER.value).limit(1))
         role = AppRole.OWNER if (email and email == owner_email) or not has_owner else AppRole.MEMBER
         row = AppUser(
             user_key=key,
             email=email,
+            display_name=profile_name,
             role=role.value,
             status=AppUserStatus.ACTIVE.value,
             created_at=now,
@@ -210,6 +211,9 @@ async def authorize(
     ):
         raise _forbidden("read_only", "You have view-only access to this household.")
     _current_actor.set(actor.user_key)
+    # Which accounts this request may see (core/visibility.py). The single
+    # passphrase owner is the only person, so nothing is hidden from them.
+    set_viewer(actor.member_id, unrestricted=actor.local)
     request.state.actor = actor
     return actor
 

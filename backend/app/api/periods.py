@@ -19,9 +19,10 @@ from sqlalchemy.orm import Session
 from app.core.actor import Actor, attribution_labels, require_owner
 from app.core.database import get_db
 from app.core.period_lock import closed_through_year
+from app.core.visibility import can_see_all, unrestricted
 from app.models.period_closure import PeriodClosure
 from app.models.transaction import Transaction
-from app.services.archive.yearly import create_year_archive, read_year_archive
+from app.services.archive.yearly import archive_account_ids, create_year_archive, read_year_archive
 
 logger = logging.getLogger("folio.periods")
 
@@ -69,9 +70,11 @@ def _closure_response(row: PeriodClosure, labels: dict[str, str]) -> ClosureResp
 
 
 def _transaction_years(db: Session) -> list[int]:
-    years = db.scalars(
-        select(func.distinct(extract("year", Transaction.transaction_date)))
-    ).all()
+    # Closing locks the whole household's year, private accounts included.
+    with unrestricted():
+        years = db.scalars(
+            select(func.distinct(extract("year", Transaction.transaction_date)))
+        ).all()
     return sorted(int(y) for y in years if y)
 
 
@@ -112,7 +115,9 @@ def close_year(
         raise _error(status.HTTP_409_CONFLICT, "already_closed", f"{year} is already closed.")
 
     try:
-        archive = create_year_archive(db, year, actor.user_key)
+        # Complete whoever closes it: the archive is the household's record.
+        with unrestricted():
+            archive = create_year_archive(db, year, actor.user_key)
     except Exception as exc:
         logger.exception("Archiving %s failed", year)
         raise _error(
@@ -161,6 +166,7 @@ def download_year_archive(year: int, db: Session = Depends(get_db)):
         raise _error(status.HTTP_404_NOT_FOUND, "no_archive", f"There is no archive of {year}.")
     try:
         data = read_year_archive(row.archive_key)
+        hidden = not can_see_all(db, archive_account_ids(data))
     except FileNotFoundError as exc:
         raise _error(status.HTTP_404_NOT_FOUND, "no_archive", f"The archive of {year} is missing.") from exc
     except Exception as exc:
@@ -168,6 +174,12 @@ def download_year_archive(year: int, db: Session = Depends(get_db)):
         raise _error(
             status.HTTP_503_SERVICE_UNAVAILABLE, "archive_unavailable", "The archive couldn't be read. Please try again."
         ) from exc
+    if hidden:
+        raise _error(
+            status.HTTP_403_FORBIDDEN,
+            "archive_has_hidden_accounts",
+            "This archive includes accounts that aren’t visible to you.",
+        )
     return Response(
         content=data,
         media_type="application/zstd",

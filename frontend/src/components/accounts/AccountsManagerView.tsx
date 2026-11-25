@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Plus, Edit2, Trash2, Info, Users, X } from "lucide-react";
-import type { Account, AccountType, HouseholdMember } from "../../types";
+import { Plus, Edit2, Trash2, Info, Users, X, Lock, EyeOff } from "lucide-react";
+import type { Account, AccountType, AccountVisibility, HouseholdMember } from "../../types";
 import { api } from "../../services/api";
 import {
   getAccountTypeMeta,
@@ -19,7 +19,7 @@ import { Money } from "../common/Money";
 import { NumberField } from "../common/NumberField";
 import { CreditUsage } from "./CreditUsage";
 import { formatMoney } from "../../utils/format";
-import { useCanEdit } from "../../hooks/useSession";
+import { useCanEdit, useSession } from "../../hooks/useSession";
 
 const card = "rounded-xl bg-surface border border-subtle";
 const fieldLabel = "block text-sm text-sub mb-2";
@@ -40,7 +40,8 @@ interface AccountForm {
   account_number_mask: string;
   icon: string;
   color: string;
-  owner_member_id: string;
+  owner_member_ids: string[];
+  visibility: AccountVisibility;
   current_balance: number | null;
   credit_limit: number | null;
   interest_rate: number | null;
@@ -54,6 +55,25 @@ interface AccountForm {
 }
 
 type MinimumPaymentMode = "INTEREST" | "PERCENT";
+
+const VISIBILITY_OPTIONS: ReadonlyArray<{ value: AccountVisibility; label: string; hint: string }> = [
+  { value: "HOUSEHOLD", label: "Household", hint: "Everyone sees it and its transactions." },
+  {
+    value: "TOTALS",
+    label: "Totals only",
+    hint: "Others see it in household totals, not its name, details or transactions.",
+  },
+  { value: "PRIVATE", label: "Private", hint: "Only its owners know it exists." },
+];
+
+/** Who owns the account, for its card. */
+function ownerLabel(acc: Account, members: HouseholdMember[] | undefined): string {
+  const names =
+    acc.owner_names && acc.owner_names.length > 0
+      ? acc.owner_names
+      : (acc.owner_member_ids ?? []).map((id) => members?.find((m) => m.id === id)?.name).filter(Boolean);
+  return names.length > 0 ? names.join(" & ") : "Shared";
+}
 
 const MINIMUM_PAYMENT_MODES: ReadonlyArray<readonly [MinimumPaymentMode, string]> = [
   ["INTEREST", "Interest only"],
@@ -69,7 +89,8 @@ function emptyForm(type: AccountType): AccountForm {
     account_number_mask: "",
     icon: meta.defaultIcon,
     color: meta.defaultColor,
-    owner_member_id: "",
+    owner_member_ids: [],
+    visibility: "HOUSEHOLD",
     current_balance: null,
     credit_limit: null,
     interest_rate: null,
@@ -106,6 +127,9 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
   onManageHousehold,
 }) => {
   const canEdit = useCanEdit();
+  const { me } = useSession();
+  const myMemberId = me?.member_id ?? null;
+  const sharedHousehold = !!me?.shared_household;
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
@@ -121,9 +145,25 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
 
   const handleOpenCreate = () => {
     setEditingAccount(null);
-    setFormData(emptyForm("CHECKING"));
+    setFormData({ ...emptyForm("CHECKING"), owner_member_ids: myMemberId ? [myMemberId] : [] });
     setIsModalOpen(true);
   };
+
+  // Mirrors the server: only an account's owners decide who sees it.
+  const canChangeVisibility =
+    !editingAccount ||
+    (editingAccount.owner_member_ids ?? []).length === 0 ||
+    (!!myMemberId && (editingAccount.owner_member_ids ?? []).includes(myMemberId));
+  const hidingNeedsMe =
+    formData.visibility !== "HOUSEHOLD" && (!myMemberId || !formData.owner_member_ids.includes(myMemberId));
+
+  const toggleOwner = (memberId: string) =>
+    setFormData((prev) => ({
+      ...prev,
+      owner_member_ids: prev.owner_member_ids.includes(memberId)
+        ? prev.owner_member_ids.filter((id) => id !== memberId)
+        : [...prev.owner_member_ids, memberId],
+    }));
 
   const handleOpenEdit = (acc: Account) => {
     setEditingAccount(acc);
@@ -136,7 +176,8 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
       account_number_mask: acc.account_number_mask || "",
       icon: acc.icon || meta.defaultIcon,
       color: acc.color || meta.defaultColor,
-      owner_member_id: acc.owner_member_id || "",
+      owner_member_ids: acc.owner_member_ids ?? [],
+      visibility: acc.visibility ?? "HOUSEHOLD",
       current_balance: acc.current_balance || null,
       credit_limit: acc.credit_limit || null,
       interest_rate: acc.interest_rate || null,
@@ -191,7 +232,8 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
       name: formData.name,
       institution: formData.institution || undefined,
       account_number_mask: formData.account_number_mask || undefined,
-      owner_member_id: formData.owner_member_id || undefined,
+      owner_member_ids: formData.owner_member_ids,
+      ...(sharedHousehold && canChangeVisibility ? { visibility: formData.visibility } : {}),
       icon: formData.icon || null,
       color: formData.color || null,
       current_balance: formData.current_balance ?? 0,
@@ -383,6 +425,31 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
             const meta = getAccountTypeMeta(acc.type);
             const isAsset = isAssetAccount(acc.type);
 
+            if (acc.redacted) {
+              return (
+                <div key={acc.id} className={`${card} p-5 flex flex-col justify-between`}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="h-10 w-10 shrink-0 rounded-lg bg-surface-subtle flex items-center justify-center">
+                      <Lock className="w-4 h-4 text-muted" strokeWidth={1.5} aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="text-base font-medium text-main truncate">{acc.name}</h3>
+                      <p className="text-xs text-muted truncate mt-0.5">
+                        {meta.shortName} · shared as totals only
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-5 pt-4 border-t border-subtle flex items-baseline justify-between gap-2">
+                    <span className="text-xs text-muted">{isAsset ? "Current balance" : "Owed"}</span>
+                    <Money
+                      value={isAsset ? acc.current_balance : Math.abs(acc.current_balance)}
+                      className="text-lg font-medium text-main"
+                    />
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div
                 key={acc.id}
@@ -452,24 +519,29 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                     <span className="text-muted">
                       {ACCOUNT_CATEGORY_LABELS[meta.category]}
                     </span>
-                    {(() => {
-                      const owner =
-                        householdMembers?.find((m) => m.id === acc.owner_member_id) ||
-                        acc.owner_member;
-                      if (acc.owner_member_id && owner) {
-                        const ownerColor = owner.color || "#6b7280";
+                    <span className="inline-flex items-center gap-1.5 text-sub">
+                      {(acc.owner_member_ids ?? []).map((id) => {
+                        const owner = householdMembers?.find((m) => m.id === id);
                         return (
-                          <span className="inline-flex items-center gap-1.5 text-sub">
-                            <span
-                              className="w-1.5 h-1.5 rounded-full shrink-0"
-                              style={{ backgroundColor: ownerColor }}
-                            />
-                            {owner.name}
-                          </span>
+                          <span
+                            key={id}
+                            className="w-1.5 h-1.5 rounded-full shrink-0"
+                            style={{ backgroundColor: owner?.color || "#6b7280" }}
+                          />
                         );
-                      }
-                      return <span className="text-muted">Joint / shared</span>;
-                    })()}
+                      })}
+                      {ownerLabel(acc, householdMembers)}
+                    </span>
+                    {acc.visibility === "TOTALS" && (
+                      <span className="inline-flex items-center gap-1 text-muted" title="Others see it in totals only">
+                        <EyeOff className="w-3.5 h-3.5" strokeWidth={1.5} aria-hidden="true" /> Totals only
+                      </span>
+                    )}
+                    {acc.visibility === "PRIVATE" && (
+                      <span className="inline-flex items-center gap-1 text-muted" title="Only its owners see it">
+                        <Lock className="w-3.5 h-3.5" strokeWidth={1.5} aria-hidden="true" /> Private
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -562,27 +634,75 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                 />
               </div>
 
-              {/* Account Ownership (Household Member) */}
-              <div>
-                <label className={fieldLabel}>Owner</label>
-                <select
-                  value={formData.owner_member_id}
-                  onChange={(e) =>
-                    setFormData({ ...formData, owner_member_id: e.target.value })
-                  }
-                  className={inputClass}
-                >
-                  <option value="">Joint / shared household</option>
-                  {householdMembers?.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} ({m.role || "Member"})
-                    </option>
-                  ))}
-                </select>
+              {/* Owners (household members) */}
+              <fieldset>
+                <legend className={fieldLabel}>Owners</legend>
+                {householdMembers && householdMembers.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {householdMembers.map((m) => {
+                      const selected = formData.owner_member_ids.includes(m.id);
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => toggleOwner(m.id)}
+                          className={`h-8 px-3 inline-flex items-center gap-2 rounded-full border text-sm transition-colors cursor-pointer ${
+                            selected
+                              ? "border-[var(--accent-primary)] bg-surface-subtle text-main"
+                              : "border-default text-sub bg-surface-hover"
+                          }`}
+                        >
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: m.color || "#6b7280" }} />
+                          {m.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted">Add household members to record who owns each account.</p>
+                )}
                 <p className="text-xs text-muted mt-2 leading-relaxed">
-                  In Canada, registered accounts (TFSA, RRSP, FHSA) are individual legal registrations. Joint ownership applies to chequing, savings and mortgages.
+                  None selected means shared. In Canada, registered accounts (TFSA, RRSP, FHSA) are individual legal registrations. Joint ownership applies to chequing, savings and mortgages.
                 </p>
-              </div>
+              </fieldset>
+
+              {sharedHousehold && (
+                <fieldset disabled={!canChangeVisibility}>
+                  <legend className={fieldLabel}>Who can see it</legend>
+                  <div className="space-y-2">
+                    {VISIBILITY_OPTIONS.map((opt) => (
+                      <label
+                        key={opt.value}
+                        className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${
+                          formData.visibility === opt.value ? "border-[var(--accent-primary)]" : "border-default"
+                        } ${canChangeVisibility ? "" : "opacity-60 cursor-default"}`}
+                      >
+                        <input
+                          type="radio"
+                          name="account-visibility"
+                          value={opt.value}
+                          checked={formData.visibility === opt.value}
+                          onChange={() => setFormData({ ...formData, visibility: opt.value })}
+                          className="mt-1"
+                        />
+                        <span>
+                          <span className="block text-sm text-main">{opt.label}</span>
+                          <span className="block text-xs text-muted">{opt.hint}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  {!canChangeVisibility && (
+                    <p className="text-xs text-muted mt-2">Only this account&rsquo;s owners can change who sees it.</p>
+                  )}
+                  {canChangeVisibility && hidingNeedsMe && (
+                    <p role="alert" className="text-xs text-negative mt-2">
+                      Add yourself as an owner to hide it from others.
+                    </p>
+                  )}
+                </fieldset>
+              )}
 
               {/* Account Name with Integrated Glyph Trigger */}
               <div>
@@ -813,7 +933,11 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
               >
                 Cancel
               </button>
-              <button type="submit" className={primaryButton}>
+              <button
+                type="submit"
+                className={`${primaryButton} disabled:opacity-50 disabled:cursor-default`}
+                disabled={sharedHousehold && canChangeVisibility && hidingNeedsMe}
+              >
                 {editingAccount ? "Save changes" : "Create account"}
               </button>
             </div>

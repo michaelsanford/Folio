@@ -356,7 +356,7 @@ def _admin_error(exc: Exception, action: str) -> CognitoAuthError:
 
 
 def admin_get_user(username: str) -> dict[str, str] | None:
-    """``{"sub", "email", "status", "enabled"}`` for a pool user, None if absent."""
+    """``{"sub", "email", "name", "status", "enabled"}`` for a pool user, None if absent."""
     try:
         user = get_cognito_admin_client().admin_get_user(
             UserPoolId=settings.COGNITO_USER_POOL_ID, Username=username
@@ -371,12 +371,25 @@ def admin_get_user(username: str) -> dict[str, str] | None:
     return {
         "sub": attrs.get("sub", ""),
         "email": attrs.get("email", "").lower(),
+        "name": attrs.get("name", ""),
         "status": user.get("UserStatus", ""),
         "enabled": "true" if user.get("Enabled", True) else "false",
     }
 
 
-def admin_invite_user(email: str) -> dict[str, str]:
+def admin_set_name(username: str, name: str) -> None:
+    """Store the person's name in their sign-in profile (standard ``name``)."""
+    try:
+        get_cognito_admin_client().admin_update_user_attributes(
+            UserPoolId=settings.COGNITO_USER_POOL_ID,
+            Username=username,
+            UserAttributes=[{"Name": "name", "Value": name}],
+        )
+    except (ClientError, BotoCoreError) as exc:
+        raise _admin_error(exc, "set name") from exc
+
+
+def admin_invite_user(email: str, name: str | None = None) -> dict[str, str]:
     """Create the person and email their invitation. Idempotent.
 
     Returns ``{"sub", "email", "status", "created"}``. When the email already
@@ -390,6 +403,7 @@ def admin_invite_user(email: str) -> dict[str, str]:
             UserAttributes=[
                 {"Name": "email", "Value": email},
                 {"Name": "email_verified", "Value": "true"},
+                *([{"Name": "name", "Value": name}] if name else []),
             ],
             DesiredDeliveryMediums=["EMAIL"],
         )

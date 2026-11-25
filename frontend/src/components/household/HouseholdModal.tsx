@@ -1,9 +1,9 @@
-import React, { useState } from "react";
-import { X, Plus, Trash2, Edit2, Check, Shield } from "lucide-react";
-import type { HouseholdMember } from "../../types";
+import React, { useCallback, useEffect, useState } from "react";
+import { X, Plus, Trash2, Edit2, Check, Shield, Mail } from "lucide-react";
+import type { HouseholdMember, Person, PersonRole, Relationship } from "../../types";
 import { api } from "../../services/api";
 import { useSession } from "../../hooks/useSession";
-import { PeoplePanel } from "./PeoplePanel";
+import { PeoplePanel, ROLE_HINTS, ROLE_LABELS } from "./PeoplePanel";
 
 interface HouseholdModalProps {
   isOpen: boolean;
@@ -11,6 +11,18 @@ interface HouseholdModalProps {
   members: HouseholdMember[];
   onMembersModified: () => void;
 }
+
+type Access = "invite" | "none";
+
+/** Who usually signs in: a dependent or yourself is bookkeeping only by default. */
+const defaultAccess = (relationship: string): Access =>
+  relationship === "Dependent" || relationship === "Self" ? "none" : "invite";
+
+const ACCESS_BADGE: Record<string, string> = {
+  ACTIVE: "Signs in",
+  INVITED: "Invited",
+  DISABLED: "No access",
+};
 
 const PRESET_MEMBER_COLORS = [
   "#3B82F6", // Blue
@@ -38,8 +50,67 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const { me } = useSession();
   const canEdit = me?.can_edit ?? true;
+  // Owners of a household where people sign in add people in one step.
+  const canInvite = !!me?.can_manage_people;
+  const [access, setAccess] = useState<Access>(defaultAccess("Partner"));
+  const [email, setEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<PersonRole>("MEMBER");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [people, setPeople] = useState<Person[]>([]);
+  const [peopleVersion, setPeopleVersion] = useState(0);
+  // Inline "Invite" for a member who has no sign-in yet.
+  const [invitingMember, setInvitingMember] = useState<string | null>(null);
+  const [memberEmail, setMemberEmail] = useState("");
+  const [memberRole, setMemberRole] = useState<PersonRole>("MEMBER");
+
+  const loadPeople = useCallback(async () => {
+    if (!me?.shared_household) return;
+    try {
+      setPeople((await api.people.list()).people);
+    } catch {
+      // The badges are a convenience; the Sign-ins list reports its own errors.
+    }
+  }, [me?.shared_household]);
+
+  useEffect(() => {
+    if (isOpen) void loadPeople();
+  }, [isOpen, loadPeople, peopleVersion]);
 
   if (!isOpen) return null;
+
+  const signInFor = (memberId: string) =>
+    people.find((p) => p.member_id === memberId && p.status !== "DISABLED") ??
+    people.find((p) => p.member_id === memberId);
+
+  const peopleChanged = () => {
+    setPeopleVersion((v) => v + 1);
+    onMembersModified();
+  };
+
+  const handleRelationship = (value: string) => {
+    setRole(value);
+    if (!editingMember) {
+      const next = defaultAccess(value);
+      setAccess(next);
+      setInviteRole(value === "Dependent" ? "VIEWER" : "MEMBER");
+    }
+  };
+
+  const handleInviteMember = async (m: HouseholdMember) => {
+    const address = memberEmail.trim().toLowerCase();
+    if (!address) return;
+    setError(null);
+    setNotice(null);
+    try {
+      await api.people.invite({ email: address, role: memberRole, member_id: m.id, display_name: m.name });
+      setNotice(`Invitation sent to ${address}. They’ll get an email with a temporary password.`);
+      setInvitingMember(null);
+      setMemberEmail("");
+      peopleChanged();
+    } catch (err: any) {
+      setError(err?.message || "Couldn’t send the invitation");
+    }
+  };
 
   const handleStartEdit = (m: HouseholdMember) => {
     setEditingMember(m);
@@ -54,6 +125,9 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
     setEditingMember(null);
     setName("");
     setRole("Partner");
+    setAccess(defaultAccess("Partner"));
+    setEmail("");
+    setInviteRole("MEMBER");
     setColor(PRESET_MEMBER_COLORS[members.length % PRESET_MEMBER_COLORS.length]);
     setNotes("");
     setError(null);
@@ -66,10 +140,38 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
       return;
     }
 
+    const inviting = !editingMember && canInvite && access === "invite";
+    if (inviting && !email.trim()) {
+      setError("Enter their email address to invite them, or choose no sign-in.");
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
+    setNotice(null);
 
     try {
+      if (!editingMember && canInvite) {
+        const added = await api.people.add({
+          name: name.trim(),
+          relationship: (role || "Other") as Relationship,
+          color,
+          access: inviting ? "invite" : "none",
+          email: inviting ? email.trim().toLowerCase() : null,
+          role: inviting ? inviteRole : null,
+        });
+        if (notes.trim()) {
+          await api.household.updateMember(added.member_id, { notes: notes.trim() });
+        }
+        setNotice(
+          inviting
+            ? `${added.member_name} added. Invitation sent to ${email.trim().toLowerCase()}.`
+            : `${added.member_name} added.`
+        );
+        handleResetForm();
+        peopleChanged();
+        return;
+      }
       if (editingMember) {
         await api.household.updateMember(editingMember.id, {
           name: name.trim(),
@@ -139,8 +241,13 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
         </div>
 
         {error && (
-          <div className="mx-5 mt-3 p-3 rounded-lg bg-negative-subtle text-xs text-negative">
+          <div role="alert" className="mx-5 mt-3 p-3 rounded-lg bg-negative-subtle text-xs text-negative">
             {error}
+          </div>
+        )}
+        {notice && (
+          <div role="status" className="mx-5 mt-3 p-3 rounded-lg bg-surface-subtle text-xs text-sub">
+            {notice}
           </div>
         )}
 
@@ -159,7 +266,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                 {members.map((m) => (
                   <div
                     key={m.id}
-                    className={`p-3 rounded-lg border transition-colors flex items-center justify-between gap-3 ${
+                    className={`p-3 rounded-lg border transition-colors flex flex-wrap items-center justify-between gap-3 ${
                       editingMember?.id === m.id
                         ? "border-accent-main bg-surface-subtle"
                         : "border-default bg-surface"
@@ -175,12 +282,30 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                       <div className="min-w-0">
                         <div className="font-medium text-sm text-main truncate">{m.name}</div>
                         <div className="text-xs text-muted truncate">
-                          {m.role || "Member"} {m.notes ? `• ${m.notes}` : ""}
+                          {m.role || "Member"}
+                          {me?.shared_household
+                            ? ` · ${signInFor(m.id) ? ACCESS_BADGE[signInFor(m.id)!.status] : "No sign-in"}`
+                            : ""}
+                          {m.notes ? ` · ${m.notes}` : ""}
                         </div>
                       </div>
                     </div>
                     {canEdit && (
                     <div className="flex items-center gap-1 shrink-0">
+                      {canInvite && !signInFor(m.id) && (
+                        <button
+                          onClick={() => {
+                            setInvitingMember(invitingMember === m.id ? null : m.id);
+                            setMemberEmail("");
+                            setMemberRole(m.role === "Dependent" ? "VIEWER" : "MEMBER");
+                          }}
+                          className="h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer"
+                          title="Invite to sign in"
+                          aria-label={`Invite ${m.name} to sign in`}
+                        >
+                          <Mail className="w-4 h-4" strokeWidth={1.5} />
+                        </button>
+                      )}
                       <button
                         onClick={() => handleStartEdit(m)}
                         className="h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer"
@@ -199,6 +324,44 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                       </button>
                     </div>
                     )}
+                    {invitingMember === m.id && (
+                      <form
+                        aria-label={`Invite ${m.name}`}
+                        className="basis-full w-full flex flex-col sm:flex-row gap-2 pt-2"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          void handleInviteMember(m);
+                        }}
+                      >
+                        <input
+                          type="email"
+                          required
+                          aria-label={`${m.name}’s email address`}
+                          placeholder="name@example.com"
+                          value={memberEmail}
+                          onChange={(e) => setMemberEmail(e.target.value)}
+                          className="flex-1 h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]"
+                        />
+                        <select
+                          aria-label="What they can do"
+                          value={memberRole}
+                          onChange={(e) => setMemberRole(e.target.value as PersonRole)}
+                          className="h-9 px-3 rounded-lg border border-default bg-input text-sm text-main"
+                        >
+                          {(Object.keys(ROLE_LABELS) as PersonRole[]).map((r) => (
+                            <option key={r} value={r}>
+                              {ROLE_LABELS[r]}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="submit"
+                          className="h-9 px-3 rounded-lg bg-accent-main text-accent-contrast text-sm font-medium cursor-pointer"
+                        >
+                          Send invitation
+                        </button>
+                      </form>
+                    )}
                   </div>
                 ))}
               </div>
@@ -210,7 +373,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
           <form onSubmit={handleSave} className="p-4 rounded-xl border border-default bg-surface-subtle space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="text-base font-medium text-main">
-                {editingMember ? `Edit ${editingMember.name}` : "Add member"}
+                {editingMember ? `Edit ${editingMember.name}` : canInvite ? "Add someone" : "Add member"}
               </h4>
               {editingMember && (
                 <button
@@ -246,7 +409,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                 <select
                   id="household-member-role"
                   value={role}
-                  onChange={(e) => setRole(e.target.value)}
+                  onChange={(e) => handleRelationship(e.target.value)}
                   className="w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main focus:outline-none focus:border-[var(--accent-primary)]"
                 >
                   <option value="Self">Self</option>
@@ -279,6 +442,63 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
               </div>
             </div>
 
+            {!editingMember && canInvite && (
+              <fieldset className="space-y-2">
+                <legend className="text-xs text-sub mb-2">Access</legend>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {([
+                    ["invite", "Can sign in", "We email them an invitation with a temporary password."],
+                    ["none", "No sign-in (bookkeeping only)", "For a child or anyone whose accounts you manage. You can invite them later."],
+                  ] as const).map(([value, label, hint]) => (
+                    <label
+                      key={value}
+                      className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer bg-surface ${
+                        access === value ? "border-[var(--accent-primary)]" : "border-default"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="household-access"
+                        value={value}
+                        checked={access === value}
+                        onChange={() => setAccess(value)}
+                        className="mt-1"
+                      />
+                      <span>
+                        <span className="block text-sm text-main">{label}</span>
+                        <span className="block text-xs text-muted">{hint}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {access === "invite" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+                    <input
+                      type="email"
+                      aria-label="Email address"
+                      placeholder="name@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]"
+                    />
+                    <select
+                      aria-label="What they can do"
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value as PersonRole)}
+                      className="h-9 px-3 rounded-lg border border-default bg-input text-sm text-main"
+                    >
+                      {(Object.keys(ROLE_LABELS) as PersonRole[]).map((r) => (
+                        <option key={r} value={r}>
+                          {ROLE_LABELS[r]}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="sm:col-span-2 text-xs text-muted">{ROLE_HINTS[inviteRole]}.</p>
+                  </div>
+                )}
+              </fieldset>
+            )}
+
             <div>
               <label htmlFor="household-member-notes" className="block text-xs text-sub mb-1">
                 Notes <span className="text-muted">optional</span>
@@ -307,7 +527,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                 ) : (
                   <>
                     <Plus className="w-4 h-4" strokeWidth={1.5} />
-                    <span>Add member</span>
+                    <span>{canInvite && access === "invite" ? "Add and invite" : "Add"}</span>
                   </>
                 )}
               </button>
@@ -315,7 +535,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
           </form>
           )}
 
-          <PeoplePanel me={me} members={members} onChanged={onMembersModified} />
+          <PeoplePanel me={me} members={members} onChanged={peopleChanged} refreshKey={peopleVersion} />
         </div>
 
         <div className="px-5 py-4 border-t border-subtle flex justify-end">

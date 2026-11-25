@@ -7,6 +7,7 @@ account sign-in (Cognito) is enabled; passphrase mode has a single owner.
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -27,23 +28,29 @@ from app.core.cognito import (
     admin_invite_user,
     admin_resend_invite,
     admin_set_enabled,
+    admin_set_name,
 )
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import SlidingWindowLimiter
 from app.models.app_user import AppRole, AppUser, AppUserStatus
+from app.api.household import add_member
 from app.models.household import HouseholdMember
 from app.schemas.people import (
     MeResponse,
     MeUpdate,
     PeopleListResponse,
+    PersonAdd,
+    PersonAddResponse,
     PersonInvite,
     PersonResponse,
     PersonSummary,
     PersonUpdate,
+    WelcomeRequest,
 )
 
 router = APIRouter(prefix="/people", tags=["People"])
+logger = logging.getLogger("folio.people")
 
 # Invitations send email (the default sender allows 50 a day): cap them per owner.
 invite_limiter = SlidingWindowLimiter(max_attempts=10, window_seconds=3600)
@@ -59,6 +66,8 @@ def me_response(actor: Actor) -> MeResponse:
         can_edit=actor.can_edit,
         is_owner=actor.is_owner,
         can_manage_people=settings.is_cognito_enabled and actor.is_owner,
+        needs_welcome=actor.member_id is None and not actor.display_name,
+        shared_household=settings.is_cognito_enabled,
     )
 
 
@@ -263,6 +272,130 @@ async def invite_person(
         return _person_response(db, person, actor.user_key)
 
     return await run_in_threadpool(save)
+
+
+def _check_rate(actor: Actor) -> None:
+    allowed, retry_after = invite_limiter.check(actor.user_key)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "rate_limited", "message": "Too many invitations. Try again later."},
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
+@router.post("/add", response_model=PersonAddResponse, status_code=status.HTTP_201_CREATED)
+async def add_person(
+    body: PersonAdd,
+    request: Request,
+    actor: Actor = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    """Add someone in one step: their household member and, with ``access``
+    "invite", their sign-in with a role and an invitation email. A dependent
+    without an email is a member only (bookkeeping: their accounts, goals and
+    spending), and can be invited later."""
+    if body.access == "invite":
+        _require_account_sign_in()
+        if not body.email:
+            raise _error(status.HTTP_400_BAD_REQUEST, "email_required", "Enter their email address to invite them.")
+        # The invitation email is not part of the database: never replay this request.
+        request.state.no_replay = True
+        _check_rate(actor)
+
+        def taken() -> bool:
+            return db.scalar(select(AppUser.user_key).where(func.lower(AppUser.email) == body.email)) is not None
+
+        if await run_in_threadpool(taken):
+            raise _error(status.HTTP_409_CONFLICT, "already_invited", f"{body.email} already has access.")
+
+    member = await run_in_threadpool(add_member, db, body.name, body.relationship, body.color)
+    if body.access == "none":
+        await run_in_threadpool(db.commit)
+        return PersonAddResponse(member_id=member.id, member_name=member.name)
+
+    try:
+        created = await run_in_threadpool(admin_invite_user, body.email, body.name)
+    except CognitoAuthError as exc:
+        await run_in_threadpool(db.rollback)
+        raise _from_cognito(exc) from exc
+    invite_limiter.record_failure(actor.user_key)  # counts sends, not failures
+    role = body.role or (AppRole.VIEWER.value if body.relationship == "Dependent" else AppRole.MEMBER.value)
+
+    def save() -> PersonAddResponse:
+        key = f"{COGNITO_PREFIX}{created['sub']}"
+        person = db.get(AppUser, key)
+        if person is None:
+            person = AppUser(
+                user_key=key,
+                email=created["email"] or body.email,
+                created_at=datetime.now(timezone.utc),
+                invited_by=actor.user_key,
+                status=AppUserStatus.INVITED.value
+                if created.get("status") == "FORCE_CHANGE_PASSWORD"
+                else AppUserStatus.ACTIVE.value,
+            )
+            db.add(person)
+        person.role = role
+        person.display_name = body.name
+        person.member_id = member.id
+        db.commit()
+        return PersonAddResponse(
+            member_id=member.id,
+            member_name=member.name,
+            person=_person_response(db, person, actor.user_key),
+        )
+
+    return await run_in_threadpool(save)
+
+
+@router.post("/me/welcome", response_model=MeResponse)
+def welcome(body: WelcomeRequest, actor: Actor = Depends(authorize), db: Session = Depends(get_db)):
+    """First sign-in: who you are. Creates your household member (or links the
+    unlinked one with your name), names you, and stores the name in your
+    sign-in profile."""
+    person = db.get(AppUser, actor.user_key)
+    if person is None:
+        # The local passphrase owner has no row until now.
+        person = AppUser(
+            user_key=actor.user_key,
+            role=AppRole.OWNER.value,
+            status=AppUserStatus.ACTIVE.value,
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(person)
+    if person.member_id is None:
+        linked = select(AppUser.member_id).where(AppUser.member_id.is_not(None))
+        member = db.scalar(
+            select(HouseholdMember)
+            .where(func.lower(HouseholdMember.name) == body.name.lower(), HouseholdMember.id.not_in(linked))
+            .limit(1)
+        )
+        if member is None:
+            relationship = body.relationship or ("Self" if actor.is_owner else "Other")
+            member = add_member(db, body.name, relationship)
+        elif body.relationship:
+            member.role = body.relationship
+        person.member_id = member.id
+    person.display_name = body.name
+    db.commit()
+    db.refresh(person)
+    if not actor.local and settings.is_cognito_enabled:
+        try:
+            admin_set_name(_username(person), body.name)
+        except Exception:
+            logger.warning("Could not store the name in the sign-in profile", exc_info=True)
+    return me_response(
+        Actor(
+            user_key=person.user_key,
+            role=person.role,
+            status=person.status,
+            email=person.email,
+            display_name=person.display_name,
+            member_id=person.member_id,
+            local=actor.local,
+        )
+    )
 
 
 @router.patch("/{user_key}", response_model=PersonResponse)

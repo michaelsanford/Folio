@@ -1,7 +1,7 @@
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from app.core.config import settings
-from app.models.account import AccountType, LoanCompounding
+from app.models.account import AccountType, AccountVisibility, LoanCompounding
 
 
 class AccountBase(BaseModel):
@@ -22,12 +22,13 @@ class AccountBase(BaseModel):
     escrow_payment: float | None = None
     minimum_payment_percent: float | None = Field(None, gt=0, le=100)
     compounding: LoanCompounding = LoanCompounding.MONTHLY
-    owner_member_id: str | None = None
     is_active: bool = True
 
 
 class AccountCreate(AccountBase):
-    pass
+    # Household members who own it. Omitted: the signed-in person's member.
+    owner_member_ids: list[str] | None = Field(None, max_length=20)
+    visibility: AccountVisibility = AccountVisibility.HOUSEHOLD
 
 
 class AccountUpdate(BaseModel):
@@ -48,7 +49,8 @@ class AccountUpdate(BaseModel):
     escrow_payment: float | None = None
     minimum_payment_percent: float | None = Field(None, gt=0, le=100)
     compounding: LoanCompounding | None = None
-    owner_member_id: str | None = None
+    owner_member_ids: list[str] | None = Field(None, max_length=20)
+    visibility: AccountVisibility | None = None
     is_active: bool | None = None
 
 
@@ -56,8 +58,18 @@ class AccountResponse(AccountBase):
     id: str
     created_at: datetime
     updated_at: datetime
+    owner_member_ids: list[str] = []
+    owner_names: list[str] = []
+    visibility: AccountVisibility = AccountVisibility.HOUSEHOLD
+    # Someone else's "totals only" account: name, details and rows withheld.
+    redacted: bool = False
     # User keys of who added and last changed it (names: bootstrap ``people``).
     created_by: str | None = None
     updated_by: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("visibility", mode="before")
+    @classmethod
+    def _household_when_unset(cls, value):
+        return value or AccountVisibility.HOUSEHOLD

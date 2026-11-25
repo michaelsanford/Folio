@@ -51,14 +51,14 @@ def test_account_and_transaction_member_attribution(client: TestClient, db_sessi
             "name": "Taylor's TFSA",
             "type": "TFSA",
             "institution": "Wealthsimple",
-            "owner_member_id": member.id,
+            "owner_member_ids": [member.id],
             "currency": "CAD",
             "current_balance": 15000.0,
         },
     )
     assert resp.status_code == 201
     account_id = resp.json()["id"]
-    assert resp.json()["owner_member_id"] == member.id
+    assert resp.json()["owner_member_ids"] == [member.id]
 
     # Filter accounts by owner_member_id
     resp = client.get(f"/api/accounts?owner_member_id={member.id}")
