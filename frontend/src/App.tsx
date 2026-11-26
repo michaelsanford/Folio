@@ -5,7 +5,14 @@ import type { NavTab } from "./components/layout/AppLayout";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { NotificationRegion } from "./components/common/NotificationRegion";
 import type { LedgerRefreshScope } from "./components/ledger/LedgerWorkspace";
-import type { Account, Category, DashboardAnalyticsResponse, HouseholdMember, ServerLimits } from "./types";
+import type {
+  Account,
+  Category,
+  DashboardAnalyticsResponse,
+  HouseholdMember,
+  PreferencesResponse,
+  ServerLimits,
+} from "./types";
 import { api, ApiError, setOnUnauthorized } from "./services/api";
 import { onWriteConflict } from "./services/notifications";
 import { ArrowRight } from "lucide-react";
@@ -64,7 +71,8 @@ const Spinner: React.FC = () => (
 );
 
 const ViewFallback: React.FC = () => (
-  <div role="status" className="py-16 flex items-center justify-center gap-3 text-sm text-muted">
+  // Tall enough that the view replacing it does not push the page around.
+  <div role="status" className="min-h-[60vh] py-16 flex items-center justify-center gap-3 text-sm text-muted">
     <Spinner />
     Loading…
   </div>
@@ -128,6 +136,9 @@ function AppContent() {
   const [analytics, setAnalytics] = useState<DashboardAnalyticsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
+  // The profile's appearance settings from bootstrap: undefined until it has
+  // answered, null when the server did not include them (then they are fetched).
+  const [profilePrefs, setProfilePrefs] = useState<PreferencesResponse | null | undefined>(undefined);
   const [isHouseholdModalOpen, setIsHouseholdModalOpen] = useState(false);
   const { me } = useSession();
   const [welcomeSkipped, setWelcomeSkipped] = useState(() => {
@@ -151,7 +162,7 @@ function AppContent() {
   const { updateReady, applyUpdate } = usePwaUpdate();
   const canEdit = useCanEdit();
   // Appearance settings follow the signed-in user (stored in their profile).
-  usePreferencesSync(authStatus.confirmed && authStatus.authenticated);
+  usePreferencesSync(authStatus.confirmed && authStatus.authenticated && profilePrefs !== undefined, profilePrefs);
   const isLocked = !authStatus.is_loading && authStatus.auth_required && !authStatus.authenticated;
   // On the lock screen there is nothing to lose, so take a waiting update at
   // once: nobody signs in to an outdated build.
@@ -205,6 +216,7 @@ function AppContent() {
       setHouseholdMembers(data.household_members);
       setLimits({ ...DEFAULT_LIMITS, ...data.limits });
       setSession(data.me, data.people, data.closed_through_year ?? null);
+      setProfilePrefs((prev) => (prev === undefined ? (data.preferences ?? null) : prev));
       setIsAnalyticsStale(false);
       setLoadFailed(false);
     } catch (err) {
@@ -307,6 +319,7 @@ function AppContent() {
     setCategories([]);
     setHouseholdMembers([]);
     setAnalytics(null);
+    setProfilePrefs(undefined);
     clearSession();
     clearSessionHint();
     setAuthStatus((prev) => ({

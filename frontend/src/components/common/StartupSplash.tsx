@@ -56,7 +56,7 @@ export const StartupSplash: React.FC<StartupSplashProps> = ({ unreachable = fals
 export const ShellLoading: React.FC = () => {
   const waking = useDelayedFlag(true, WAKING_DELAY_MS);
   return (
-    <div role="status" className="py-16 flex items-center justify-center gap-3 text-sm text-muted">
+    <div role="status" className="min-h-[60vh] py-16 flex items-center justify-center gap-3 text-sm text-muted">
       <span
         className="animate-spin rounded-full h-4 w-4 border-2 border-[var(--border-default)] border-t-[var(--accent-primary)]"
         aria-hidden="true"

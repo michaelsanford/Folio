@@ -171,3 +171,9 @@ def test_corrupt_stored_json_reads_as_empty(client, db_session, data):
 def test_requires_auth(unauthenticated_client):
     assert unauthenticated_client.get(URL).status_code == 401
     assert unauthenticated_client.put(URL, json={"theme": "nord"}).status_code == 401
+
+
+@pytest.mark.parametrize("theme", ["campbell", "high-contrast"])
+def test_newer_themes_are_accepted(client, theme):
+    assert client.put(URL, json={"theme": theme}).status_code == 200
+    assert client.get(URL).json()["preferences"] == {"theme": theme}

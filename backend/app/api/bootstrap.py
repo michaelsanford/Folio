@@ -15,8 +15,12 @@ Response shape::
       "limits":            {"max_upload_mb": int},
       "me":                MeResponse,                      # == GET /api/people/me
       "people":            [PersonSummary, ...],            # names for created_by / updated_by
-      "closed_through_year": int | None                     # transactions up to Dec 31 are locked
+      "closed_through_year": int | None,                    # transactions up to Dec 31 are locked
+      "preferences":       PreferencesResponse              # == GET /api/me/preferences
     }
+
+Preferences ride along so start-up is one request: a second request at the
+same moment can start a second server on a cold start, which costs seconds.
 """
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -26,6 +30,7 @@ from app.api.accounts import list_accounts
 from app.api.categories import list_categories
 from app.api.household import list_household_members
 from app.api.people import me_response, people_summaries
+from app.api.preferences import preferences_for
 from app.core.actor import Actor, authorize
 from app.core.config import settings
 from app.core.period_lock import closed_through_year
@@ -35,6 +40,7 @@ from app.schemas.analytics import DashboardAnalyticsResponse
 from app.schemas.category import CategoryResponse
 from app.schemas.household import HouseholdMemberResponse
 from app.schemas.people import MeResponse, PersonSummary
+from app.schemas.preferences import PreferencesResponse
 from app.services.analytics.engine import get_dashboard_analytics
 
 router = APIRouter(tags=["Bootstrap"])
@@ -53,6 +59,7 @@ class BootstrapResponse(BaseModel):
     me: MeResponse
     people: list[PersonSummary]
     closed_through_year: int | None = None
+    preferences: PreferencesResponse
 
 
 @router.get("/bootstrap", response_model=BootstrapResponse)
@@ -77,4 +84,5 @@ def get_bootstrap(
         "me": me_response(actor),
         "people": people_summaries(db),
         "closed_through_year": closed_through_year(db),
+        "preferences": preferences_for(db, actor.user_key),
     }

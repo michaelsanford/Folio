@@ -64,14 +64,18 @@ async def _bounded_body(request: Request) -> bytes:
     return bytes(body)
 
 
-@router.get("/preferences", response_model=PreferencesResponse)
-def get_preferences(claims: dict = Depends(require_auth), db: Session = Depends(get_db)):
-    """The caller's saved preferences; ``{"preferences": {}, "updated_at": null}`` if none."""
-    user_key = user_key_from_claims(claims)
+def preferences_for(db: Session, user_key: str) -> PreferencesResponse:
+    """Saved preferences for ``user_key``; empty with ``updated_at`` None if none."""
     row = db.get(UserPreference, user_key)
     if row is None:
         return PreferencesResponse(preferences=UiPreferences(), updated_at=None)
     return PreferencesResponse(preferences=_load_preferences(row, user_key), updated_at=row.updated_at)
+
+
+@router.get("/preferences", response_model=PreferencesResponse)
+def get_preferences(claims: dict = Depends(require_auth), db: Session = Depends(get_db)):
+    """The caller's saved preferences; ``{"preferences": {}, "updated_at": null}`` if none."""
+    return preferences_for(db, user_key_from_claims(claims))
 
 
 @router.put(

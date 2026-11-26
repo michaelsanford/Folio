@@ -23,6 +23,8 @@ export default defineConfig({
       ],
       manifest: {
         id: '/',
+        lang: 'en-CA',
+        dir: 'ltr',
         name: 'Folio Personal Finance',
         short_name: 'Folio',
         description: 'Ledger, budget and net worth for your household',
@@ -32,11 +34,19 @@ export default defineConfig({
         theme_color: '#141110',
         background_color: '#1a1715',
         categories: ['finance'],
+        // A shortcut or a second launch brings the open window forward
+        // instead of opening another copy of the app.
+        launch_handler: { client_mode: 'focus-existing' },
         icons: [
           { src: '/pwa-64x64.png', sizes: '64x64', type: 'image/png' },
           { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
           { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png' },
           { src: '/maskable-icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+        // Shown in the browser's install dialog (demo data only).
+        screenshots: [
+          { src: '/screenshots/dashboard-wide.png', sizes: '1256x627', type: 'image/png', form_factor: 'wide', label: 'Household dashboard: net worth and accounts' },
+          { src: '/screenshots/dashboard-narrow.png', sizes: '492x759', type: 'image/png', form_factor: 'narrow', label: 'Household dashboard on a phone' },
         ],
         // Long-press / right-click shortcuts on the installed app. App.tsx
         // reads ?view= once to pick the starting tab.

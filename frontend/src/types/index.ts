@@ -396,6 +396,8 @@ export interface BootstrapResponse {
   people?: PersonSummary[];
   /** Transactions dated up to Dec 31 of this year are locked (a closed year). */
   closed_through_year?: number | null;
+  /** The caller's saved appearance settings (== GET /api/me/preferences). */
+  preferences?: PreferencesResponse;
 }
 
 /** A row of `GET /api/periods`. */

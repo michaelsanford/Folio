@@ -6,7 +6,7 @@ import { normalizePrefs, setFormatPrefs, type NumberFormatPrefs } from "../utils
 import { useFormatPrefs } from "./useFormatPrefs";
 import { useHiddenAccounts } from "./useHiddenAccounts";
 import { setHiddenAccounts } from "../utils/dashboardFilter";
-import type { NumberFormatPreferences, UiPreferences } from "../types";
+import type { NumberFormatPreferences, PreferencesResponse, UiPreferences } from "../types";
 
 /** Quiet time after the last change before it is saved (one save per burst). */
 export const PREFERENCES_SAVE_DELAY_MS = 800;
@@ -40,8 +40,12 @@ const fromServerFormat = (p: NumberFormatPreferences): NumberFormatPrefs =>
  * profile has none yet, this device's settings become its starting point.
  * After that every change is saved, debounced so a burst of changes is one
  * request. A failed save is silent and retried with the next change.
+ *
+ * `initial` is the profile copy when the caller already has it (the bootstrap
+ * response carries it), which saves a request at start-up; without it the
+ * profile is fetched.
  */
-export function usePreferencesSync(enabled: boolean): void {
+export function usePreferencesSync(enabled: boolean, initial?: PreferencesResponse | null): void {
   const {
     theme,
     mode,
@@ -76,6 +80,8 @@ export function usePreferencesSync(enabled: boolean): void {
   const lastSaved = useRef<string | null>(null);
   const latest = useRef({ current, serialized });
   latest.current = { current, serialized };
+  const initialRef = useRef(initial);
+  initialRef.current = initial;
 
   // Fetch and apply the profile copy once per signed-in session.
   useEffect(() => {
@@ -86,8 +92,8 @@ export function usePreferencesSync(enabled: boolean): void {
     }
     let cancelled = false;
     const versionAtFetch = editVersion.current;
-    api.preferences
-      .get()
+    const profile = initialRef.current ? Promise.resolve(initialRef.current) : api.preferences.get();
+    profile
       .then((res) => {
         if (cancelled) return;
         const saved = res.preferences ?? {};

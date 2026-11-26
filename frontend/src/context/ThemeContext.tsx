@@ -8,7 +8,9 @@ export type ThemeId =
   | "nord"
   | "gruvbox"
   | "tokyo-night"
-  | "dracula";
+  | "dracula"
+  | "campbell"
+  | "high-contrast";
 
 export type ColorMode = "light" | "dark" | "system";
 export type ResolvedMode = "light" | "dark";
@@ -16,7 +18,7 @@ export type ResolvedMode = "light" | "dark";
 export interface ThemeDefinition {
   id: ThemeId;
   name: string;
-  category: "Financial" | "Developer";
+  category: "Financial" | "Developer" | "Accessibility";
   description: string;
   accentHex: string;
   darkCanvasHex: string;
@@ -96,7 +98,34 @@ export const THEMES: ThemeDefinition[] = [
     darkCanvasHex: "#1e1f29",
     lightCanvasHex: "#f8f8f2",
   },
+  {
+    id: "campbell",
+    name: "Campbell",
+    category: "Developer",
+    description: "Windows console blue with the Campbell terminal colours.",
+    accentHex: "#f9f1a5",
+    darkCanvasHex: "#012456",
+    lightCanvasHex: "#f2f2f2",
+  },
+  {
+    id: "high-contrast",
+    name: "High contrast",
+    category: "Accessibility",
+    description: "Black and white with bold colours: every label at 7:1 or more, clear borders and focus.",
+    accentHex: "#ffd60a",
+    darkCanvasHex: "#000000",
+    lightCanvasHex: "#ffffff",
+  },
 ];
+
+/** A device set to ask for more contrast starts on the High contrast theme. */
+function prefersMoreContrast(): boolean {
+  try {
+    return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-contrast: more)").matches;
+  } catch {
+    return false;
+  }
+}
 
 export type TypeStyleId = "broadsheet" | "modern" | "friendly" | "terminal";
 
@@ -117,32 +146,32 @@ export const TYPE_STYLES: TypeStyleDefinition[] = [
     id: "broadsheet",
     name: "Broadsheet",
     description: "Serif headlines over a clear sans, like a financial paper.",
-    sans: "'Source Sans 3', ui-sans-serif, system-ui, sans-serif",
-    display: "Newsreader, Georgia, 'Times New Roman', serif",
+    sans: "'Source Sans 3 Variable', 'Source Sans 3', ui-sans-serif, system-ui, sans-serif",
+    display: "'Newsreader Variable', Newsreader, Georgia, 'Times New Roman', serif",
     figures: "'Source Sans 3', ui-sans-serif, system-ui, sans-serif",
   },
   {
     id: "modern",
     name: "Modern",
     description: "Inter throughout. Neutral, compact and precise.",
-    sans: "Inter, ui-sans-serif, system-ui, sans-serif",
-    display: "Inter, ui-sans-serif, system-ui, sans-serif",
+    sans: "'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif",
+    display: "'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif",
     figures: "Inter, ui-sans-serif, system-ui, sans-serif",
   },
   {
     id: "friendly",
     name: "Friendly",
     description: "Figtree throughout. Round, open and relaxed.",
-    sans: "Figtree, ui-sans-serif, system-ui, sans-serif",
-    display: "Figtree, ui-sans-serif, system-ui, sans-serif",
+    sans: "'Figtree Variable', Figtree, ui-sans-serif, system-ui, sans-serif",
+    display: "'Figtree Variable', Figtree, ui-sans-serif, system-ui, sans-serif",
     figures: "Figtree, ui-sans-serif, system-ui, sans-serif",
   },
   {
     id: "terminal",
     name: "Terminal",
     description: "IBM Plex with monospaced figures. Dense and technical.",
-    sans: "'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif",
-    display: "'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif",
+    sans: "'IBM Plex Sans Variable', 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif",
+    display: "'IBM Plex Sans Variable', 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif",
     figures: "'IBM Plex Mono', ui-monospace, monospace",
   },
 ];
@@ -207,7 +236,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
     if (stored && THEMES.some((t) => t.id === stored)) {
       return stored;
     }
-    return "folio-emerald";
+    return prefersMoreContrast() ? "high-contrast" : "folio-emerald";
   });
 
   const [mode, setModeState] = useState<ColorMode>(() => {

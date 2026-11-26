@@ -811,8 +811,9 @@ Resources:
   # Security headers backstop. backend/app/core/security_headers.py is the
   # source of truth and sets these on every app response; CloudFront adds HSTS
   # everywhere (Override) and fills the others only where the app did not answer
-  # (edge errors, cached responses missing them). The CSP stays app-only because
-  # it depends on the Cognito region. Keep the values in sync with that module.
+  # (edge errors, cached responses missing them). The CSP stays app-only (it
+  # depends on the mode). Keep the values in sync with that module; the backend
+  # tests compare the Permissions-Policy and X-Robots-Tag copies.
   FolioSecurityHeadersPolicy:
     Type: AWS::CloudFront::ResponseHeadersPolicy
     Properties:
@@ -839,7 +840,7 @@ Resources:
         CustomHeadersConfig:
           Items:
             - Header: Permissions-Policy
-              Value: 'accelerometer=(), autoplay=(), bluetooth=(), browsing-topics=(), camera=(), display-capture=(), encrypted-media=(), fullscreen=(), geolocation=(), gyroscope=(), hid=(), idle-detection=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), usb=(), xr-spatial-tracking=(), clipboard-write=(self)'
+              Value: 'accelerometer=(), ambient-light-sensor=(), autoplay=(), bluetooth=(), camera=(), compute-pressure=(), display-capture=(), encrypted-media=(), fullscreen=(), gamepad=(), geolocation=(), gyroscope=(), hid=(), identity-credentials-get=(), idle-detection=(), keyboard-map=(), local-fonts=(), magnetometer=(), microphone=(), midi=(), otp-credentials=(), payment=(), picture-in-picture=(), publickey-credentials-create=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), storage-access=(), unload=(), usb=(), web-share=(), window-management=(), xr-spatial-tracking=(), clipboard-write=(self)'
               Override: false
             - Header: Cross-Origin-Opener-Policy
               Value: same-origin
@@ -849,6 +850,9 @@ Resources:
               Override: false
             - Header: X-Permitted-Cross-Domain-Policies
               Value: none
+              Override: false
+            - Header: X-Robots-Tag
+              Value: 'noindex, nofollow'
               Override: false
 
   FolioDistribution:

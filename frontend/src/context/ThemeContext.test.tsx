@@ -76,7 +76,7 @@ describe("ThemeContext & ThemeProvider", () => {
     expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
 
-  it("contains all 8 curated theme configurations", () => {
+  it("contains all 10 curated theme configurations", () => {
     const themeIds = THEMES.map((t) => t.id);
     expect(themeIds).toContain("folio-emerald");
     expect(themeIds).toContain("bloomberg");
@@ -86,7 +86,31 @@ describe("ThemeContext & ThemeProvider", () => {
     expect(themeIds).toContain("gruvbox");
     expect(themeIds).toContain("tokyo-night");
     expect(themeIds).toContain("dracula");
-    expect(themeIds.length).toBe(8);
+    expect(themeIds).toContain("campbell");
+    expect(themeIds).toContain("high-contrast");
+    expect(themeIds.length).toBe(10);
+  });
+
+  it("starts a new device that asks for more contrast on High contrast", () => {
+    localStorage.clear();
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) =>
+      ({ matches: query === "(prefers-contrast: more)", addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList) as typeof window.matchMedia;
+    try {
+      let seen = "";
+      const Probe = () => {
+        seen = useTheme().theme;
+        return null;
+      };
+      render(
+        <ThemeProvider>
+          <Probe />
+        </ThemeProvider>
+      );
+      expect(seen).toBe("high-contrast");
+    } finally {
+      window.matchMedia = original;
+    }
   });
 
   it("defaults to the Broadsheet type style, applies it to <html> and persists changes", () => {

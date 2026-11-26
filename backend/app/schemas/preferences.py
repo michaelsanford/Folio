@@ -24,7 +24,7 @@ class UiPreferences(BaseModel):
 
     theme: Literal[
         "folio-emerald", "bloomberg", "editorial", "catppuccin",
-        "nord", "gruvbox", "tokyo-night", "dracula",
+        "nord", "gruvbox", "tokyo-night", "dracula", "campbell", "high-contrast",
     ] | None = None
     color_mode: Literal["light", "dark", "system"] | None = None
     type_style: Literal["broadsheet", "modern", "friendly", "terminal"] | None = None

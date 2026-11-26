@@ -28,6 +28,7 @@ export const ThemePickerModal: React.FC<ThemePickerModalProps> = ({ isOpen, onCl
 
   const financialThemes = THEMES.filter((t) => t.category === "Financial");
   const developerThemes = THEMES.filter((t) => t.category === "Developer");
+  const accessibilityThemes = THEMES.filter((t) => t.category === "Accessibility");
 
   const renderThemeCard = (t: ThemeDefinition) => {
     const isSelected = theme === t.id;
@@ -198,6 +199,17 @@ export const ThemePickerModal: React.FC<ThemePickerModalProps> = ({ isOpen, onCl
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {developerThemes.map(renderThemeCard)}
+            </div>
+          </div>
+
+          {/* Accessibility themes */}
+          <div>
+            <div className="flex items-baseline justify-between mb-2">
+              <div className="text-xs text-muted">Accessibility</div>
+              <span className="text-xs text-muted">Maximum contrast</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {accessibilityThemes.map(renderThemeCard)}
             </div>
           </div>
 

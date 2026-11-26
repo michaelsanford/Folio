@@ -415,13 +415,23 @@ def test_bootstrap_matches_the_four_initial_requests(client):
     body = boot.json()
     assert set(body) == {
         "accounts", "categories", "analytics", "household_members", "limits", "me", "people", "closed_through_year",
+        "preferences",
     }
+    assert body["preferences"] == client.get("/api/me/preferences").json()
     assert body["me"] == client.get("/api/people/me").json()
     assert body["accounts"] == client.get("/api/accounts").json()
     assert body["categories"] == client.get("/api/categories").json()
     assert body["household_members"] == client.get("/api/household/members").json()
     assert body["analytics"].keys() == client.get("/api/analytics/dashboard").json().keys()
     assert body["limits"] == {"max_upload_mb": settings.MAX_UPLOAD_MB}
+
+
+def test_bootstrap_carries_saved_preferences(client):
+    saved = client.put("/api/me/preferences", json={"theme": "nord", "color_mode": "dark"})
+    assert saved.status_code == 200, saved.text
+    body = client.get("/api/bootstrap").json()
+    assert body["preferences"]["preferences"]["theme"] == "nord"
+    assert body["preferences"]["updated_at"] is not None
 
 
 def test_bootstrap_requires_auth(unauthenticated_client):

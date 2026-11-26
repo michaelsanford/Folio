@@ -19,6 +19,7 @@ EVERY_MODE_HEADERS = {
     "Cross-Origin-Resource-Policy": "same-origin",
     "X-Permitted-Cross-Domain-Policies": "none",
     "X-XSS-Protection": "0",
+    "X-Robots-Tag": "noindex, nofollow",
 }
 
 # "/" is the SPA shell when a frontend build is present, otherwise a 404; both
@@ -146,6 +147,35 @@ def test_permissions_policy_denies_all_but_clipboard_write():
     assert entries.pop("clipboard-write") == "(self)"
     assert entries["camera"] == "()" and entries["fullscreen"] == "()"
     assert set(entries.values()) == {"()"}
+
+
+def test_permissions_policy_uses_no_retired_or_unrecognized_ad_features():
+    entries = dict(e.split("=", 1) for e in sh.PERMISSIONS_POLICY.split(", "))
+    for retired in ("browsing-topics", "run-ad-auction", "join-ad-interest-group",
+                    "attribution-reporting", "private-aggregation", "interest-cohort"):
+        assert retired not in entries
+    assert entries["unload"] == "()"
+
+
+def _template_custom_header(name: str) -> str:
+    """The value of a CloudFront custom response header in template.yaml."""
+    import re
+    from pathlib import Path
+
+    template = (Path(__file__).resolve().parents[2] / "template.yaml").read_text(encoding="utf-8")
+    match = re.search(
+        rf"- Header: {re.escape(name)}\s*\n\s*Value: '([^']*)'", template
+    )
+    assert match, f"{name} not found in template.yaml"
+    return match.group(1)
+
+
+@pytest.mark.parametrize(
+    ("header", "value"),
+    [("Permissions-Policy", sh.PERMISSIONS_POLICY), ("X-Robots-Tag", sh.X_ROBOTS_TAG)],
+)
+def test_cloudfront_backstop_matches_the_app(header, value):
+    assert _template_custom_header(header) == value
 
 
 def test_head_health_check(unauthenticated_client):

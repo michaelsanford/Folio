@@ -155,3 +155,25 @@ describe("usePreferencesSync", () => {
     expect(put).not.toHaveBeenCalled();
   });
 });
+
+describe("usePreferencesSync with the profile from bootstrap", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    get.mockReset();
+    put.mockReset();
+    put.mockResolvedValue({ preferences: {}, updated_at: "2026-11-24T00:00:00Z" });
+  });
+
+  it("applies the given profile without fetching it again", async () => {
+    const { result } = renderHook(
+      () => {
+        usePreferencesSync(true, { preferences: { theme: "campbell" }, updated_at: "2026-11-24T00:00:00Z" });
+        return useTheme();
+      },
+      { wrapper }
+    );
+    await flush();
+    expect(result.current.theme).toBe("campbell");
+    expect(get).not.toHaveBeenCalled();
+  });
+});
