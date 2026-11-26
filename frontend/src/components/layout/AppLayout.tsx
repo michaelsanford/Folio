@@ -50,6 +50,8 @@ interface AppLayoutProps {
   onSignOut?: () => void;
   /** A new build is waiting (see usePwaUpdate); shows the "Update available" item. */
   updateReady?: boolean;
+  /** The update was chosen and the page is about to reload: the button shows "Updating…". */
+  updating?: boolean;
   onApplyUpdate?: () => void;
   children: React.ReactNode;
 }
@@ -71,19 +73,27 @@ const Wordmark: React.FC<{ compact?: boolean }> = ({ compact = false }) => (
 );
 
 /** Full-width "Update available" item for the expanded sidebar and the mobile menu. */
-const UpdateItem: React.FC<{ onClick?: () => void }> = ({ onClick }) => (
+const UpdateItem: React.FC<{ onClick?: () => void; updating?: boolean }> = ({ onClick, updating = false }) => (
   <button
     type="button"
     onClick={onClick}
-    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-accent-main text-accent-contrast text-left transition-[filter,transform] hover:brightness-110 active:scale-[0.98] cursor-pointer"
+    disabled={updating}
+    aria-busy={updating}
+    className={`${updateButton} w-full flex items-center gap-3 px-3 py-2 text-left`}
   >
-    <RefreshCw className="w-[22px] h-[22px] shrink-0" strokeWidth={2} aria-hidden="true" />
+    <RefreshCw className={`w-[22px] h-[22px] shrink-0 ${updating ? spinning : ""}`} strokeWidth={2} aria-hidden="true" />
     <span className="flex flex-col min-w-0 leading-tight">
-      <span className="text-sm font-semibold">Update available</span>
-      <span className="text-xs opacity-80">Reload to update</span>
+      <span className="text-sm font-semibold">{updating ? "Updating…" : "Update available"}</span>
+      <span className="text-xs opacity-80">{updating ? "Folio will reload" : "Reload to update"}</span>
     </span>
   </button>
 );
+
+/** Shared look of every "Update available" button; it stays visible but inert while updating. */
+const updateButton =
+  "rounded-lg bg-accent-main text-accent-contrast transition-[filter,transform] enabled:hover:brightness-110 enabled:active:scale-[0.98] enabled:cursor-pointer disabled:cursor-progress";
+const spinning = "animate-spin motion-reduce:animate-none";
+const updateLabel = (updating: boolean) => (updating ? "Updating Folio. It will reload" : "Update available. Reload");
 
 export const AppLayout: React.FC<AppLayoutProps> = ({
   activeTab,
@@ -93,6 +103,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   onManageHousehold,
   onSignOut,
   updateReady = false,
+  updating = false,
   onApplyUpdate,
   children,
 }) => {
@@ -158,11 +169,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 <button
                   type="button"
                   onClick={onApplyUpdate}
-                  className="w-12 h-11 flex items-center justify-center rounded-lg bg-accent-main text-accent-contrast transition-[filter,transform] hover:brightness-110 active:scale-[0.98] cursor-pointer"
-                  title="Update available. Reload"
-                  aria-label="Update available. Reload"
+                  disabled={updating}
+                  aria-busy={updating}
+                  className={`${updateButton} w-12 h-11 flex items-center justify-center`}
+                  title={updateLabel(updating)}
+                  aria-label={updateLabel(updating)}
                 >
-                  <RefreshCw className="w-6 h-6" strokeWidth={2} />
+                  <RefreshCw className={`w-6 h-6 ${updating ? spinning : ""}`} strokeWidth={2} />
                 </button>
               )}
             </div>
@@ -197,7 +210,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         {/* New build waiting */}
         {!sidebarCollapsed && (
           <div aria-live="polite" className={updateReady ? "mx-3 mb-3" : undefined}>
-            {updateReady && <UpdateItem onClick={onApplyUpdate} />}
+            {updateReady && <UpdateItem onClick={onApplyUpdate} updating={updating} />}
           </div>
         )}
 
@@ -389,11 +402,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <button
                 type="button"
                 onClick={onApplyUpdate}
-                className="h-9 w-9 flex items-center justify-center rounded-lg bg-accent-main text-accent-contrast cursor-pointer"
-                title="Update available. Reload"
-                aria-label="Update available. Reload"
+                disabled={updating}
+                aria-busy={updating}
+                className={`${updateButton} h-9 w-9 flex items-center justify-center`}
+                title={updateLabel(updating)}
+                aria-label={updateLabel(updating)}
               >
-                <RefreshCw className="w-5 h-5" strokeWidth={2} />
+                <RefreshCw className={`w-5 h-5 ${updating ? spinning : ""}`} strokeWidth={2} />
               </button>
             )}
             <button onClick={() => setIsThemeModalOpen(true)} className={iconButton} aria-label="Appearance">
@@ -423,6 +438,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             {updateReady && (
               <div className="mb-2">
                 <UpdateItem
+                  updating={updating}
                   onClick={() => {
                     setMobileMenuOpen(false);
                     onApplyUpdate?.();

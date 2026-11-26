@@ -4,7 +4,7 @@ import React from "react";
 import { AppLayout } from "./AppLayout";
 import { ThemeProvider } from "../../context/ThemeContext";
 
-const renderLayout = (updateReady: boolean, onApplyUpdate = vi.fn()) =>
+const renderLayout = (updateReady: boolean, onApplyUpdate = vi.fn(), updating = false) =>
   render(
     <ThemeProvider>
       <AppLayout
@@ -12,6 +12,7 @@ const renderLayout = (updateReady: boolean, onApplyUpdate = vi.fn()) =>
         onTabChange={vi.fn()}
         accounts={[]}
         updateReady={updateReady}
+        updating={updating}
         onApplyUpdate={onApplyUpdate}
       >
         <div>Main View</div>
@@ -62,6 +63,22 @@ describe("AppLayout update-available item", () => {
     expect(menuItems).toHaveLength(2);
     fireEvent.click(menuItems[1]);
     expect(onApplyUpdate).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows that the update is under way and ignores further clicks", () => {
+    const onApplyUpdate = vi.fn();
+    renderLayout(true, onApplyUpdate, true);
+    const sidebar = within(screen.getByTestId("desktop-sidebar"));
+    const item = sidebar.getByRole("button", { name: /updating/i });
+    expect(item.textContent).toContain("Folio will reload");
+    expect(item).toHaveProperty("disabled", true);
+    expect(item.getAttribute("aria-busy")).toBe("true");
+    const header = within(screen.getByRole("banner"));
+    const headerButton = header.getByRole("button", { name: "Updating Folio. It will reload" });
+    expect(headerButton).toHaveProperty("disabled", true);
+    fireEvent.click(item);
+    fireEvent.click(headerButton);
+    expect(onApplyUpdate).not.toHaveBeenCalled();
   });
 });
 

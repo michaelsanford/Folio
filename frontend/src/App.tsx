@@ -159,7 +159,7 @@ function AppContent() {
   // Authentication State
   const [authStatus, setAuthStatus] = useState<AuthState>(initialAuthState);
 
-  const { updateReady, applyUpdate } = usePwaUpdate();
+  const { updateReady, updating, applyUpdate } = usePwaUpdate();
   const canEdit = useCanEdit();
   // Appearance settings follow the signed-in user (stored in their profile).
   usePreferencesSync(authStatus.confirmed && authStatus.authenticated && profilePrefs !== undefined, profilePrefs);
@@ -363,6 +363,7 @@ function AppContent() {
       onManageHousehold={() => setIsHouseholdModalOpen(true)}
       onSignOut={authStatus.auth_required ? handleSignOut : undefined}
       updateReady={updateReady}
+      updating={updating}
       onApplyUpdate={applyUpdate}
     >
       {loadFailed && !isLoading && (

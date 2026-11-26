@@ -4,7 +4,6 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
-  ArrowRight,
   Mail,
   Copy,
   Check,
@@ -151,24 +150,17 @@ interface PrimaryButtonProps {
   children: React.ReactNode;
 }
 
-/** Full-width submit button; the arrow appears on hover or keyboard focus. */
+/** Full-width submit button; its label stays put on hover and focus. */
 const PrimaryButton: React.FC<PrimaryButtonProps> = ({ disabled, isLoading, children }) => (
   <button
     type="submit"
     disabled={disabled}
-    className="group w-full h-11 px-4 rounded-lg bg-accent-main hover:bg-[var(--accent-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-accent-main text-accent-contrast text-sm font-semibold flex items-center justify-center gap-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)] transition-colors active:scale-[0.98] cursor-pointer"
+    className="w-full h-11 px-4 rounded-lg bg-accent-main hover:bg-[var(--accent-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-accent-main text-accent-contrast text-sm font-semibold flex items-center justify-center gap-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)] transition-colors active:scale-[0.98] cursor-pointer"
   >
     {isLoading ? (
       <div className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin"></div>
     ) : (
-      <>
-        <span>{children}</span>
-        <ArrowRight
-          className="w-4 h-4 hidden group-hover:block group-focus-visible:block group-disabled:hidden"
-          strokeWidth={1.75}
-          aria-hidden="true"
-        />
-      </>
+      <span>{children}</span>
     )}
   </button>
 );
