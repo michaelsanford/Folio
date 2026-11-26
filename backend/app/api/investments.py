@@ -1,5 +1,5 @@
 """Investment holdings, prices, activity, and performance."""
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
@@ -13,6 +13,7 @@ from app.models.investment import (
     InvestmentActivity,
     Lot,
     PriceQuote,
+    QuoteSource,
     Security,
 )
 from app.schemas.investment import (
@@ -44,52 +45,11 @@ from app.services.investments.quote_fetcher import (
     revalue_accounts,
     update_quotes_for_securities,
 )
-from app.services.investments.symbols import quote_candidates
+from app.services.investments.securities import (
+    get_or_create_security as _get_or_create_security,
+)
 
 router = APIRouter(prefix="/investments", tags=["Investments"])
-
-
-def _find_security(db: Session, symbol: str, currency: str | None = None) -> Security | None:
-    """An existing security for this symbol, or for the listing it means.
-
-    ``XEQT`` typed in a CAD account finds ``XEQT.TO`` rather than becoming a
-    second, unquotable security.
-    """
-    symbol = symbol.strip().upper()
-    exact = db.query(Security).filter(Security.symbol == symbol).first()
-    if exact:
-        return exact
-    candidates = quote_candidates(symbol, currency)
-    if not candidates:
-        return None
-    matches = (
-        db.query(Security)
-        .filter(Security.symbol.in_(candidates) | Security.quote_symbol.in_(candidates))
-        .all()
-    )
-    # Most likely listing first, as quote_candidates orders them.
-    rank = {c: i for i, c in enumerate(candidates)}
-    matches.sort(key=lambda s: min(rank.get(s.symbol, 99), rank.get(s.quote_symbol or "", 99)))
-    return matches[0] if matches else None
-
-
-def _get_or_create_security(
-    db: Session,
-    symbol: str,
-    name: str | None = None,
-    asset_class=None,
-    currency: str | None = None,
-) -> Security:
-    symbol = symbol.strip().upper()
-    security = _find_security(db, symbol, currency)
-    if security:
-        return security
-    security = Security(symbol=symbol, name=name, currency=(currency or "CAD").upper())
-    if asset_class is not None:
-        security.asset_class = asset_class
-    db.add(security)
-    db.flush()
-    return security
 
 
 def _require_investment_account(db: Session, account_id: str) -> Account:
@@ -193,9 +153,43 @@ def create_holding(payload: HoldingCreate, db: Session = Depends(get_db)):
             )
         )
 
+    if payload.price is not None:
+        _record_price_with_holding(db, security, payload)
+
     db.commit()
     db.refresh(holding)
     return _valuation_to_schema(holding_valuation(db, holding))
+
+
+def _record_price_with_holding(db: Session, security: Security, payload: HoldingCreate) -> None:
+    """Save the price chosen in the Add holding form as today's quote.
+
+    A typed price is MANUAL and wins for the day, as on the prices form. A
+    looked-up price keeps its source so a later refresh can update it, and
+    never replaces a price typed by hand earlier today.
+    """
+    today = date.today()
+    quote = (
+        db.query(PriceQuote)
+        .filter(PriceQuote.security_id == security.id, PriceQuote.as_of_date == today)
+        .first()
+    )
+    manual = payload.price_source in (None, QuoteSource.MANUAL.value)
+    if quote is not None and quote.source == QuoteSource.MANUAL.value and not manual:
+        return
+    if quote is None:
+        quote = PriceQuote(security_id=security.id, as_of_date=today)
+        db.add(quote)
+    if manual:
+        _set_manual_price(quote, payload.price)
+        return
+    now = datetime.now(timezone.utc)
+    quote.price_cents = to_cents(payload.price)
+    quote.source = payload.price_source
+    quote.session = payload.price_session
+    quote.quoted_at = now
+    quote.fetched_at = now
+    quote.previous_close_cents = None
 
 
 @router.delete("/holdings/{holding_id}", status_code=status.HTTP_204_NO_CONTENT)

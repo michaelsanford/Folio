@@ -132,6 +132,8 @@ class QuoteSource(str, enum.Enum):
     MANUAL = "MANUAL"
     YAHOO = "YAHOO"
     TMX = "TMX"
+    # The last price in an imported holdings export; a refresh replaces it.
+    IMPORT = "IMPORT"
 
 
 class QuoteSession(str, enum.Enum):

@@ -1,7 +1,12 @@
-from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from app.core.config import settings
 from app.models.account import AccountType
+from app.models.investment import AssetClass
 
 
 class CsvColumnMapping(BaseModel):
@@ -67,7 +72,69 @@ class ParsedRowError(BaseModel):
     message: str
 
 
+class HoldingsPositionPreview(BaseModel):
+    """One position in a holdings export, compared with the account's current one."""
+
+    symbol: str
+    name: str | None = None
+    asset_class: AssetClass = AssetClass.EQUITY
+    currency: str = settings.DEFAULT_CURRENCY
+    quantity: Decimal
+    book_cost: float
+    market_value: float
+    last_price: float | None = None
+    previous_close: float | None = None
+    # NEW: not held yet. CHANGED: quantity or book cost differ (the lots are
+    # replaced). UNCHANGED: left exactly as it is.
+    status: Literal["NEW", "CHANGED", "UNCHANGED"] = "NEW"
+    current_quantity: Decimal | None = None
+    current_book_cost: float | None = None
+
+
+class HoldingsCashLine(BaseModel):
+    currency: str
+    amount: float
+    # The file's own exchange rate, and the conversion into the account's currency.
+    rate_to_cad: float = 1.0
+    rate_to_account: float = 1.0
+    amount_in_account_currency: float = 0.0
+
+
+class HoldingsMissingPosition(BaseModel):
+    """Held in the account but absent from the file: removed only if the person asks."""
+
+    holding_id: str
+    symbol: str
+    name: str | None = None
+    quantity: Decimal
+    market_value: float
+
+
+class HoldingsComparison(BaseModel):
+    """How the file's positions line up with one account's current holdings."""
+
+    account_id: str | None = None
+    account_currency: str = settings.DEFAULT_CURRENCY
+    positions: list[HoldingsPositionPreview]
+    cash: list[HoldingsCashLine] = Field(default_factory=list)
+    cash_total: float = 0.0
+    missing: list[HoldingsMissingPosition] = Field(default_factory=list)
+    # What Folio will value the account at (prices are kept to the cent), and
+    # the broker's own total for comparison.
+    import_total: float = 0.0
+    file_total: float | None = None
+
+
+class HoldingsImportPreview(HoldingsComparison):
+    account: DetectedAccountPreview
+    as_of_date: date
+
+
 class IngestionPreviewResponse(BaseModel):
+    # HOLDINGS: a broker holdings export, described by ``holdings`` (``items``
+    # is then empty).
+    kind: Literal["TRANSACTIONS", "HOLDINGS"] = "TRANSACTIONS"
+    holdings: HoldingsImportPreview | None = None
     file_id: str | None = None
     filename: str
     file_type: str  # "CSV", "PDF", "OFX"
@@ -146,3 +213,58 @@ class StatementFileResponse(BaseModel):
     uploaded_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class HoldingsCommitPosition(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=32)
+    name: str | None = Field(None, max_length=200)
+    asset_class: AssetClass = AssetClass.EQUITY
+    currency: str = Field(settings.DEFAULT_CURRENCY, min_length=3, max_length=3)
+    quantity: Decimal = Field(..., gt=0)
+    book_cost: Decimal = Field(..., ge=0)
+    last_price: Decimal | None = Field(None, ge=0)
+    previous_close: Decimal | None = Field(None, ge=0)
+    # The broker's figure, shown in the preview; Folio values the position itself.
+    market_value: Decimal | None = None
+
+    @field_validator("symbol", "currency")
+    @classmethod
+    def upper(cls, v: str) -> str:
+        return v.strip().upper()
+
+
+class HoldingsCommitRequest(BaseModel):
+    statement_file_id: str | None = None
+    account: IngestionAccountResolution
+    as_of_date: date
+    positions: list[HoldingsCommitPosition] = Field(..., max_length=1000)
+    # Uninvested cash in the account's currency.
+    cash_total: Decimal = Decimal(0)
+    remove_holding_ids: list[str] = Field(default_factory=list, max_length=1000)
+
+
+class HoldingsCommitResponse(BaseModel):
+    account_id: str
+    account_name: str
+    account_type: AccountType
+    created: bool
+    added_count: int
+    updated_count: int
+    unchanged_count: int
+    removed_count: int
+    cash_total: float
+    new_account_balance: float
+
+
+class HoldingsCompareRequest(BaseModel):
+    """Compare a previewed file with another destination account.
+
+    The preview's own positions and cash are sent back, because the uploaded
+    file is not kept on the server.
+    """
+
+    account_id: str | None = None
+    currency: str = Field(settings.DEFAULT_CURRENCY, min_length=3, max_length=3)
+    positions: list[HoldingsCommitPosition] = Field(..., max_length=1000)
+    cash: list[HoldingsCashLine] = Field(default_factory=list, max_length=20)
+    file_total: float | None = None

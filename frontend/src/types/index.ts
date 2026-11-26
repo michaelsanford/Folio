@@ -239,7 +239,89 @@ export interface ParsedTransactionItem {
   classification_reason?: string;
 }
 
+export type HoldingStatus = "NEW" | "CHANGED" | "UNCHANGED";
+
+/** One position in a holdings export, compared with what the account holds now. */
+export interface HoldingsPositionPreview {
+  symbol: string;
+  name?: string | null;
+  asset_class: string;
+  currency: string;
+  /** Decimal as a string. */
+  quantity: string;
+  book_cost: number;
+  market_value: number;
+  last_price?: number | null;
+  previous_close?: number | null;
+  status: HoldingStatus;
+  current_quantity?: string | null;
+  current_book_cost?: number | null;
+}
+
+export interface HoldingsCashLine {
+  currency: string;
+  amount: number;
+  rate_to_cad: number;
+  rate_to_account: number;
+  amount_in_account_currency: number;
+}
+
+/** Held in the account but not in the file; removed only when ticked. */
+export interface HoldingsMissingPosition {
+  holding_id: string;
+  symbol: string;
+  name?: string | null;
+  quantity: string;
+  market_value: number;
+}
+
+export interface HoldingsComparison {
+  account_id?: string | null;
+  account_currency: string;
+  positions: HoldingsPositionPreview[];
+  cash: HoldingsCashLine[];
+  cash_total: number;
+  missing: HoldingsMissingPosition[];
+  /** What Folio will value the account at (prices to the cent). */
+  import_total: number;
+  /** The broker's own total, when the file has one. */
+  file_total?: number | null;
+}
+
+export interface HoldingsImportPreview extends HoldingsComparison {
+  account: DetectedAccountPreview;
+  as_of_date: string;
+}
+
+export interface HoldingsCommitPosition {
+  symbol: string;
+  name?: string | null;
+  asset_class: string;
+  currency: string;
+  quantity: string;
+  book_cost: number;
+  last_price?: number | null;
+  previous_close?: number | null;
+  market_value?: number | null;
+}
+
+export interface HoldingsCommitResponse {
+  account_id: string;
+  account_name: string;
+  account_type: AccountType;
+  created: boolean;
+  added_count: number;
+  updated_count: number;
+  unchanged_count: number;
+  removed_count: number;
+  cash_total: number;
+  new_account_balance: number;
+}
+
 export interface IngestionPreviewResponse {
+  /** HOLDINGS: a broker holdings export, described by `holdings`. */
+  kind?: "TRANSACTIONS" | "HOLDINGS";
+  holdings?: HoldingsImportPreview | null;
   file_id?: string | null;
   filename: string;
   file_type: string;
@@ -569,7 +651,8 @@ export interface HoldingValuation {
   quote_symbol?: string | null;
 }
 
-export type QuoteSource = "MANUAL" | "YAHOO" | "TMX";
+/** IMPORT: the last price in an imported holdings export. */
+export type QuoteSource = "MANUAL" | "YAHOO" | "TMX" | "IMPORT";
 export type QuoteSession = "PRE" | "REGULAR" | "POST";
 
 /** `POST /investments/quotes/fetch-automated`. */

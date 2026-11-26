@@ -20,6 +20,7 @@ from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.investment import (
+    AssetClass,
     Holding,
     InvestmentActivity,
     InvestmentActivityType,
@@ -151,6 +152,9 @@ def holding_valuation(
     price_cents = quote.price_cents if quote is not None else None
     price_date = quote.as_of_date if quote is not None else None
 
+    if holding.security is not None and holding.security.asset_class == AssetClass.CASH:
+        # Uninvested cash is worth its face value on any date.
+        price_cents, price_date, quote = 100, as_of or date.today(), None
     if price_cents is None:
         # No price entered yet: report cost rather than pretending the value is
         # zero, and flag it so the UI can say the valuation is unpriced.

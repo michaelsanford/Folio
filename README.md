@@ -208,6 +208,19 @@ Folio provides statutory tracking for Canadian tax-advantaged accounts:
 - **Holdings, Lots & Cost Basis**:
   - Individual purchase lot tracking with cost basis and disposal accounting.
   - Fractional-share precision (`Numeric(28, 8)`) for modern brokers and crypto.
+  - **Add holding** looks up the symbol as you type (`XEQT` → `XEQT.TO`). It fills in the security's name and today's price, and shows the market value (quantity × price). You can type over either one. The price is saved with the holding, so the holding is valued straight away. A looked-up price keeps its source, so a later quote refresh updates it. A price you typed counts as entered by hand: refreshes leave it alone for that day.
+- **Import Holdings from a Broker Export**:
+  - On **Import** (or **Investments → Import holdings**), drop a broker holdings export, such as an RBC Direct Investing *Holdings* CSV. Folio recognises it as a snapshot of one account, not a list of transactions.
+  - **Matching the account:** the account is matched to an existing investment or registered account by the last four digits of its number. If none matches, the preview proposes a new account with the type taken from the file (TFSA, RRSP, RESP, and so on). Only investment and registered accounts can be chosen.
+  - **The preview shows:**
+    - each position as **New**, **Changed** (with the quantity before), or **Unchanged**;
+    - the uninvested cash, with other currencies converted at the file's own exchange rate;
+    - the total Folio will value the account at, next to the file's own total. Folio keeps prices to the cent, so a sub-cent price can leave a small difference.
+  - **What the import does:**
+    - It sets each position to the file's quantity and book cost. An unchanged position keeps its lots and their purchase dates. A changed one gets a single lot dated the export day.
+    - The file's last prices are recorded for that day. A price you typed in, or one already fetched for the day, is kept. Later quote refreshes take over from the imported prices.
+    - Cash becomes a **Cash** position valued at face value. It is never quoted.
+  - Positions Folio holds that the file doesn't list (for example ones you sold) are shown separately. They are removed only if you tick them.
 - **Dual Performance Analytics**:
   - **Time-Weighted Return (TWR)**: Measures investment selection performance independent of cash flow timing.
   - **Money-Weighted Return (MWR / XIRR)**: Measures your actual portfolio return including the timing and magnitude of your deposits and withdrawals.

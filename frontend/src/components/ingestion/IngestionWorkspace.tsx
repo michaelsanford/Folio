@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import type {
   Account,
-  AccountType,
   Category,
   IngestionAccountResolution,
   IngestionPreviewResponse,
@@ -18,39 +17,19 @@ import type {
 } from "../../types";
 import { api } from "../../services/api";
 import { Money } from "../common/Money";
+import { HoldingsImportReview } from "./HoldingsImportReview";
 import { formatMoney } from "../../utils/format";
 import {
-  ACCOUNT_CATEGORY_LABELS,
-  CANADIAN_ACCOUNT_TYPES,
-  type AccountCategoryGroup,
-} from "../../constants/canadianAccountTypes";
+  type AccountResolutionDraft,
+  DestinationSelect,
+  NewAccountFields,
+  compactSelectClass,
+} from "./AccountDraftFields";
 
 const selectClass =
   "h-9 px-3 rounded-lg border border-default bg-input text-sm text-main focus:outline-none focus:border-[var(--accent-primary)]";
-const compactSelectClass =
-  "h-8 px-2 rounded-lg border border-default bg-input text-xs text-main focus:outline-none focus:border-[var(--accent-primary)]";
-const compactInputClass =
-  "h-8 px-2.5 rounded-lg border border-default bg-input text-xs text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]";
 const checkboxClass = "rounded border-default bg-input text-accent-main focus:ring-accent-main";
 const chip = "inline-flex items-center rounded-md px-1.5 py-0.5 text-xs";
-
-const CATEGORY_ORDER: AccountCategoryGroup[] = [
-  "CASH",
-  "REGISTERED",
-  "INVESTMENT",
-  "DEBT",
-  "ASSET",
-];
-
-interface AccountResolutionDraft {
-  mode: "create" | "existing";
-  existing_account_id: string;
-  name: string;
-  type: AccountType;
-  institution: string;
-  account_number_mask: string;
-  currency: string;
-}
 
 interface IngestionWorkspaceProps {
   accounts: Account[];
@@ -201,22 +180,6 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
 
   const activeAccount = accounts.find((a) => a.id === selectedAccountId);
   const detectedAccounts = preview?.detected_accounts ?? [];
-
-  const groupedAccountTypes = useMemo(() => {
-    const groups: Record<AccountCategoryGroup, { type: AccountType; name: string }[]> = {
-      CASH: [],
-      REGISTERED: [],
-      INVESTMENT: [],
-      DEBT: [],
-      ASSET: [],
-    };
-    (Object.values(CANADIAN_ACCOUNT_TYPES) as Array<(typeof CANADIAN_ACCOUNT_TYPES)[AccountType]>).forEach(
-      (meta) => {
-        groups[meta.category].push({ type: meta.type, name: meta.name });
-      }
-    );
-    return groups;
-  }, []);
 
   const indexedItems = useMemo(() => {
     if (!preview) return [];
@@ -593,8 +556,8 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
         <div>
           <h1 className="text-2xl font-medium text-main">Import statements</h1>
           <p className="mt-1 text-sm text-sub">
-            Upload CSV exports, PDF statements, or OFX/QFX downloads. Accounts are detected and
-            created automatically when needed.
+            Upload CSV exports, PDF statements, OFX/QFX downloads, or a broker holdings export.
+            Accounts are detected and created automatically when needed.
           </p>
         </div>
 
@@ -691,7 +654,8 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                 {isLoading ? "Reading statement…" : "Drop a statement here, or browse"}
               </p>
               <p className="text-sm text-sub">
-                Single or multi-account CSV exports, PDF statements, and OFX, QFX or QBO files
+                Single or multi-account CSV exports, PDF statements, and OFX, QFX or QBO files,
+                or a broker holdings export (CSV) to load an investment account
               </p>
               <p className="text-xs text-muted">Up to {maxUploadMb} MB per file</p>
             </div>
@@ -703,8 +667,29 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
         </div>
       )}
 
+      {/* Holdings export: positions, cash and destination */}
+      {preview?.kind === "HOLDINGS" && preview.holdings && (
+        <HoldingsImportReview
+          holdings={preview.holdings}
+          filename={preview.filename}
+          fileId={preview.file_id}
+          accounts={accounts}
+          onCancel={() => {
+            setPreview(null);
+            setErrorMessage(null);
+          }}
+          onError={setErrorMessage}
+          onCommitted={(message) => {
+            setErrorMessage(null);
+            setSuccessMessage(message);
+            setPreview(null);
+            onCommitSuccess();
+          }}
+        />
+      )}
+
       {/* Parse preview table & reconciliation */}
-      {preview && (
+      {preview && preview.kind !== "HOLDINGS" && (
         <div className="space-y-4 animate-in fade-in">
           {/* Summary strip */}
           <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 p-4 rounded-xl bg-surface border border-subtle">
@@ -881,133 +866,20 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-2 min-w-0 shrink-0">
-                          <label
-                            htmlFor={`target-${det.source_account_key}`}
-                            className="text-xs text-sub shrink-0"
-                          >
-                            Destination
-                          </label>
-                          <select
-                            id={`target-${det.source_account_key}`}
-                            value={
-                              draft.mode === "existing" && draft.existing_account_id
-                                ? draft.existing_account_id
-                                : "create"
-                            }
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val === "create") {
-                                updateAccountResolution(det.source_account_key, {
-                                  mode: "create",
-                                  existing_account_id: "",
-                                });
-                              } else {
-                                updateAccountResolution(det.source_account_key, {
-                                  mode: "existing",
-                                  existing_account_id: val,
-                                });
-                              }
-                            }}
-                            className={`max-w-full truncate ${compactSelectClass}`}
-                          >
-                            <option value="create">Create new account</option>
-                            {accounts.map((acc) => (
-                              <option key={acc.id} value={acc.id}>
-                                {acc.name}
-                                {acc.account_number_mask ? ` (${acc.account_number_mask})` : ""}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                        <DestinationSelect
+                          id={`target-${det.source_account_key}`}
+                          draft={draft}
+                          accounts={accounts}
+                          onChange={(patch) => updateAccountResolution(det.source_account_key, patch)}
+                        />
                       </div>
 
                       {draft.mode === "create" && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pl-0 sm:pl-6">
-                          <div>
-                            <label className="block text-[11px] text-muted mb-1">
-                              Name
-                            </label>
-                            <input
-                              type="text"
-                              value={draft.name}
-                              maxLength={100}
-                              aria-label={`Account name for ${det.suggested_name}`}
-                              onChange={(e) =>
-                                updateAccountResolution(det.source_account_key, {
-                                  name: e.target.value,
-                                })
-                              }
-                              className={`w-full ${compactInputClass}`}
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] text-muted mb-1">
-                              Type
-                            </label>
-                            <select
-                              value={draft.type}
-                              aria-label={`Account type for ${det.suggested_name}`}
-                              onChange={(e) =>
-                                updateAccountResolution(det.source_account_key, {
-                                  type: e.target.value as AccountType,
-                                })
-                              }
-                              className={`w-full ${compactSelectClass}`}
-                            >
-                              {CATEGORY_ORDER.map((group) => (
-                                <optgroup
-                                  key={group}
-                                  label={ACCOUNT_CATEGORY_LABELS[group]}
-                                >
-                                  {groupedAccountTypes[group].map((opt) => (
-                                    <option key={opt.type} value={opt.type}>
-                                      {opt.name}
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] text-muted mb-1">
-                              Institution
-                            </label>
-                            <input
-                              type="text"
-                              value={draft.institution}
-                              maxLength={100}
-                              placeholder="Optional (e.g. RBC)"
-                              aria-label={`Institution for ${det.suggested_name}`}
-                              onChange={(e) =>
-                                updateAccountResolution(det.source_account_key, {
-                                  institution: e.target.value,
-                                })
-                              }
-                              className={`w-full ${compactInputClass}`}
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] text-muted mb-1">
-                              Currency
-                            </label>
-                            <input
-                              type="text"
-                              value={draft.currency}
-                              maxLength={3}
-                              aria-label={`Currency for ${det.suggested_name}`}
-                              onChange={(e) =>
-                                updateAccountResolution(det.source_account_key, {
-                                  currency: e.target.value.toUpperCase(),
-                                })
-                              }
-                              className={`w-full uppercase ${compactInputClass}`}
-                            />
-                          </div>
-                        </div>
+                        <NewAccountFields
+                          draft={draft}
+                          label={det.suggested_name}
+                          onChange={(patch) => updateAccountResolution(det.source_account_key, patch)}
+                        />
                       )}
                     </div>
                   );

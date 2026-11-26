@@ -470,7 +470,11 @@ function AppContent() {
       )}
 
       {!isLoading && activeTab === "investments" && (
-        <InvestmentsView accounts={accounts} onDataModified={loadAllData} />
+        <InvestmentsView
+          accounts={accounts}
+          onDataModified={loadAllData}
+          onImportHoldings={() => setActiveTab("ingestion")}
+        />
       )}
 
       {!isLoading && activeTab === "loans" && (

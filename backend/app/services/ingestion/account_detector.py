@@ -255,8 +255,14 @@ def infer_institution(
     return (None, None)
 
 
+# Account kinds written as acronyms, kept in capitals ("TFSA", not "Tfsa").
+_ACRONYM_LABELS = {"TFSA", "RRSP", "RESP", "FHSA", "RDSP", "RRIF", "LIRA", "LIF", "IPP", "HISA", "GIC", "LOC", "CELI", "REER"}
+
+
 def _format_raw_type_label(raw_type: str) -> str:
     cleaned = raw_type.strip()
+    if cleaned.isupper() and cleaned in _ACRONYM_LABELS:
+        return cleaned
     if cleaned.isupper():
         upper_map = {
             "CHECKING": "Chequing",

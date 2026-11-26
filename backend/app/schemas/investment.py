@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -52,6 +53,12 @@ class HoldingCreate(BaseModel):
     name: str | None = None
     asset_class: AssetClass = AssetClass.EQUITY
     lots: list[LotCreate] = []
+    # Today's price, saved with the holding so it is valued straight away.
+    # MANUAL when the person typed it; otherwise the source of the looked-up
+    # quote, which later refreshes may update.
+    price: Decimal | None = Field(None, ge=0)
+    price_source: Literal["MANUAL", "YAHOO", "TMX"] | None = None
+    price_session: Literal["PRE", "REGULAR", "POST"] | None = None
 
     @field_validator("symbol")
     @classmethod

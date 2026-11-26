@@ -9,6 +9,12 @@ import type {
   IngestionPreviewResponse,
   IngestionAccountResolution,
   IngestionCommitResponse,
+  HoldingsCashLine,
+  HoldingsCommitPosition,
+  HoldingsCommitResponse,
+  HoldingsComparison,
+  QuoteSession,
+  QuoteSource,
   AmortizationScheduleResponse,
   LoanSplitSuggestion,
   DashboardAnalyticsResponse,
@@ -674,6 +680,29 @@ export const api = {
       method: "POST",
       body: JSON.stringify(req),
     }),
+  compareHoldingsImport: (req: {
+    account_id?: string | null;
+    currency: string;
+    positions: HoldingsCommitPosition[];
+    cash: HoldingsCashLine[];
+    file_total?: number | null;
+  }) =>
+    request<HoldingsComparison>("/ingestion/holdings/compare", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
+  commitHoldingsImport: (req: {
+    statement_file_id?: string | null;
+    account: IngestionAccountResolution;
+    as_of_date: string;
+    positions: HoldingsCommitPosition[];
+    cash_total: number;
+    remove_holding_ids: string[];
+  }) =>
+    request<HoldingsCommitResponse>("/ingestion/holdings/commit", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
   uploadStatement: async (accountId: string, file: File) => {
     const formData = new FormData();
     formData.append("file", file);
@@ -772,6 +801,10 @@ export const api = {
     name?: string;
     asset_class?: string;
     lots: { trade_date: string; quantity: string; cost_basis: string; fee?: string }[];
+    /** Today's price, saved with the holding: MANUAL when typed, else the lookup's source. */
+    price?: string;
+    price_source?: QuoteSource;
+    price_session?: QuoteSession | null;
   }) =>
     request<HoldingValuation>("/investments/holdings", {
       method: "POST",

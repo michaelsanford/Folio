@@ -1,0 +1,410 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, Building2, CheckCircle2, FileText, RefreshCw, Wallet } from "lucide-react";
+import type {
+  Account,
+  HoldingsCommitPosition,
+  HoldingsCommitResponse,
+  HoldingsComparison,
+  HoldingsImportPreview,
+  HoldingsPositionPreview,
+  IngestionAccountResolution,
+} from "../../types";
+import { api } from "../../services/api";
+import { formatMoney, formatNumber } from "../../utils/format";
+import { isInvestmentAccount } from "../../constants/canadianAccountTypes";
+import { type AccountResolutionDraft, DestinationSelect, NewAccountFields } from "./AccountDraftFields";
+
+const chip = "inline-flex items-center rounded-md px-1.5 py-0.5 text-xs";
+const checkboxClass = "rounded border-default bg-input text-accent-main focus:ring-accent-main";
+
+interface HoldingsImportReviewProps {
+  holdings: HoldingsImportPreview;
+  filename: string;
+  fileId?: string | null;
+  accounts: Account[];
+  onCancel: () => void;
+  onCommitted: (message: string) => void;
+  onError: (message: string) => void;
+}
+
+const quantityText = (q: string | number) => {
+  const n = Number(q);
+  return Number.isFinite(n) ? formatNumber(n, 8) : String(q);
+};
+
+const formatAsOf = (iso: string) => {
+  const d = new Date(`${iso}T12:00:00`);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" });
+};
+
+function toCommitPositions(positions: HoldingsPositionPreview[]): HoldingsCommitPosition[] {
+  return positions.map((p) => ({
+    symbol: p.symbol,
+    name: p.name,
+    asset_class: p.asset_class,
+    currency: p.currency,
+    quantity: String(p.quantity),
+    book_cost: p.book_cost,
+    last_price: p.last_price,
+    previous_close: p.previous_close,
+    market_value: p.market_value,
+  }));
+}
+
+const StatusChip: React.FC<{ position: HoldingsPositionPreview }> = ({ position }) => {
+  if (position.status === "UNCHANGED") {
+    return <span className={`${chip} bg-surface-subtle text-sub`}>Unchanged</span>;
+  }
+  if (position.status === "CHANGED") {
+    const was = position.current_quantity != null ? ` · was ${quantityText(position.current_quantity)} units` : "";
+    return <span className={`${chip} bg-warning-subtle text-warning`}>Changed{was}</span>;
+  }
+  return <span className={`${chip} bg-accent-subtle text-accent-main`}>New</span>;
+};
+
+/**
+ * Review of a broker holdings export before it replaces an account's positions:
+ * where it goes, what is new or changed, the cash, and which positions Folio
+ * holds that the file no longer lists (removed only when ticked).
+ */
+export const HoldingsImportReview: React.FC<HoldingsImportReviewProps> = ({
+  holdings,
+  filename,
+  fileId,
+  accounts,
+  onCancel,
+  onCommitted,
+  onError,
+}) => {
+  const investmentAccounts = useMemo(() => accounts.filter((a) => isInvestmentAccount(a.type)), [accounts]);
+  const det = holdings.account;
+  const [draft, setDraft] = useState<AccountResolutionDraft>(() => ({
+    mode: det.matched_account_id ? "existing" : "create",
+    existing_account_id: det.matched_account_id || "",
+    name: det.suggested_name,
+    type: det.suggested_type,
+    institution: det.institution || "",
+    account_number_mask: det.account_number_mask || "",
+    currency: det.currency || "CAD",
+  }));
+  const [comparison, setComparison] = useState<HoldingsComparison>(holdings);
+  const [isComparing, setIsComparing] = useState(false);
+  const [removeIds, setRemoveIds] = useState<Set<string>>(new Set());
+  const [isCommitting, setIsCommitting] = useState(false);
+
+  const commitPositions = useMemo(() => toCommitPositions(holdings.positions), [holdings.positions]);
+
+  // Line the file up again whenever the destination (or a new account's currency) changes.
+  const destinationKey =
+    draft.mode === "existing" ? `existing:${draft.existing_account_id}` : `create:${draft.currency.toUpperCase()}`;
+  const firstKey = useRef(destinationKey);
+  useEffect(() => {
+    if (destinationKey === firstKey.current) {
+      setComparison(holdings);
+      return;
+    }
+    if (draft.mode === "create" && draft.currency.trim().length !== 3) return;
+    let cancelled = false;
+    setIsComparing(true);
+    api
+      .compareHoldingsImport({
+        account_id: draft.mode === "existing" ? draft.existing_account_id : null,
+        currency: (draft.currency || "CAD").toUpperCase(),
+        positions: commitPositions,
+        cash: holdings.cash,
+        file_total: holdings.file_total,
+      })
+      .then((res) => {
+        if (cancelled) return;
+        setComparison(res);
+        setRemoveIds(new Set());
+      })
+      .catch((err: any) => !cancelled && onError(`Could not compare with that account: ${err.message}`))
+      .finally(() => !cancelled && setIsComparing(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [destinationKey]);
+
+  const currency = comparison.account_currency || "CAD";
+  const money = (v: number) => formatMoney(v, { currency });
+  const counts = comparison.positions.reduce(
+    (acc, p) => ({ ...acc, [p.status]: (acc[p.status] ?? 0) + 1 }),
+    {} as Record<string, number>
+  );
+  const difference =
+    comparison.file_total != null ? Math.round((comparison.import_total - comparison.file_total) * 100) / 100 : null;
+  const accountLabel =
+    draft.mode === "existing"
+      ? investmentAccounts.find((a) => a.id === draft.existing_account_id)?.name || det.suggested_name
+      : draft.name || det.suggested_name;
+
+  const toggleRemove = (id: string) =>
+    setRemoveIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const handleCommit = async () => {
+    if (draft.mode === "create" && !draft.name.trim()) {
+      onError(`Please enter a name for "${det.suggested_name}" before importing.`);
+      return;
+    }
+    const account: IngestionAccountResolution =
+      draft.mode === "existing" && draft.existing_account_id
+        ? {
+            source_account_key: det.source_account_key,
+            existing_account_id: draft.existing_account_id,
+            type: draft.type,
+            currency: (draft.currency || "CAD").toUpperCase(),
+          }
+        : {
+            source_account_key: det.source_account_key,
+            name: draft.name.trim(),
+            type: draft.type,
+            institution: draft.institution.trim() || null,
+            account_number_mask: draft.account_number_mask || null,
+            currency: (draft.currency || "CAD").trim().toUpperCase() || "CAD",
+          };
+    setIsCommitting(true);
+    try {
+      const res: HoldingsCommitResponse = await api.commitHoldingsImport({
+        statement_file_id: fileId ?? null,
+        account,
+        as_of_date: holdings.as_of_date,
+        positions: commitPositions,
+        cash_total: comparison.cash_total,
+        remove_holding_ids: comparison.missing.filter((m) => removeIds.has(m.holding_id)).map((m) => m.holding_id),
+      });
+      const parts: string[] = [];
+      if (res.added_count) parts.push(`${res.added_count} new`);
+      if (res.updated_count) parts.push(`${res.updated_count} changed`);
+      if (res.unchanged_count) parts.push(`${res.unchanged_count} unchanged`);
+      if (res.removed_count) parts.push(`${res.removed_count} removed`);
+      if (res.cash_total) parts.push(`cash ${money(res.cash_total)}`);
+      onCommitted(
+        `${res.account_name}${res.created ? " (new account)" : ""} updated: ${parts.join(", ")}. ` +
+          `Balance ${money(res.new_account_balance)}`
+      );
+    } catch (err: any) {
+      onError(`Import error: ${err.message}`);
+    } finally {
+      setIsCommitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4 animate-in fade-in">
+      {/* Summary strip */}
+      <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 p-4 rounded-xl bg-surface border border-subtle">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <FileText className="w-4 h-4 text-muted shrink-0" strokeWidth={1.5} />
+            <span className="text-sm font-medium text-main truncate max-w-[160px] sm:max-w-xs">{filename}</span>
+            <span className={`${chip} bg-surface-subtle text-sub`}>Holdings</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted">
+            <span>As of {formatAsOf(holdings.as_of_date)}</span>
+            <span>·</span>
+            <span>
+              <span className="tabular-nums text-main">{comparison.positions.length}</span> positions
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 sm:flex-none h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleCommit}
+            disabled={isCommitting || isComparing}
+            className="flex-1 sm:flex-none h-9 px-4 inline-flex items-center justify-center gap-2 rounded-lg bg-accent-main hover:bg-accent-main disabled:opacity-50 text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] cursor-pointer"
+          >
+            {isCommitting ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" strokeWidth={1.5} /> Importing…
+              </>
+            ) : (
+              <>
+                Import holdings <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Destination */}
+      <section className="p-4 rounded-xl bg-surface border border-subtle space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <Building2 className="w-4 h-4 text-muted shrink-0" strokeWidth={1.5} />
+            <span className="text-sm font-medium text-main whitespace-normal break-words">{accountLabel}</span>
+            {det.account_number_mask && (
+              <span className={`${chip} bg-surface-subtle text-sub font-mono`}>{det.account_number_mask}</span>
+            )}
+            <span
+              className={`${chip} ${
+                draft.mode === "existing" ? "bg-positive-subtle text-positive" : "bg-accent-subtle text-accent-main"
+              }`}
+            >
+              {draft.mode === "existing" ? "Existing" : "New account"}
+            </span>
+          </div>
+          <DestinationSelect
+            id="holdings-destination"
+            draft={draft}
+            accounts={investmentAccounts}
+            onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+          />
+        </div>
+        {draft.mode === "create" && (
+          <NewAccountFields
+            draft={draft}
+            label={det.suggested_name}
+            allowedTypes={isInvestmentAccount}
+            onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+          />
+        )}
+      </section>
+
+      {/* Positions */}
+      <section
+        aria-label="Positions in this file"
+        aria-busy={isComparing}
+        className={`rounded-xl bg-surface border border-subtle overflow-hidden ${isComparing ? "opacity-60" : ""}`}
+      >
+        <div className="px-4 py-3 border-b border-subtle flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+          <h2 className="text-sm font-medium text-main">Positions</h2>
+          {counts.NEW ? <span>{counts.NEW} new</span> : null}
+          {counts.CHANGED ? <span>{counts.CHANGED} changed</span> : null}
+          {counts.UNCHANGED ? <span>{counts.UNCHANGED} unchanged</span> : null}
+        </div>
+
+        {/* Mobile cards */}
+        <ul className="md:hidden divide-y divide-subtle">
+          {comparison.positions.map((p) => (
+            <li key={p.symbol} className="p-3 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-sm text-main">{p.symbol}</span>
+                <span className="tabular-nums text-sm text-main">{money(p.market_value)}</span>
+              </div>
+              {p.name && <div className="text-xs text-sub break-words">{p.name}</div>}
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+                <span className="tabular-nums">
+                  {quantityText(p.quantity)} units · cost {money(p.book_cost)}
+                </span>
+                <StatusChip position={p} />
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        {/* Desktop table */}
+        <table className="hidden md:table w-full text-sm" data-testid="holdings-review-table">
+          <thead>
+            <tr className="text-left text-xs text-muted border-b border-subtle">
+              <th className="px-4 py-2 font-normal">Symbol</th>
+              <th className="px-4 py-2 font-normal">Name</th>
+              <th className="px-4 py-2 font-normal text-right">Quantity</th>
+              <th className="px-4 py-2 font-normal text-right">Book cost</th>
+              <th className="px-4 py-2 font-normal text-right">Market value</th>
+              <th className="px-4 py-2 font-normal">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-subtle">
+            {comparison.positions.map((p) => (
+              <tr key={p.symbol}>
+                <td className="px-4 py-2 font-mono text-main">{p.symbol}</td>
+                <td className="px-4 py-2 text-sub">{p.name}</td>
+                <td className="px-4 py-2 text-right tabular-nums text-main">{quantityText(p.quantity)}</td>
+                <td className="px-4 py-2 text-right tabular-nums text-sub">{money(p.book_cost)}</td>
+                <td className="px-4 py-2 text-right tabular-nums text-main">{money(p.market_value)}</td>
+                <td className="px-4 py-2">
+                  <StatusChip position={p} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Cash */}
+        <div className="px-4 py-3 border-t border-subtle flex flex-wrap items-center justify-between gap-2 text-sm">
+          <div className="flex items-center gap-2 text-main">
+            <Wallet className="w-4 h-4 text-muted shrink-0" strokeWidth={1.5} />
+            <span>Cash</span>
+            {comparison.cash.length > 0 && (
+              <span className="text-xs text-muted">
+                {comparison.cash
+                  .map((c) =>
+                    c.currency === currency
+                      ? formatMoney(c.amount, { currency: c.currency })
+                      : `${formatMoney(c.amount, { currency: c.currency })} at ${formatNumber(c.rate_to_account, 5)}`
+                  )
+                  .join(" + ")}
+              </span>
+            )}
+          </div>
+          <span className="tabular-nums text-main">{money(comparison.cash_total)}</span>
+        </div>
+
+        {/* Total and check against the file */}
+        <div className="px-4 py-3 border-t border-subtle flex flex-wrap items-center justify-between gap-2 text-sm">
+          <span className="font-medium text-main">Total</span>
+          <span className="flex flex-wrap items-center gap-2">
+            {difference === null ? null : difference === 0 ? (
+              <span className="inline-flex items-center gap-1 text-xs text-positive">
+                <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.5} /> Matches the file
+              </span>
+            ) : (
+              <span className="text-xs text-muted">
+                File says {money(comparison.file_total!)}; Folio keeps prices to the cent
+              </span>
+            )}
+            <span className="tabular-nums font-medium text-main">{money(comparison.import_total)}</span>
+          </span>
+        </div>
+      </section>
+
+      {/* Held in Folio but not in the file */}
+      {comparison.missing.length > 0 && (
+        <section className="p-4 rounded-xl bg-surface border border-subtle space-y-3">
+          <div>
+            <h2 className="text-sm font-medium text-main">In Folio but not in this file</h2>
+            <p className="text-xs text-sub mt-0.5">
+              Tick a position to remove it, for example one you have sold. Unticked positions are kept as they are.
+            </p>
+          </div>
+          <ul className="divide-y divide-subtle border border-subtle rounded-lg overflow-hidden">
+            {comparison.missing.map((m) => (
+              <li key={m.holding_id} className="p-3 flex items-center justify-between gap-3">
+                <label className="flex items-center gap-2 min-w-0 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={removeIds.has(m.holding_id)}
+                    onChange={() => toggleRemove(m.holding_id)}
+                    aria-label={`Remove ${m.symbol}`}
+                    className={checkboxClass}
+                  />
+                  <span className="font-mono text-sm text-main">{m.symbol}</span>
+                  {m.name && <span className="text-xs text-sub truncate">{m.name}</span>}
+                </label>
+                <span className="text-xs text-muted tabular-nums shrink-0">
+                  {quantityText(m.quantity)} units · {money(m.market_value)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+};

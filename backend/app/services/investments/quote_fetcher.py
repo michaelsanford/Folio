@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.core.money import from_cents, to_cents
 from app.models.account import Account, AccountType
-from app.models.investment import PriceQuote, QuoteSource, Security
+from app.models.investment import AssetClass, PriceQuote, QuoteSource, Security
 from app.services.investments.market_hours import (
     default_timezone,
     has_extended_hours,
@@ -476,6 +476,8 @@ def update_quotes_for_securities(
     skipped_recent: list[str] = []
     skipped_manual: list[str] = []
     for sec in securities:
+        if sec.asset_class == AssetClass.CASH:
+            continue  # valued at par, never quoted
         candidates = [sec.quote_symbol] if sec.quote_symbol else quote_candidates(sec.symbol, sec.currency)
         if not candidates:
             continue

@@ -26,6 +26,13 @@ from app.models.statement_file import StatementFile
 from app.models.transaction import Transaction, TransactionSplit, TransactionStatus
 from app.schemas.ingestion import (
     CommittedAccountSummary,
+    DetectedAccountPreview,
+    HoldingsCommitRequest,
+    HoldingsCommitResponse,
+    HoldingsComparison,
+    HoldingsCompareRequest,
+    HoldingsImportPreview,
+    IngestionAccountResolution,
     IngestionCommitRequest,
     IngestionCommitResponse,
     IngestionPreviewResponse,
@@ -34,9 +41,22 @@ from app.schemas.ingestion import (
 from app.services.categorization.transfer_matcher import link_offsetting_transfers
 from app.services.ingestion.account_detector import (
     get_account_type_defaults,
+    infer_account_type,
+    infer_institution,
+    make_source_account_key,
     mask_account_number,
+    match_existing_account,
+    suggest_account_name,
 )
-from app.services.ingestion.csv_parser import parse_csv_content
+from app.services.ingestion.csv_parser import _decode_csv_bytes, parse_csv_content
+from app.services.ingestion.holdings_parser import looks_like_holdings_export, parse_holdings_export
+from app.services.investments.holdings_import import (
+    apply_holdings,
+    cash_from_file,
+    compare_holdings,
+    positions_from_file,
+)
+from app.services.investments.quote_fetcher import INVESTMENT_ACCOUNT_TYPES, revalue_accounts
 from app.services.ingestion.deduplication import (
     check_existing_duplicates,
     generate_transaction_hash,
@@ -139,6 +159,80 @@ def _mark_closed_period(db: Session, preview: IngestionPreviewResponse) -> Inges
     return preview
 
 
+def _holdings_export_text(ext: str, content: bytes) -> str | None:
+    """The decoded text when the upload is a broker holdings export, else None."""
+    if ext not in (".csv", ".txt", ""):
+        return None
+    text = _decode_csv_bytes(content)
+    return text if looks_like_holdings_export(text) else None
+
+
+def _holdings_preview(db: Session, account_id: str | None, text: str, filename: str) -> IngestionPreviewResponse:
+    parsed = parse_holdings_export(text)
+    if not parsed.positions and not parsed.cash:
+        raise ValueError("holdings export has no positions")
+
+    raw_type = parsed.account_label
+    account_type = infer_account_type(raw_type)
+    if account_type not in INVESTMENT_ACCOUNT_TYPES:
+        account_type = AccountType.INVESTMENT
+    mask = mask_account_number(parsed.account_number)
+    institution, short_institution = infer_institution(text_hint=text[-6000:], filename=filename)
+
+    if account_id:
+        matched = db.query(Account).filter(Account.id == account_id).first()
+        if matched is None or matched.type not in INVESTMENT_ACCOUNT_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A holdings export can only go into an investment or registered account.",
+            )
+    else:
+        investment_accounts = db.query(Account).filter(Account.type.in_(INVESTMENT_ACCOUNT_TYPES)).all()
+        matched = match_existing_account(investment_accounts, mask, account_type, raw_type, institution)
+
+    currency = (matched.currency if matched else settings.DEFAULT_CURRENCY).upper()
+    positions = positions_from_file(parsed)
+    comparison = compare_holdings(
+        db,
+        matched,
+        currency,
+        positions,
+        cash_from_file(parsed),
+        float(parsed.combined_total_cad) if parsed.combined_total_cad is not None else None,
+    )
+    detected = DetectedAccountPreview(
+        source_account_key=make_source_account_key(raw_type, parsed.account_number),
+        suggested_name=suggest_account_name(raw_type, account_type, mask, short_institution, filename),
+        suggested_type=account_type,
+        institution=institution,
+        account_number_mask=mask,
+        currency=currency,
+        raw_account_type=raw_type,
+        matched_account_id=matched.id if matched else None,
+        matched_account_name=matched.name if matched else None,
+        transaction_count=len(positions),
+        new_count=sum(1 for p in comparison.positions if p.status != "UNCHANGED"),
+    )
+    holdings = HoldingsImportPreview(
+        **comparison.model_dump(),
+        account=detected,
+        as_of_date=parsed.as_of_date or datetime.now().date(),
+    )
+    return IngestionPreviewResponse(
+        kind="HOLDINGS",
+        holdings=holdings,
+        filename=filename,
+        file_type="CSV",
+        account_id=matched.id if matched else None,
+        detected_accounts=[detected],
+        total_parsed=len(positions),
+        duplicates_count=sum(1 for p in comparison.positions if p.status == "UNCHANGED"),
+        new_count=detected.new_count,
+        items=[],
+        row_errors=parsed.row_errors,
+    )
+
+
 @router.post("/upload-preview", response_model=IngestionPreviewResponse)
 def upload_statement_preview(
     account_id: str | None = Form(None),
@@ -190,8 +284,12 @@ def upload_statement_preview(
         seed_default_categories(db)
         seed_default_rules(db)
 
+    holdings_text = _holdings_export_text(ext, content)
     try:
-        preview = _parse_statement(db, ext, resolved_account_id, content, safe_filename)
+        if holdings_text is not None:
+            preview = _holdings_preview(db, resolved_account_id, holdings_text, safe_filename)
+        else:
+            preview = _parse_statement(db, ext, resolved_account_id, content, safe_filename)
     except HTTPException:
         raise
     except (ValueError, UnicodeDecodeError, csv.Error) as e:
@@ -264,6 +362,25 @@ def _resolve_category(
     if not cat and cat_name:
         cat = by_lower_name.get(cat_name.lower())
     return cat.id if cat else None
+
+
+def _create_account(db: Session, res: IngestionAccountResolution) -> Account:
+    """A new account from an import's account resolution (flushed, not committed)."""
+    icon, color = get_account_type_defaults(res.type)
+    compounding = LoanCompounding.SEMI_ANNUAL if res.type == AccountType.MORTGAGE else LoanCompounding.MONTHLY
+    account = Account(
+        name=(res.name or "Imported Account").strip(),
+        type=res.type,
+        institution=(res.institution or "").strip() or None,
+        account_number_mask=mask_account_number(res.account_number_mask),
+        icon=icon,
+        color=color,
+        currency=(res.currency or settings.DEFAULT_CURRENCY).upper(),
+        compounding=compounding,
+    )
+    db.add(account)
+    db.flush()
+    return account
 
 
 # Rows saved per database transaction. Each row is a transaction plus its split,
@@ -348,25 +465,7 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
                 resolved_by_key[key] = existing
                 _track_account(existing)
             else:
-                icon, color = get_account_type_defaults(res.type)
-                clean_mask = mask_account_number(res.account_number_mask)
-                compounding = (
-                    LoanCompounding.SEMI_ANNUAL
-                    if res.type == AccountType.MORTGAGE
-                    else LoanCompounding.MONTHLY
-                )
-                new_acc = Account(
-                    name=(res.name or "Imported Account").strip(),
-                    type=res.type,
-                    institution=(res.institution or "").strip() or None,
-                    account_number_mask=clean_mask,
-                    icon=icon,
-                    color=color,
-                    currency=(res.currency or settings.DEFAULT_CURRENCY).upper(),
-                    compounding=compounding,
-                )
-                db.add(new_acc)
-                db.flush()
+                new_acc = _create_account(db, res)
                 account_cache[new_acc.id] = new_acc
                 resolved_by_key[key] = new_acc
                 created_account_ids.add(new_acc.id)
@@ -579,6 +678,80 @@ def commit_ingestion_batch(req: IngestionCommitRequest, db: Session = Depends(ge
         accounts=summaries,
         transfers_linked_count=transfers_linked,
         skipped_closed_count=skipped_closed,
+    )
+
+
+def _investment_account_or_400(db: Session, account_id: str) -> Account:
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    if account.type not in INVESTMENT_ACCOUNT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Holdings can only go into an investment or registered account.",
+        )
+    return account
+
+
+@router.post("/holdings/compare", response_model=HoldingsComparison)
+def compare_holdings_import(req: HoldingsCompareRequest, db: Session = Depends(get_db)):
+    """Line a previewed holdings file up with another destination account."""
+    account = _investment_account_or_400(db, req.account_id) if req.account_id else None
+    currency = account.currency if account is not None else req.currency
+    return compare_holdings(db, account, currency, req.positions, req.cash, req.file_total)
+
+
+@router.post("/holdings/commit", response_model=HoldingsCommitResponse)
+def commit_holdings_import(req: HoldingsCommitRequest, db: Session = Depends(get_db)):
+    """Make an investment account hold what a broker holdings export says."""
+    created = False
+    try:
+        if req.account.existing_account_id:
+            account = _investment_account_or_400(db, req.account.existing_account_id)
+        else:
+            if req.account.type not in INVESTMENT_ACCOUNT_TYPES:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Holdings can only go into an investment or registered account.",
+                )
+            account = _create_account(db, req.account)
+            created = True
+
+        result = apply_holdings(
+            db, account, req.as_of_date, req.positions, req.cash_total, req.remove_holding_ids
+        )
+
+        stmt_file_id = (req.statement_file_id or "").strip()
+        if stmt_file_id:
+            stmt_file = db.query(StatementFile).filter(StatementFile.id == stmt_file_id).first()
+            if stmt_file is not None and stmt_file.account_id is None:
+                stmt_file.account_id = account.id
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except DBAPIError as exc:
+        db.rollback()
+        if is_write_conflict(exc):
+            raise  # replayed by DbRetryMiddleware
+        logger.exception("Failed to import holdings")
+        raise HTTPException(status_code=500, detail="Failed to import the holdings.")
+
+    # The positions are saved; the balance is derived from them.
+    retry_on_conflict(db, lambda: revalue_accounts(db))
+    db.refresh(account)
+
+    return HoldingsCommitResponse(
+        account_id=account.id,
+        account_name=account.name,
+        account_type=account.type,
+        created=created,
+        added_count=result.added,
+        updated_count=result.updated,
+        unchanged_count=result.unchanged,
+        removed_count=result.removed,
+        cash_total=float(result.cash_total),
+        new_account_balance=float(account.current_balance),
     )
 
 

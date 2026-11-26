@@ -211,8 +211,12 @@ describe("quote markers and ticker", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Add holding/ }));
     fireEvent.change(screen.getByPlaceholderText("VFV or VFV.TO"), { target: { value: "xeqt" } });
     await waitFor(() => expect(api.lookupSymbol).toHaveBeenCalledWith("xeqt", "CAD"), { timeout: 2000 });
-    const preview = await screen.findByText(/iShares Core Equity ETF Portfolio/);
-    expect(preview.closest("#symbol-lookup")?.textContent).toContain("XEQT → XEQT.TO");
+    await waitFor(() =>
+      expect((screen.getByLabelText("Name (optional)") as HTMLInputElement).value).toBe(
+        "iShares Core Equity ETF Portfolio"
+      )
+    );
+    expect(document.getElementById("symbol-lookup")?.textContent).toContain("XEQT → XEQT.TO");
 
     fireEvent.change(screen.getByPlaceholderText("100"), { target: { value: "1" } });
     fireEvent.change(screen.getByPlaceholderText("10000.00"), { target: { value: "40" } });

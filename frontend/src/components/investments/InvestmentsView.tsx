@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ChevronDown, Plus, RefreshCw, Trash2 } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ChevronDown, Plus, RefreshCw, Trash2, UploadCloud } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
 import { Money } from "../common/Money";
 import { ProjectionPanel } from "./ProjectionPanel";
@@ -13,6 +13,8 @@ import type {
   HoldingValuation,
   PerformanceResponse,
   QuoteRefreshResponse,
+  QuoteSession,
+  QuoteSource,
   SymbolLookupResponse,
 } from "../../types";
 import { api } from "../../services/api";
@@ -21,7 +23,25 @@ import { useCanEdit } from "../../hooks/useSession";
 interface InvestmentsViewProps {
   accounts: Account[];
   onDataModified: () => void;
+  /** Open the Import screen, where a broker holdings export loads an account. */
+  onImportHoldings?: () => void;
 }
+
+const emptyHolding = () => ({
+  symbol: "",
+  name: "",
+  trade_date: todayIso(),
+  quantity: "",
+  cost_basis: "",
+  fee: "0",
+  price: "",
+});
+
+/** A dollar amount from a form field, or null when it isn't one. */
+const parseAmount = (raw: string): number | null => {
+  const n = Number(raw.replace(/[\s,$]/g, ""));
+  return raw.trim() !== "" && Number.isFinite(n) ? n : null;
+};
 
 const PERIOD_ORDER = ["1M", "3M", "YTD", "1Y", "ALL"] as const;
 
@@ -98,6 +118,7 @@ const SMALL_POSITION_SHARE = 0.03;
 export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
   accounts,
   onDataModified,
+  onImportHoldings,
 }) => {
   const canEdit = useCanEdit();
   const chartTheme = useChartTheme();
@@ -121,14 +142,11 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
   } | null>(null);
 
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [newHolding, setNewHolding] = useState({
-    symbol: "",
-    name: "",
-    trade_date: todayIso(),
-    quantity: "",
-    cost_basis: "",
-    fee: "0",
-  });
+  const [newHolding, setNewHolding] = useState(emptyHolding);
+  // Name and price the symbol lookup filled in. A field still holding its
+  // automatic value follows the next lookup; once typed over, it is left alone.
+  const autoNameRef = useRef("");
+  const autoPriceRef = useRef("");
 
   const [isPriceOpen, setIsPriceOpen] = useState(false);
   const [priceDate, setPriceDate] = useState(todayIso());
@@ -250,14 +268,37 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
     };
   }, [newHolding.symbol, isAddOpen, currency]);
 
+  // Fill Name and Price from the lookup, unless the person has typed their own.
+  useEffect(() => {
+    const found = symbolLookup?.found ? symbolLookup : null;
+    const name = found?.name ?? "";
+    const price = found?.price != null ? String(found.price) : "";
+    // The updater runs later, so compare against the values filled in before this lookup.
+    const previousName = autoNameRef.current;
+    const previousPrice = autoPriceRef.current;
+    setNewHolding((h) => ({
+      ...h,
+      name: h.name === previousName ? name : h.name,
+      price: h.price === previousPrice ? price : h.price,
+    }));
+    autoNameRef.current = name;
+    autoPriceRef.current = price;
+  }, [symbolLookup]);
+
+  const addQuantity = parseAmount(newHolding.quantity);
+  const addPrice = parseAmount(newHolding.price);
+  const addMarketValue = addQuantity !== null && addPrice !== null ? addQuantity * addPrice : null;
+
   const handleAddHolding = async (e: React.FormEvent) => {
     e.preventDefault();
+    const price = newHolding.price.trim();
+    const lookedUp = Boolean(symbolLookup?.found && price && price === autoPriceRef.current && symbolLookup.source);
     try {
       await api.createHolding({
         account_id: accountId,
         // Save the listing the lookup found (XEQT -> XEQT.TO), so it can be quoted.
         symbol: symbolLookup?.found && symbolLookup.listing ? symbolLookup.listing : newHolding.symbol,
-        name: newHolding.name || undefined,
+        name: newHolding.name.trim() || undefined,
         lots: [
           {
             trade_date: newHolding.trade_date,
@@ -266,16 +307,20 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
             fee: newHolding.fee || "0",
           },
         ],
+        ...(price && addPrice !== null
+          ? lookedUp
+            ? {
+                price: String(addPrice),
+                price_source: symbolLookup!.source as QuoteSource,
+                price_session: symbolLookup!.session as QuoteSession | null,
+              }
+            : { price: String(addPrice), price_source: "MANUAL" as QuoteSource }
+          : {}),
       });
       setIsAddOpen(false);
-      setNewHolding({
-        symbol: "",
-        name: "",
-        trade_date: todayIso(),
-        quantity: "",
-        cost_basis: "",
-        fee: "0",
-      });
+      setNewHolding(emptyHolding());
+      autoNameRef.current = "";
+      autoPriceRef.current = "";
       setNotice(`Added position in ${(symbolLookup?.found && symbolLookup.listing) || newHolding.symbol.toUpperCase()}`);
       setSymbolLookup(null);
       await load();
@@ -587,6 +632,11 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           Create an account of type <span className="text-main font-medium">Investment</span>{" "}
           to track holdings, cost basis, and returns. Balances are derived from your positions.
         </p>
+        {onImportHoldings && canEdit && (
+          <button onClick={onImportHoldings} className={`${btnSecondary} mt-4 mx-auto`}>
+            <UploadCloud className="w-4 h-4 text-sub" strokeWidth={1.5} /> Import a holdings export
+          </button>
+        )}
       </div>
     );
   }
@@ -668,6 +718,11 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           <button onClick={() => setIsPriceOpen(true)} className={btnSecondary}>
             Update prices
           </button>
+          {onImportHoldings && (
+            <button onClick={onImportHoldings} className={btnSecondary}>
+              <UploadCloud className="w-4 h-4 text-sub" strokeWidth={1.5} /> Import holdings
+            </button>
+          )}
           <button onClick={() => setIsAddOpen(true)} className={btnPrimary}>
             <Plus className="w-4 h-4" strokeWidth={1.5} /> Add holding
           </button>
@@ -688,7 +743,9 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
       )}
 
       {/* Ticker: refreshed with the quotes, never on a timer */}
-      {performance && sortedHoldings.length > 0 && <QuoteTicker holdings={sortedHoldings} currency={currency} />}
+      {performance && sortedHoldings.some((h) => h.asset_class !== "CASH") && (
+        <QuoteTicker holdings={sortedHoldings.filter((h) => h.asset_class !== "CASH")} currency={currency} />
+      )}
 
       {/* KPI row */}
       {performance && (
@@ -755,7 +812,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
             <div className="py-8 text-center text-sm text-muted">Loading positions…</div>
           ) : (performance?.holdings.length ?? 0) === 0 ? (
             <div className="py-8 text-center text-sm text-muted">
-              No holdings yet. Add one to start tracking performance.
+              No holdings yet. Add one, or import a holdings export from your broker.
             </div>
           ) : (
             sortedHoldings.map((h) => (
@@ -839,7 +896,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
               {!isLoading && (performance?.holdings.length ?? 0) === 0 && (
                 <tr>
                   <td colSpan={8} className="py-8 text-center text-sm text-muted">
-                    No holdings yet. Add one to start tracking performance.
+                    No holdings yet. Add one, or import a holdings export from your broker.
                   </td>
                 </tr>
               )}
@@ -1079,8 +1136,9 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                 />
               </div>
               <div>
-                <label className={labelCls}>Name (optional)</label>
+                <label htmlFor="new-holding-name" className={labelCls}>Name (optional)</label>
                 <input
+                  id="new-holding-name"
                   value={newHolding.name}
                   onChange={(e) => setNewHolding({ ...newHolding, name: e.target.value })}
                   placeholder="Vanguard S&P 500"
@@ -1102,7 +1160,6 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                         <span className="font-mono text-main">{symbolLookup.listing}</span>
                       </>
                     )}
-                    {symbolLookup.name ? ` · ${symbolLookup.name}` : ""}
                     {symbolLookup.exchange ? ` · ${symbolLookup.exchange}` : ""}
                     {symbolLookup.price != null && (
                       <>
@@ -1122,15 +1179,28 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
               </div>
             )}
 
-            <div>
-              <label className={labelCls}>Purchase date</label>
-              <input
-                type="date"
-                required
-                value={newHolding.trade_date}
-                onChange={(e) => setNewHolding({ ...newHolding, trade_date: e.target.value })}
-                className={inputCls}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Purchase date</label>
+                <input
+                  type="date"
+                  required
+                  value={newHolding.trade_date}
+                  onChange={(e) => setNewHolding({ ...newHolding, trade_date: e.target.value })}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label htmlFor="new-holding-price" className={labelCls}>Price today</label>
+                <input
+                  id="new-holding-price"
+                  inputMode="decimal"
+                  value={newHolding.price}
+                  onChange={(e) => setNewHolding({ ...newHolding, price: e.target.value })}
+                  placeholder="Optional"
+                  className={`${inputCls} tabular-nums`}
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-3 gap-4">
@@ -1163,6 +1233,13 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                 />
               </div>
             </div>
+            {addMarketValue !== null && (
+              <p className="-mt-2 text-xs text-sub" aria-live="polite" data-testid="new-holding-value">
+                Market value ≈{" "}
+                <span className="tabular-nums text-main">{formatMoney(addMarketValue, { currency })}</span>{" "}
+                ({formatNumber(addQuantity!, 8)} × {formatMoney(addPrice!, { currency })})
+              </p>
+            )}
             <p className="text-xs text-muted">
               For Canadian securities, add <span className="font-mono text-sub">.TO</span> for TSX (e.g.{" "}
               <span className="font-mono text-sub">XEQT.TO</span>, <span className="font-mono text-sub">VFV.TO</span>) or{" "}

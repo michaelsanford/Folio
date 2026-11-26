@@ -33,6 +33,14 @@ interface QuoteBadgeProps {
  */
 export const QuoteBadge: React.FC<QuoteBadgeProps> = ({ source, session, quotedAt }) => {
   if (!source || source === "MANUAL") return null;
+  if (source === "IMPORT") {
+    const title = "Last price from an imported holdings file";
+    return (
+      <abbr className="quote-badge no-underline" data-session="REGULAR" title={title} aria-label={title}>
+        I
+      </abbr>
+    );
+  }
   const extended = session === "PRE" || session === "POST";
   const label = session === "PRE" ? "Pre" : session === "POST" ? "Post" : "D";
   const kind = session === "PRE" ? "Pre-market quote" : session === "POST" ? "After-hours quote" : "Delayed quote";
