@@ -53,6 +53,11 @@ export function activateUpdate(
   waiting.postMessage({ type: "SKIP_WAITING" });
 }
 
+/** Tells a waiting service worker to take over, without reloading the page. */
+export function adoptWaitingWorker(registration: ServiceWorkerRegistration | undefined): void {
+  registration?.waiting?.postMessage({ type: "SKIP_WAITING" });
+}
+
 /**
  * Registers the service worker in prompt mode and reports when a new build is
  * waiting. The worker never takes over on its own: the page reloads only when
@@ -65,6 +70,11 @@ export function activateUpdate(
 export function usePwaUpdate(): PwaUpdate {
   const registrationRef = useRef<ServiceWorkerRegistration | undefined>(undefined);
   const [updating, setUpdating] = useState(false);
+  // A page no service worker controls (a hard reload, or the first visit) was
+  // loaded straight from the server, so it already is the latest build.
+  const [uncontrolled] = useState(
+    () => typeof navigator !== "undefined" && "serviceWorker" in navigator && !navigator.serviceWorker.controller,
+  );
 
   const {
     needRefresh: [needRefresh],
@@ -76,6 +86,18 @@ export function usePwaUpdate(): PwaUpdate {
     // controlled pages and would race it.
     onNeedReload() {},
   });
+
+  // On such a page "Update available" would offer what is already running, and
+  // the waiting worker would keep waiting while another Folio window holds the
+  // old one, so the next ordinary reload would bring the old build back. Let it
+  // take over quietly instead; this page needs no reload.
+  useEffect(() => {
+    if (!needRefresh || !uncontrolled) return;
+    // The prompt can arrive before the registration is handed to us.
+    const known = registrationRef.current;
+    if (known) adoptWaitingWorker(known);
+    else void navigator.serviceWorker.getRegistration().then(adoptWaitingWorker, () => {});
+  }, [needRefresh, uncontrolled]);
 
   useEffect(() => {
     const check = () => {
@@ -113,5 +135,5 @@ export function usePwaUpdate(): PwaUpdate {
       .catch(reload);
   }, []);
 
-  return { updateReady: needRefresh, updating, applyUpdate };
+  return { updateReady: needRefresh && !uncontrolled, updating, applyUpdate };
 }

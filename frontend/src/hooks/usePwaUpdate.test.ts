@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { activateUpdate } from "./usePwaUpdate";
+import { activateUpdate, adoptWaitingWorker } from "./usePwaUpdate";
 
 /** A waiting worker that records messages and lets the test drive its state. */
 class FakeWorker extends EventTarget {
@@ -75,5 +75,15 @@ describe("activateUpdate", () => {
     expect(reload).toHaveBeenCalledTimes(1);
     container.dispatchEvent(new Event("controllerchange"));
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("adoptWaitingWorker", () => {
+  it("asks a waiting worker to take over and copes with none", () => {
+    const worker = new FakeWorker();
+    adoptWaitingWorker(registrationWith(worker));
+    expect(worker.postMessage).toHaveBeenCalledWith({ type: "SKIP_WAITING" });
+    expect(() => adoptWaitingWorker(registrationWith(null))).not.toThrow();
+    expect(() => adoptWaitingWorker(undefined)).not.toThrow();
   });
 });
