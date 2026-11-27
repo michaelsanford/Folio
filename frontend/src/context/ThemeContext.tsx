@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { isBelowDesktop } from "../hooks/useMediaQuery";
 
 export type ThemeId =
   | "folio-emerald"
@@ -254,9 +255,12 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
     return "broadsheet";
   });
 
-  const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(
-    () => readStored(SIDEBAR_STORAGE_KEY) === "true"
-  );
+  // A stored choice wins; otherwise tablets start with the narrow rail so the
+  // content keeps desktop room, and desktops start expanded.
+  const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(() => {
+    const stored = readStored(SIDEBAR_STORAGE_KEY);
+    return stored === null ? isBelowDesktop() : stored === "true";
+  });
 
   const [systemIsDark, setSystemIsDark] = useState<boolean>(() => {
     if (typeof window !== "undefined" && window.matchMedia) {

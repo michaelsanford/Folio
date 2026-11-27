@@ -61,7 +61,7 @@ const TickerItem: React.FC<{ h: HoldingValuation; currency: string; flash: boole
  * A strip of the account's holdings with their latest delayed prices and the
  * day's change. It changes only when quotes are refreshed (on first visit, or
  * the button); it never polls. Hover or focus pauses it; reduced motion, or
- * too few holdings to loop, shows a still row that scrolls by hand.
+ * too few holdings to loop, shows a still row that wraps.
  */
 export const QuoteTicker: React.FC<QuoteTickerProps> = ({ holdings, currency }) => {
   const reducedMotion = usePrefersReducedMotion();
