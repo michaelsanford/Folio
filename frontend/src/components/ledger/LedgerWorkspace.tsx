@@ -17,11 +17,18 @@ import {
   fieldLabel,
   dangerIconButton,
   iconButton,
+  hairline,
   inputClass,
+  loneText,
   modalOverlay,
   modalPanel,
+  pageStack,
   primaryButton,
+  scrollList,
   secondaryButton,
+  section,
+  sectionSub,
+  sectionTitle,
 } from "../common/ui";
 import { ActionSheet, DetailList } from "../common/ActionSheet";
 import { Money } from "../common/Money";
@@ -175,7 +182,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
     return (
       <span
-        className="inline-flex items-center gap-1 text-xs tabular-nums text-muted cursor-help shrink-0"
+        className="inline-flex items-center gap-1 text-sm tabular-nums text-sub cursor-help shrink-0"
         title={tooltip}
       >
         <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
@@ -442,7 +449,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
     const memberColor = member.color || "var(--text-muted)";
     return (
       <span
-        className="inline-flex items-center gap-1 text-xs text-sub shrink-0"
+        className="inline-flex items-center gap-1 text-sm text-sub shrink-0"
         title={`Assigned to ${member.name}`}
       >
         <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: memberColor }} />
@@ -461,10 +468,10 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className={`max-w-7xl mx-auto ${pageStack}`}>
       {loadError && (
-        <div className="px-4 py-3 rounded-xl bg-negative-subtle border border-negative/30 text-sm text-negative flex items-center justify-between gap-3">
-          <span>{loadError}</span>
+        <div className="px-4 py-3 rounded-lg bg-negative-subtle text-base text-negative flex flex-wrap items-center justify-between gap-3">
+          <span className="min-w-0 break-words">{loadError}</span>
           <button
             type="button"
             onClick={() => {
@@ -479,12 +486,12 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       )}
 
       {/* Top filter bar */}
-      <div className="p-4 rounded-xl bg-surface border border-subtle flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         {/* Search & selectors */}
         <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 flex-1 w-full">
           <div className="relative w-full sm:flex-1 sm:min-w-[180px]">
             <Search
-              className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2"
+              className="w-4 h-4 text-sub absolute left-3 top-1/2 -translate-y-1/2"
               strokeWidth={1.5}
             />
             <input
@@ -565,7 +572,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
             className={`w-full sm:w-auto ${secondaryButton}`}
             title="Lock finished years and keep an archived copy"
           >
-            <Lock className="w-4 h-4 text-muted" strokeWidth={1.5} />
+            <Lock className="w-4 h-4" strokeWidth={1.5} />
             <span>Closed years</span>
           </button>
           {canEdit && (<>
@@ -579,7 +586,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               aria-pressed={selectMode}
               className={`w-full ${secondaryButton}`}
             >
-              <ListChecks className="w-4 h-4 text-muted" strokeWidth={1.5} />
+              <ListChecks className="w-4 h-4" strokeWidth={1.5} />
               <span>{selectMode ? "Done selecting" : "Select"}</span>
             </button>
           )}
@@ -589,7 +596,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
             className={`w-full sm:w-auto ${secondaryButton}`}
             title="Auto-classify all uncategorized transactions using the multi-tier engine"
           >
-            <Sparkles className="w-4 h-4 text-muted" strokeWidth={1.5} />
+            <Sparkles className="w-4 h-4" strokeWidth={1.5} />
             <span>Auto-classify uncategorized</span>
           </button>
 
@@ -602,8 +609,8 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
       {/* Batch action toolbar */}
       {selectedTxnIds.size > 0 && (
-        <div className="p-4 rounded-xl bg-surface border border-accent-main/30 flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-4 animate-in fade-in">
-          <div className="text-sm text-sub">
+        <div className="p-4 rounded-lg bg-accent-subtle flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-4 animate-in fade-in">
+          <div className="text-base text-sub">
             <span className="tabular-nums text-main">{selectedTxnIds.size}</span> selected
           </div>
 
@@ -650,7 +657,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               </button>
               <button
                 onClick={() => setSelectedTxnIds(new Set())}
-                className="h-9 px-3 rounded-lg text-sm text-sub hover:text-main bg-surface-hover transition-colors cursor-pointer"
+                className={secondaryButton}
               >
                 Clear
               </button>
@@ -660,20 +667,20 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       )}
 
       {/* Transactions */}
-      <div className="rounded-xl border border-subtle bg-surface overflow-hidden">
+      <section className={section}>
         {/* Phone feed (< md): read-only rows; a tap opens the details sheet */}
         {isPhone && (
-        <div className="divide-y divide-subtle">
+        <div className="border-y border-subtle divide-y divide-subtle">
           {isLoading ? (
-            <div className="p-8 text-center text-sm text-muted">
+            <div role="status" className={`p-8 text-center ${loneText}`}>
               {spinner}
               Loading…
             </div>
           ) : transactions.length === 0 ? (
             isLedgerEmpty ? (
-              <div className="p-8 text-center max-w-sm mx-auto">
-                <div className="text-sm font-medium text-main">No transactions yet</div>
-                <div className="mt-1 text-xs text-muted">
+              <div className="px-4 py-12 text-center max-w-md mx-auto">
+                <div className="text-lg font-semibold text-main">No transactions yet</div>
+                <div className={`mt-1 ${loneText}`}>
                   Load Canadian sample entries to try categorization, analytics and budgeting
                 </div>
                 <button
@@ -686,7 +693,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="p-8 text-center text-muted text-sm">No transactions match these filters</div>
+              <div className={`px-4 py-12 text-center ${loneText}`}>No transactions match these filters</div>
             )
           ) : (
             transactions.map((txn) => {
@@ -702,7 +709,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               return (
                 <div key={txn.id} className={`flex items-stretch ${isChecked ? "bg-accent-subtle" : ""}`}>
                   {selecting && (
-                    <label className="flex items-center pl-4 pr-1 cursor-pointer">
+                    <label className="flex items-center pl-1 pr-1 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={isChecked}
@@ -717,14 +724,14 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                     onClick={() => (selecting ? handleToggleSelectRow(txn.id) : setSheetTxnId(txn.id))}
                     aria-label={selecting ? undefined : `${payee}, details and actions`}
                     tabIndex={selecting ? -1 : undefined}
-                    className="flex-1 min-w-0 px-4 py-3.5 flex items-start gap-3 text-left bg-surface-hover transition-colors cursor-pointer"
+                    className="flex-1 min-w-0 px-1 py-3.5 flex items-start gap-3 text-left bg-surface-hover transition-colors cursor-pointer"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="text-base text-main break-words">{payee}</div>
                           {txn.normalized_payee && txn.normalized_payee !== txn.raw_payee && (
-                            <div className="text-sm text-muted font-mono break-all">{txn.raw_payee}</div>
+                            <div className="text-sm text-sub font-mono break-all">{txn.raw_payee}</div>
                           )}
                         </div>
                         <Money
@@ -734,22 +741,22 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                         />
                       </div>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5 text-sm">
-                        <span className="text-muted tabular-nums whitespace-nowrap">{txn.transaction_date?.split("T")[0]}</span>
-                        <span className="text-muted" aria-hidden="true">·</span>
+                        <span className="text-sub tabular-nums whitespace-nowrap">{txn.transaction_date?.split("T")[0]}</span>
+                        <span className="text-sub" aria-hidden="true">·</span>
                         <span className="text-sub break-words">{matchedAccount?.name || "Account"}</span>
-                        <span className="text-muted" aria-hidden="true">·</span>
+                        <span className="text-sub" aria-hidden="true">·</span>
                         <span className={`break-words ${categoryLabel === "Uncategorized" ? "text-warning" : "text-sub"}`}>
                           {categoryLabel}
                         </span>
                         {renderConfidenceBadge(txn)}
                         {renderMemberTag(txn)}
                         {isRowLocked(txn) && (
-                          <Lock className="w-4 h-4 text-muted" strokeWidth={1.5} aria-label="In a closed year" />
+                          <Lock className="w-4 h-4 text-sub" strokeWidth={1.5} aria-label="In a closed year" />
                         )}
                       </div>
                     </div>
                     {!selecting && (
-                      <ChevronRight className="w-5 h-5 mt-0.5 text-muted shrink-0" strokeWidth={1.5} aria-hidden="true" />
+                      <ChevronRight className="w-5 h-5 mt-0.5 text-sub shrink-0" strokeWidth={1.5} aria-hidden="true" />
                     )}
                   </button>
                 </div>
@@ -761,9 +768,9 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
         {/* Table (tablet and desktop, >= md) */}
         {!isPhone && (
-        <div>
+        <div className="border-b border-subtle">
           <table className="w-full table-fixed text-left text-sm">
-            <thead className="text-xs text-muted border-b border-subtle">
+            <thead className="text-sm text-sub border-y border-subtle">
               <tr>
                 <th className="px-2.5 py-3 w-10 text-center font-normal">
                   <input
@@ -774,7 +781,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                     className={checkboxClass}
                   />
                 </th>
-                <th className="hidden lg:table-cell px-2 py-3 w-[92px] font-normal">Date</th>
+                <th className="hidden lg:table-cell px-2 py-3 w-[104px] font-normal">Date</th>
                 <th className="hidden xl:table-cell px-2 py-3 w-[140px] font-normal">Account</th>
                 <th className="px-2 py-3 font-normal">Payee</th>
                 <th className="px-2 py-3 w-[128px] lg:w-[160px] xl:w-[176px] font-normal">Category</th>
@@ -786,18 +793,18 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
             <tbody className="divide-y divide-subtle">
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-sm text-muted">
+                  <td colSpan={8} role="status" className={`text-center py-12 ${loneText}`}>
                     {spinner}
                     Loading…
                   </td>
                 </tr>
               ) : transactions.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-sm text-muted">
+                  <td colSpan={8} className={`text-center px-4 py-12 ${loneText}`}>
                     {isLedgerEmpty ? (
                       <div className="max-w-md mx-auto">
-                        <div className="text-base font-medium text-main">No transactions yet</div>
-                        <div className="mt-1 text-sm text-muted">
+                        <div className="text-lg font-semibold text-main">No transactions yet</div>
+                        <div className="mt-1">
                           Load Canadian household sample entries to try auto-classification, budget
                           tracking and cash flow forecasting
                         </div>
@@ -837,7 +844,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                           className={checkboxClass}
                         />
                       </td>
-                      <td className="hidden lg:table-cell px-2 py-2 tabular-nums text-xs text-muted whitespace-nowrap">
+                      <td className="hidden lg:table-cell px-2 py-2 tabular-nums text-sub whitespace-nowrap">
                         {txn.transaction_date?.split("T")[0]}
                       </td>
                       <td className="hidden xl:table-cell px-2 py-2 text-sub leading-snug whitespace-normal break-words">
@@ -851,11 +858,11 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                           {renderMemberTag(txn)}
                         </div>
                         {txn.normalized_payee && txn.normalized_payee !== txn.raw_payee && (
-                          <div className="text-xs text-muted font-mono whitespace-normal break-words">
+                          <div className="text-sm text-sub font-mono whitespace-normal break-words">
                             {txn.raw_payee}
                           </div>
                         )}
-                        <div className="xl:hidden text-[11px] text-sub whitespace-normal break-words">
+                        <div className="xl:hidden text-sm text-sub whitespace-normal break-words">
                           <span className="lg:hidden tabular-nums">{txn.transaction_date?.split("T")[0]} · </span>
                           {accountLabel}
                           {txn.notes ? ` · ${txn.notes}` : ""}
@@ -865,9 +872,9 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                         {isSplit ? (
                           <button
                             onClick={() => handleOpenSplitModal(txn)}
-                            className="inline-flex items-center gap-1 h-8 px-2 rounded-lg border border-default text-xs text-sub bg-surface-hover transition-colors cursor-pointer"
+                            className="inline-flex items-center gap-1 h-9 px-2 rounded-lg bg-surface-subtle text-sm text-sub bg-surface-hover transition-colors cursor-pointer"
                           >
-                            <Layers className="w-4 h-4 text-muted" strokeWidth={1.5} /> {txn.splits.length}{" "}
+                            <Layers className="w-4 h-4" strokeWidth={1.5} /> {txn.splits.length}{" "}
                             splits
                           </button>
                         ) : (
@@ -890,7 +897,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                           </div>
                         )}
                       </td>
-                      <td className="hidden xl:table-cell px-2 py-2 text-muted text-xs leading-snug whitespace-normal break-words">
+                      <td className="hidden xl:table-cell px-2 py-2 text-sub text-sm leading-snug whitespace-normal break-words">
                         {txn.notes || "—"}
                       </td>
                       <td className="px-2 py-2 text-right whitespace-nowrap">
@@ -903,7 +910,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                       <td className="px-2 py-2 text-center">
                         <div className="flex items-center justify-center gap-1">
                           {isRowLocked(txn) && (
-                            <span title="In a closed year" aria-label="In a closed year" className="h-8 w-8 flex items-center justify-center text-muted">
+                            <span title="In a closed year" aria-label="In a closed year" className="h-8 w-8 flex items-center justify-center text-sub">
                               <Lock className="w-4 h-4" strokeWidth={1.5} />
                             </span>
                           )}
@@ -939,8 +946,8 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
         )}
 
         {/* Pagination */}
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-subtle">
-          <div className="text-xs text-muted tabular-nums">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3">
+          <div className="text-sm text-sub tabular-nums">
             {totalCount === 0
               ? "No transactions"
               : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, totalCount)} of ${formatNumber(totalCount)}`}
@@ -950,33 +957,34 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1 || isLoading}
-              className="h-11 md:h-8 px-4 md:px-3 rounded-lg border border-default bg-surface bg-surface-hover text-sub text-sm md:text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className={`${secondaryButton} disabled:opacity-40 disabled:cursor-not-allowed`}
             >
               Previous
             </button>
-            <span className="text-xs text-muted tabular-nums">
+            <span className="text-sm text-sub tabular-nums">
               Page {page} of {totalPages}
             </span>
             <button
               type="button"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages || isLoading}
-              className="h-11 md:h-8 px-4 md:px-3 rounded-lg border border-default bg-surface bg-surface-hover text-sub text-sm md:text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className={`${secondaryButton} disabled:opacity-40 disabled:cursor-not-allowed`}
             >
               Next
             </button>
           </div>
         </div>
-      </div>
+      </section>
 
       {/* Split transaction modal */}
       {splitModalTxn && (
         <div className={modalOverlay}>
           <div className={`md:max-w-lg space-y-5 ${modalPanel}`}>
-            <div className="flex items-start justify-between gap-4 border-b border-subtle pb-4">
-              <div>
-                <h3 className="text-base font-medium text-main">Split transaction</h3>
-                <p className="mt-1 text-xs text-muted">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h3 className={sectionTitle}>Split transaction</h3>
+                <p className={`${sectionSub} break-words`}>
+
                   {splitModalTxn.normalized_payee || splitModalTxn.raw_payee} · Total{" "}
                   <Money value={Math.abs(splitModalTxn.amount)} className="text-main" />
                 </p>
@@ -991,9 +999,9 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               </button>
             </div>
 
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            <div className={`space-y-3 max-h-72 overflow-y-auto ${scrollList}`}>
               {modalSplits.map((split, idx) => (
-                <div key={idx} className="flex items-center gap-2 p-2 rounded-lg bg-surface-subtle">
+                <div key={idx} className="flex items-center gap-2">
                   <select
                     value={split.category_id}
                     onChange={(e) => {
@@ -1003,7 +1011,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                       );
                     }}
                     aria-label="Category"
-                    className={`flex-1 ${inputClass}`}
+                    className={`flex-1 min-w-0 ${inputClass}`}
                   >
                     <option value="">Category</option>
                     {categories.map((c) => (
@@ -1022,7 +1030,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                         prev.map((s, i) => (i === idx ? { ...s, amount: val } : s))
                       );
                     }}
-                    className={`w-28 tabular-nums text-right ${inputClass}`}
+                    className={`w-28 shrink-0 tabular-nums text-right ${inputClass}`}
                   />
 
                   {modalSplits.length > 1 && (
@@ -1045,14 +1053,14 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 onClick={() => {
                   setModalSplits([...modalSplits, { category_id: "", amount: null, memo: "" }]);
                 }}
-                className="w-full h-9 inline-flex items-center justify-center gap-2 border border-dashed border-default rounded-lg text-sm text-sub hover:text-main bg-surface-hover transition-colors cursor-pointer"
+                className={`${secondaryButton} -ml-4`}
               >
-                <Plus className="w-4 h-4 text-muted" strokeWidth={1.5} /> Add split
+                <Plus className="w-4 h-4" strokeWidth={1.5} /> Add split
               </button>
             </div>
 
-            <div className="flex items-center justify-between pt-4 border-t border-subtle">
-              <div className="text-xs text-muted">
+            <div className={`flex flex-wrap items-center justify-between gap-3 pt-4 ${hairline}`}>
+              <div className="text-base md:text-sm text-sub">
                 Split total{" "}
                 <Money
                   value={modalSplits.reduce((sum, s) => sum + (Number(s.amount) || 0), 0)}
@@ -1076,11 +1084,11 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       {isTxnModalOpen && (
         <div className={modalOverlay}>
           <form onSubmit={handleSaveTransaction} className={`md:max-w-md space-y-4 ${modalPanel}`}>
-            <div className="flex items-center justify-between border-b border-subtle pb-4">
-              <h3 className="text-base font-medium text-main">
+            <div className="flex items-start justify-between gap-4">
+              <h3 className={`${sectionTitle} min-w-0`}>
                 {editingTxn ? "Edit transaction" : "Add transaction"}
                 {editingTxn && attributionLine(editingTxn.created_by, editingTxn.updated_by) && (
-                  <span className="block text-xs font-normal text-muted mt-0.5">
+                  <span className="block font-sans text-sm font-normal text-sub mt-1">
                     {attributionLine(editingTxn.created_by, editingTxn.updated_by)}
                   </span>
                 )}
@@ -1197,7 +1205,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-4 border-t border-subtle">
+            <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={() => setIsTxnModalOpen(false)} className={secondaryButton}>
                 Cancel
               </button>
@@ -1297,8 +1305,8 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       {autoClassifyModalOpen && (
         <div className={modalOverlay}>
           <div className={`md:max-w-md space-y-4 ${modalPanel}`}>
-            <div className="flex items-center justify-between border-b border-subtle pb-4">
-              <h3 className="text-base font-medium text-main">Auto-classify uncategorized</h3>
+            <div className="flex items-start justify-between gap-4">
+              <h3 className={`${sectionTitle} min-w-0`}>Auto-classify uncategorized</h3>
               <button type="button" onClick={closeAutoClassify} aria-label="Close" className={iconButton}>
                 <X className="w-4 h-4" strokeWidth={1.5} />
               </button>
@@ -1307,10 +1315,10 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
             {autoClassifySummary ? (
               <div className="space-y-4">
                 <div className="p-4 rounded-lg bg-positive-subtle flex items-start gap-3">
-                  <CheckCircle2 className="w-4 h-4 mt-0.5 text-positive shrink-0" strokeWidth={1.5} />
-                  <div>
-                    <div className="text-sm font-medium text-positive">Auto-classification complete</div>
-                    <div className="mt-1 text-xs text-main">{autoClassifySummary}</div>
+                  <CheckCircle2 className="w-5 h-5 mt-0.5 text-positive shrink-0" strokeWidth={1.5} />
+                  <div className="min-w-0">
+                    <div className="text-base font-semibold text-positive">Auto-classification complete</div>
+                    <div className="mt-1 text-sm text-main break-words">{autoClassifySummary}</div>
                   </div>
                 </div>
                 <div className="flex justify-end">
@@ -1321,17 +1329,17 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               </div>
             ) : (
               <div className="space-y-4">
-                <p className="text-sm text-sub leading-relaxed">
+                <p className="text-base text-sub leading-relaxed">
                   Folio checks every uncategorized transaction against the four-tier engine (rules,
                   history, heuristics, then AI) and assigns categories that meet the threshold
                 </p>
 
-                <div className="p-4 rounded-lg bg-surface-subtle space-y-3">
+                <div className={`pt-4 ${hairline} space-y-3`}>
                   <div className="flex items-center justify-between">
-                    <label htmlFor="confirmMinConfidence" className="text-sm text-main">
+                    <label htmlFor="confirmMinConfidence" className="text-base md:text-sm text-main">
                       Confidence threshold
                     </label>
-                    <span className="text-sm tabular-nums text-main">
+                    <span className="text-base md:text-sm tabular-nums text-main">
                       {Math.round(autoClassifyMinConfidence * 100)}%
                     </span>
                   </div>
@@ -1353,13 +1361,13 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                       onChange={(e) => setAutoClassifyEnableBedrock(e.target.checked)}
                       className={checkboxClass}
                     />
-                    <label htmlFor="confirmEnableBedrock" className="text-sm text-sub cursor-pointer select-none">
+                    <label htmlFor="confirmEnableBedrock" className="text-base md:text-sm text-sub cursor-pointer select-none">
                       Use AI for ambiguous items
                     </label>
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-4 border-t border-subtle">
+                <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
                     onClick={() => setAutoClassifyModalOpen(false)}

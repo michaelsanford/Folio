@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import type { Me, Relationship } from "../../types";
 import { api } from "../../services/api";
-import { inputClass, modalOverlay, modalPanel, primaryButton, secondaryButton } from "../common/ui";
+import { fieldLabel, inputClass, modalOverlay, modalPanel, primaryButton, secondaryButton } from "../common/ui";
 
 interface WelcomeDialogProps {
   me: Me;
@@ -72,22 +72,22 @@ export const WelcomeDialog: React.FC<WelcomeDialogProps> = ({ me, onSaved, onSki
         className={`${modalPanel} md:max-w-md space-y-5`}
       >
         <div>
-          <h2 id="welcome-title" className="text-base font-medium text-main">
+          <h2 id="welcome-title" className="font-display text-xl md:text-2xl font-semibold text-main">
             Welcome to Folio — what should we call you?
           </h2>
-          <p className="text-xs text-muted mt-1">
+          <p className="text-base text-sub mt-2">
             Your name shows on what you add and change, and links you to your accounts.
           </p>
         </div>
 
         {error && (
-          <div role="alert" className="p-3 rounded-lg bg-negative-subtle text-xs text-negative">
+          <div role="alert" className="p-3 rounded-lg bg-negative-subtle text-sm text-negative break-words">
             {error}
           </div>
         )}
 
         <div>
-          <label htmlFor="welcome-name" className="block text-xs text-sub mb-1">
+          <label htmlFor="welcome-name" className={fieldLabel}>
             Your name
           </label>
           <input
@@ -102,7 +102,7 @@ export const WelcomeDialog: React.FC<WelcomeDialogProps> = ({ me, onSaved, onSki
         </div>
 
         <div>
-          <label htmlFor="welcome-relationship" className="block text-xs text-sub mb-1">
+          <label htmlFor="welcome-relationship" className={fieldLabel}>
             In this household you are
           </label>
           <select
@@ -119,7 +119,7 @@ export const WelcomeDialog: React.FC<WelcomeDialogProps> = ({ me, onSaved, onSki
           </select>
         </div>
 
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
             onClick={onSkip}

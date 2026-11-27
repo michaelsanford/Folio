@@ -6,7 +6,17 @@ import { useSession } from "../../hooks/useSession";
 import { PeoplePanel, ROLE_HINTS, ROLE_LABELS } from "./PeoplePanel";
 import { useIsPhone } from "../../hooks/useMediaQuery";
 import { ActionSheet, type SheetAction } from "../common/ActionSheet";
-import { dangerIconButton, iconButton, inputClass, modalOverlay, primaryButton, secondaryButton } from "../common/ui";
+import {
+  compactSelectClass,
+  dangerIconButton,
+  fieldLabel,
+  iconButton,
+  inputClass,
+  loneText,
+  modalOverlay,
+  primaryButton,
+  secondaryButton,
+} from "../common/ui";
 
 interface HouseholdModalProps {
   isOpen: boolean;
@@ -218,12 +228,12 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
 
   return (
     <div className={modalOverlay}>
-      <div className="relative w-full md:max-w-2xl bg-surface border border-default rounded-t-2xl md:rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[92dvh] md:max-h-[90vh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter">
+      <div className="relative w-full md:max-w-2xl bg-surface elevation-3 rounded-t-2xl md:rounded-2xl overflow-hidden flex flex-col max-h-[92dvh] md:max-h-[90vh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-subtle">
-          <div>
-            <h2 className="text-base font-medium text-main">Household</h2>
-            <p className="text-xs text-muted mt-1">
+        <div className="flex items-start justify-between gap-3 px-6 pt-6 pb-2 md:px-8 md:pt-8">
+          <div className="min-w-0">
+            <h2 className="font-display text-xl md:text-2xl font-semibold text-main">Household</h2>
+            <p className="text-sm text-sub mt-1">
               Members for CRA limits, account ownership and spending attribution, and who can sign in
             </p>
           </div>
@@ -232,67 +242,65 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
             className={iconButton}
             aria-label="Close household settings"
           >
-            <X className="w-4 h-4" strokeWidth={1.5} />
+            <X className="w-5 h-5" strokeWidth={1.75} />
           </button>
         </div>
 
         {/* Canadian Legal Notice */}
-        <div className="mx-5 mt-4 p-4 rounded-lg bg-surface-subtle text-xs text-sub flex items-start gap-3">
-          <Shield className="w-4 h-4 text-muted shrink-0" strokeWidth={1.5} />
-          <div>
+        <div className="mx-6 md:mx-8 mt-4 p-4 rounded-lg bg-surface-subtle text-sm text-sub flex items-start gap-3">
+          <Shield className="w-5 h-5 text-sub shrink-0" strokeWidth={1.5} />
+          <div className="min-w-0 break-words">
             <span className="font-medium text-main">Registered accounts: </span>
             The CRA mandates that registered accounts (TFSA, RRSP, FHSA, RESP) are legally held by an individual person. Joint ownership applies to Chequing, Savings, and Mortgages.
           </div>
         </div>
 
         {error && (
-          <div role="alert" className="mx-5 mt-3 p-3 rounded-lg bg-negative-subtle text-xs text-negative">
+          <div role="alert" className="mx-6 md:mx-8 mt-3 p-3 rounded-lg bg-negative-subtle text-sm text-negative break-words">
             {error}
           </div>
         )}
         {notice && (
-          <div role="status" className="mx-5 mt-3 p-3 rounded-lg bg-surface-subtle text-xs text-sub">
+          <div role="status" className="mx-6 md:mx-8 mt-3 p-3 rounded-lg bg-surface-subtle text-sm text-sub break-words">
             {notice}
           </div>
         )}
 
-        <div className="p-5 overflow-y-auto space-y-6 flex-1">
+        <div className="px-6 py-6 md:px-8 overflow-y-auto space-y-10 flex-1">
           {/* Member List */}
           <div>
-            <h3 className="text-base font-medium text-main mb-3">
-              Members <span className="text-sm font-normal text-muted">{members.length}</span>
+            <h3 className="font-display text-lg font-semibold text-main mb-3">
+              Members <span className="text-base font-normal text-sub">{members.length}</span>
             </h3>
             {members.length === 0 ? (
-              <div className="p-6 text-center rounded-xl border border-dashed border-default text-sm text-muted">
+              <div className={`py-8 text-center ${loneText}`}>
                 No household members yet. Add members below to separate account ownership and track individual CRA room.
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="border-y border-subtle divide-y divide-subtle">
                 {members.map((m) => (
                   <div
                     key={m.id}
-                    className={`p-3 rounded-lg border transition-colors flex flex-wrap items-center justify-between gap-3 ${
-                      editingMember?.id === m.id
-                        ? "border-accent-main bg-surface-subtle"
-                        : "border-default bg-surface"
+                    className={`py-3 px-2 transition-colors flex flex-wrap items-center justify-between gap-3 ${
+                      editingMember?.id === m.id ? "bg-accent-subtle" : ""
                     }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center font-medium text-xs text-white shrink-0"
+                        className="w-9 h-9 rounded-full flex items-center justify-center font-medium text-sm text-white shrink-0"
                         style={{ backgroundColor: m.color || "#3B82F6" }}
                       >
                         {m.name.substring(0, 1).toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <div className="font-medium text-sm text-main break-words">{m.name}</div>
-                        <div className="text-xs text-muted break-words">
+                        <div className="font-medium text-base text-main break-words">{m.name}</div>
+                        <div className="text-sm text-sub break-words">
                           {m.role || "Member"}
                           {me?.shared_household
                             ? ` · ${signInFor(m.id) ? ACCESS_BADGE[signInFor(m.id)!.status] : "No sign-in"}`
                             : ""}
                         </div>
-                        {m.notes && <div className="text-xs text-muted break-words whitespace-pre-line">{m.notes}</div>}
+                        {m.notes && <div className="text-sm text-sub break-words whitespace-pre-line">{m.notes}</div>}
                       </div>
                     </div>
                     {canEdit && isPhone && (
@@ -361,7 +369,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                           aria-label="What they can do"
                           value={memberRole}
                           onChange={(e) => setMemberRole(e.target.value as PersonRole)}
-                          className="h-11 md:h-9 px-3 rounded-lg border border-default bg-input text-base md:text-sm text-main"
+                          className={compactSelectClass}
                         >
                           {(Object.keys(ROLE_LABELS) as PersonRole[]).map((r) => (
                             <option key={r} value={r}>
@@ -385,16 +393,16 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
 
           {/* Add / Edit Form */}
           {canEdit && (
-          <form onSubmit={handleSave} className="p-4 rounded-xl border border-default bg-surface-subtle space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-base font-medium text-main">
+          <form onSubmit={handleSave} className="space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-x-4">
+              <h4 className="font-display text-lg font-semibold text-main break-words">
                 {editingMember ? `Edit ${editingMember.name}` : canInvite ? "Add someone" : "Add member"}
               </h4>
               {editingMember && (
                 <button
                   type="button"
                   onClick={handleResetForm}
-                  className="text-xs text-muted hover:text-main underline cursor-pointer"
+                  className="min-h-11 md:min-h-0 text-sm text-sub hover:text-main underline cursor-pointer"
                 >
                   Cancel edit
                 </button>
@@ -403,7 +411,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label htmlFor="household-member-name" className="block text-xs text-sub mb-1">
+                <label htmlFor="household-member-name" className={fieldLabel}>
                   Name
                 </label>
                 <input
@@ -418,7 +426,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
               </div>
 
               <div>
-                <label htmlFor="household-member-role" className="block text-xs text-sub mb-1">
+                <label htmlFor="household-member-role" className={fieldLabel}>
                   Relationship
                 </label>
                 <select
@@ -437,7 +445,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
             </div>
 
             <div>
-              <div className="text-xs text-sub mb-2">Colour</div>
+              <div className="text-sm text-sub mb-2">Colour</div>
               <div className="flex items-center gap-2 flex-wrap">
                 {PRESET_MEMBER_COLORS.map((c) => (
                   <button
@@ -459,7 +467,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
 
             {!editingMember && canInvite && (
               <fieldset className="space-y-2">
-                <legend className="text-xs text-sub mb-2">Access</legend>
+                <legend className="text-sm text-sub mb-2">Access</legend>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {([
                     ["invite", "Can sign in", "We email them an invitation with a temporary password."],
@@ -467,8 +475,8 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                   ] as const).map(([value, label, hint]) => (
                     <label
                       key={value}
-                      className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer bg-surface ${
-                        access === value ? "border-[var(--accent-primary)]" : "border-default"
+                      className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                        access === value ? "bg-accent-subtle" : "bg-surface-hover"
                       }`}
                     >
                       <input
@@ -479,9 +487,9 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                         onChange={() => setAccess(value)}
                         className="mt-1"
                       />
-                      <span>
-                        <span className="block text-sm text-main">{label}</span>
-                        <span className="block text-xs text-muted">{hint}</span>
+                      <span className="min-w-0">
+                        <span className="block text-base md:text-sm font-medium text-main break-words">{label}</span>
+                        <span className="block text-sm text-sub break-words">{hint}</span>
                       </span>
                     </label>
                   ))}
@@ -500,7 +508,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                       aria-label="What they can do"
                       value={inviteRole}
                       onChange={(e) => setInviteRole(e.target.value as PersonRole)}
-                      className="h-11 md:h-9 px-3 rounded-lg border border-default bg-input text-base md:text-sm text-main"
+                      className={compactSelectClass}
                     >
                       {(Object.keys(ROLE_LABELS) as PersonRole[]).map((r) => (
                         <option key={r} value={r}>
@@ -508,15 +516,15 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                         </option>
                       ))}
                     </select>
-                    <p className="sm:col-span-2 text-xs text-muted">{ROLE_HINTS[inviteRole]}.</p>
+                    <p className="sm:col-span-2 text-sm text-sub">{ROLE_HINTS[inviteRole]}.</p>
                   </div>
                 )}
               </fieldset>
             )}
 
             <div>
-              <label htmlFor="household-member-notes" className="block text-xs text-sub mb-1">
-                Notes <span className="text-muted">optional</span>
+              <label htmlFor="household-member-notes" className={fieldLabel}>
+                Notes <span className="text-sub">optional</span>
               </label>
               <input
                 id="household-member-notes"
@@ -553,7 +561,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
           <PeoplePanel me={me} members={members} onChanged={peopleChanged} refreshKey={peopleVersion} />
         </div>
 
-        <div className="px-5 py-4 border-t border-subtle flex justify-end">
+        <div className="px-6 py-4 md:px-8 border-t border-subtle flex justify-end">
           <button
             onClick={onClose}
             className={secondaryButton}

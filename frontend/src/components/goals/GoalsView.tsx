@@ -29,7 +29,25 @@ import { useCanEdit } from "../../hooks/useSession";
 import { getSession } from "../../utils/session";
 import { useIsPhone } from "../../hooks/useMediaQuery";
 import { ActionSheet } from "../common/ActionSheet";
-import { card, iconButton, dangerIconButton, inputClass, modalOverlay, primaryButton, secondaryButton } from "../common/ui";
+import {
+  chipTab,
+  dangerIconButton,
+  hairline,
+  iconButton,
+  inputClass,
+  labelText,
+  loneText,
+  modalOverlay,
+  pageStack,
+  primaryButton,
+  secondaryButton,
+  section,
+  sectionHeader,
+  sectionSub,
+  sectionTitle,
+  segmentButton,
+  segmentTrack,
+} from "../common/ui";
 
 interface GoalsViewProps {
   accounts: Account[];
@@ -74,13 +92,8 @@ const GOAL_TYPE_META: Record<GoalType, { label: string; color: string; descripti
 const btnPrimary = primaryButton;
 const btnSecondary = secondaryButton;
 const inputCls = inputClass;
-const labelCls = "block text-sm md:text-xs text-sub mb-1";
-const segment = (active: boolean) =>
-  `h-11 md:h-8 px-3 rounded-lg text-base md:text-sm border transition-colors cursor-pointer ${
-    active
-      ? "bg-surface-subtle border-default text-main font-medium"
-      : "border-transparent text-sub hover:text-main bg-surface-hover"
-  }`;
+const labelCls = `block ${labelText} mb-1`;
+const segment = segmentButton;
 
 interface CraRoomCardProps {
   title: string;
@@ -94,7 +107,7 @@ interface CraRoomCardProps {
   onTrack: () => void;
 }
 
-/** One CRA statutory room card (TFSA or FHSA). */
+/** One CRA statutory room section (TFSA or FHSA). */
 const CraRoomCard: React.FC<CraRoomCardProps> = ({
   title,
   tag,
@@ -111,21 +124,21 @@ const CraRoomCard: React.FC<CraRoomCardProps> = ({
   const exceeded = contributed > limit;
 
   return (
-    <div className={`${card} p-5 flex flex-col justify-between`}>
+    <section className={`${section} flex flex-col justify-between`}>
       <div>
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="text-base font-medium text-main">{title}</h2>
-          <span className="text-xs text-muted">{tag}</span>
+        <div className={sectionHeader}>
+          <h2 className={sectionTitle}>{title}</h2>
+          <p className={sectionSub}>{tag}</p>
         </div>
 
-        <div className="mt-4 flex items-baseline justify-between gap-3">
-          <div className="font-display text-2xl font-medium leading-none text-main">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2">
+          <div className="font-display text-2xl md:text-3xl font-medium leading-tight text-main break-words min-w-0">
             <Money value={contributed ?? 0} />
-            <span className="ml-2 text-xs text-muted">
+            <span className="ml-2 font-sans text-sm text-sub">
               of {formatMoney(limit ?? defaultLimit, { cents: false })} limit
             </span>
           </div>
-          <span className={`text-xs tabular-nums ${isOver ? "text-negative" : "text-sub"}`}>
+          <span className={`text-sm tabular-nums ${isOver ? "text-negative" : "text-sub"}`}>
             {formatMoney(remainingAbs, { cents: false })} {isOver ? "over limit" : "remaining"}
           </span>
         </div>
@@ -137,13 +150,13 @@ const CraRoomCard: React.FC<CraRoomCardProps> = ({
             }`}
             style={{
               width: `${Math.min(100, (contributed / limit) * 100)}%`,
-              backgroundColor: exceeded ? undefined : "var(--text-muted)",
+              backgroundColor: exceeded ? undefined : "var(--text-secondary)",
             }}
           />
         </div>
 
         {exceeded && (
-          <div className="mt-4 p-3 rounded-lg bg-negative-subtle border border-negative/30 text-xs text-negative flex items-start gap-2">
+          <div className="mt-4 p-3 rounded-lg bg-negative-subtle text-sm text-negative flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0" strokeWidth={1.5} />
             <span>
               <span className="font-medium">CRA excess warning:</span> {warning}
@@ -152,16 +165,16 @@ const CraRoomCard: React.FC<CraRoomCardProps> = ({
         )}
       </div>
 
-      <div className="mt-4 pt-4 border-t border-subtle flex items-center justify-between gap-3 text-xs text-muted">
+      <div className={`mt-5 pt-3 ${hairline} flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm text-sub`}>
         <span>{footnote}</span>
         <button
           onClick={onTrack}
-          className="inline-flex items-center gap-1 text-sm text-accent-subtle hover:underline underline-offset-4 cursor-pointer"
+          className="min-h-11 md:min-h-0 inline-flex items-center gap-1 text-base md:text-sm font-semibold text-accent-subtle hover:underline underline-offset-4 cursor-pointer"
         >
           Track as a goal <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
         </button>
       </div>
-    </div>
+    </section>
   );
 };
 
@@ -394,13 +407,13 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
   };
 
   return (
-    <div className="max-w-7xl mx-auto flex flex-col gap-6">
+    <div className={`max-w-7xl mx-auto ${pageStack}`}>
       {/* Header and actions */}
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <div className="flex items-baseline gap-3">
-            <h1 className="text-2xl font-medium text-main">Goals & savings envelopes</h1>
-            <span className="text-xs text-muted">Canadian edition</span>
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h1 className="text-3xl md:text-4xl leading-tight font-semibold text-main">Goals & savings envelopes</h1>
+            <span className="text-sm text-sub">Canadian edition</span>
           </div>
           <p className="mt-1 text-sm text-sub">
             Targets, CRA TFSA and FHSA annual room, and emergency buffers
@@ -439,14 +452,14 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
       </header>
 
       {error && (
-        <div className="p-3 rounded-lg bg-negative-subtle border border-negative/30 text-sm text-negative">
+        <div className="p-4 rounded-lg bg-negative-subtle text-base md:text-sm text-negative">
           {error}
         </div>
       )}
 
       {/* CRA statutory room */}
       {craSummary && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-16">
           <CraRoomCard
             title={`TFSA contribution room (${craSummary.tax_year})`}
             tag="Statutory individual room"
@@ -473,17 +486,17 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
       )}
 
       {/* Goal type filter */}
-      <div className="flex flex-wrap items-center gap-1">
-        <button onClick={() => setTypeFilter("ALL")} className={segment(typeFilter === "ALL")}>
-          All goals <span className="tabular-nums text-muted">{goals.length}</span>
+      <div className={segmentTrack}>
+        <button onClick={() => setTypeFilter("ALL")} className={chipTab(typeFilter === "ALL")}>
+          All goals <span className="tabular-nums text-sub">{goals.length}</span>
         </button>
         {(["EMERGENCY_FUND", "SAVINGS", "TFSA_ANNUAL", "FHSA_ANNUAL", "HBP_REPAYMENT", "DEBT_PAYOFF"] as GoalType[]).map(
           (t) => {
             const count = goals.filter((g) => g.type === t).length;
             if (count === 0 && typeFilter !== t) return null;
             return (
-              <button key={t} onClick={() => setTypeFilter(t)} className={segment(typeFilter === t)}>
-                {GOAL_TYPE_META[t].label} <span className="tabular-nums text-muted">{count}</span>
+              <button key={t} onClick={() => setTypeFilter(t)} className={chipTab(typeFilter === t)}>
+                {GOAL_TYPE_META[t].label} <span className="tabular-nums text-sub">{count}</span>
               </button>
             );
           }
@@ -492,17 +505,17 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
       {/* Goals grid */}
       {isLoading ? (
-        <div className="flex items-center justify-center h-48 text-sm text-muted">
+        <div role="status" className={`flex items-center justify-center h-48 ${loneText}`}>
           <div className="animate-spin rounded-full h-5 w-5 border-2 border-subtle border-t-[var(--accent-primary)] mr-3"></div>
           Loading goals…
         </div>
       ) : goals.length === 0 ? (
-        <div className={`${card} p-6 py-12 text-center`}>
-          <div className="text-base font-medium text-main">No goals yet</div>
-          <p className="mt-1 text-sm text-sub max-w-md mx-auto">
+        <div className="px-4 py-16 text-center">
+          <div className={sectionTitle}>No goals yet</div>
+          <p className="mt-2 text-base text-sub max-w-md mx-auto">
             Size an emergency fund with the 3, 6, 9 or 12-month calculator, or set up a TFSA or FHSA goal
           </p>
-          <div className="flex items-center justify-center gap-2 mt-6">
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-6">
             <button onClick={handleOpenCalculator} className={btnSecondary}>
               Calculate emergency fund
             </button>
@@ -512,7 +525,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-12">
           {goals.map((g) => {
             const meta = GOAL_TYPE_META[g.type] || GOAL_TYPE_META.SAVINGS;
             const progress = Math.min(100, g.progress_percentage || 0);
@@ -521,7 +534,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
             const current = g.effective_current_amount ?? g.current_amount ?? 0;
 
             return (
-              <div key={g.id} className={`${card} p-5 flex flex-col justify-between`}>
+              <div key={g.id} className={`min-w-0 pt-5 ${hairline} flex flex-col justify-between`}>
                 <div>
                   {/* Goal header */}
                   <div className="flex items-start justify-between gap-2">
@@ -531,17 +544,17 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                           className="w-2 h-2 rounded-full shrink-0"
                           style={{ backgroundColor: meta.color }}
                         />
-                        <h3 className="text-base font-medium text-main break-words min-w-0">
+                        <h3 className="text-lg font-semibold text-main break-words min-w-0">
                           {g.name}
                         </h3>
                       </div>
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-xs text-muted">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-sm text-sub">
                         <span>{meta.label}</span>
                         {owner && (
                           <span className="inline-flex items-center gap-1.5 text-sub">
                             <span
                               className="w-1.5 h-1.5 rounded-full shrink-0"
-                              style={{ backgroundColor: owner.color || "var(--text-muted)" }}
+                              style={{ backgroundColor: owner.color || "var(--text-secondary)" }}
                             />
                             {owner.name}
                           </span>
@@ -583,16 +596,16 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                   {/* Amounts */}
                   <div className="mt-4 flex items-end justify-between gap-3">
                     <div>
-                      <Money value={current} className="font-display text-xl font-medium text-main" />
-                      <div className="mt-1 text-xs text-muted">
+                      <Money value={current} className="font-display text-2xl font-medium text-main" />
+                      <div className="mt-1 text-sm text-sub">
                         of {formatMoney(g.target_amount ?? 0)} target
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-base font-medium tabular-nums text-main">
+                      <div className="text-lg font-medium tabular-nums text-main">
                         {progress.toFixed(0)}%
                       </div>
-                      <div className="mt-1 text-xs text-muted">
+                      <div className="mt-1 text-sm text-sub">
                         {isCompleted ? (
                           <span className="text-positive inline-flex items-center gap-1">
                             <CheckCircle2 className="w-4 h-4" strokeWidth={1.5} /> Reached
@@ -617,7 +630,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                   </div>
 
                   {/* Linked account and notes */}
-                  <div className="mt-4 flex flex-col gap-1 text-xs text-muted">
+                  <div className="mt-4 flex flex-col gap-1 text-sm text-sub">
                     {g.linked_account ? (
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
                         <span className="text-sub">Linked account</span>
@@ -630,7 +643,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
                     {g.target_date && (
                       <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-muted" strokeWidth={1.5} />
+                        <Calendar className="w-4 h-4 text-sub" strokeWidth={1.5} />
                         <span>Target {new Date(g.target_date).toLocaleDateString(getDateLocale())}</span>
                       </div>
                     )}
@@ -647,10 +660,10 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
       {/* Emergency fund calculator modal */}
       {showCalcModal && (
         <div className={modalOverlay}>
-          <div className="relative w-full md:max-w-3xl bg-surface border border-default rounded-t-2xl md:rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[92dvh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter">
+          <div className="relative w-full md:max-w-3xl bg-surface elevation-3 rounded-t-2xl md:rounded-2xl overflow-hidden flex flex-col max-h-[92dvh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter">
             <div className="flex items-start justify-between gap-4 p-5 border-b border-subtle">
               <div>
-                <h2 className="text-base font-medium text-main">Emergency fund calculator</h2>
+                <h2 className={sectionTitle}>Emergency fund calculator</h2>
                 <p className="mt-1 text-sm text-sub">
                   Model a 3, 6, 9 or 12-month cushion and leave out non-essential spending
                 </p>
@@ -669,7 +682,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <div className={labelCls}>Target cushion</div>
-                  <div className="grid grid-cols-4 gap-1">
+                  <div className={segmentTrack}>
                     {[3, 6, 9, 12].map((m) => (
                       <button
                         key={m}
@@ -685,7 +698,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
                 <div>
                   <div className={labelCls}>Spending lookback</div>
-                  <div className="grid grid-cols-3 gap-1">
+                  <div className={segmentTrack}>
                     {[3, 6, 12].map((lb) => (
                       <button
                         key={lb}
@@ -702,14 +715,14 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
               {/* Result */}
               {calcData && (
-                <div className="p-4 rounded-xl bg-surface-subtle border border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
-                    <div className="text-sm text-sub">{calcMonths}-month emergency target</div>
+                    <div className={labelText}>{calcMonths}-month emergency target</div>
                     <Money
                       value={calcData.suggested_target_amount ?? calcData.suggested_target ?? 0}
-                      className="block mt-2 font-display text-2xl font-medium leading-none text-main"
+                      className="block mt-2 font-display text-3xl font-medium leading-none text-main"
                     />
-                    <div className="mt-2 text-xs text-muted">
+                    <div className="mt-2 text-sm text-sub">
                       Based on{" "}
                       <span className="tabular-nums text-sub">
                         {formatMoney(calcData.monthly_average_included_expense ?? calcData.monthly_fixed_expense ?? 0)}
@@ -737,19 +750,19 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
               {/* Category inclusion table */}
               <div>
                 <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 mb-2">
-                  <h3 className="text-base font-medium text-main">Categories in the target</h3>
-                  <span className="text-xs text-muted">
+                  <h3 className="text-base md:text-lg font-semibold text-main">Categories in the target</h3>
+                  <span className="text-sm text-sub">
                     Uncheck discretionary categories to model a survival budget
                   </span>
                 </div>
 
                 {isPhone ? (
-                  <ul className="border border-subtle rounded-xl overflow-hidden bg-surface divide-y divide-subtle">
+                  <ul className="border-y border-subtle divide-y divide-subtle">
                     {(calcData?.category_breakdown || calcData?.categories || []).map((row) => {
                       const isIncluded = !excludedCatIds.includes(row.category_id);
                       return (
                         <li key={row.category_id} className={!isIncluded ? "opacity-60" : undefined}>
-                          <label className="min-h-14 px-4 py-3 flex items-center gap-3 cursor-pointer">
+                          <label className="min-h-14 py-3 flex items-center gap-3 cursor-pointer">
                             <input
                               type="checkbox"
                               checked={isIncluded}
@@ -758,7 +771,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                             />
                             <span className="flex-1 min-w-0">
                               <span className="block text-main break-words">{row.category_name}</span>
-                              <span className="block text-sm text-muted">
+                              <span className="block text-sm text-sub">
                                 {isIncluded ? "Included" : "Excluded (discretionary)"}
                               </span>
                             </span>
@@ -769,14 +782,14 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                     })}
                   </ul>
                 ) : (
-                <div className="border border-subtle rounded-xl overflow-hidden bg-surface">
+                <div className="border-b border-subtle">
                   <table className="w-full table-fixed text-left text-sm border-collapse">
                     <thead>
-                      <tr className="border-b border-subtle text-xs text-muted font-normal">
-                        <th className="h-9 px-2 sm:px-3 w-14 text-center font-normal">Include</th>
-                        <th className="h-9 px-2 sm:px-3 font-normal">Expense category</th>
-                        <th className="h-9 px-2 sm:px-3 w-24 sm:w-32 text-right font-normal">Avg monthly spend</th>
-                        <th className="h-9 px-2 sm:px-3 w-24 sm:w-36 font-normal">Status</th>
+                      <tr className="border-y border-subtle text-sm text-sub font-normal">
+                        <th className="h-10 px-2 sm:px-3 w-14 text-center font-normal">Include</th>
+                        <th className="h-10 px-2 sm:px-3 font-normal">Expense category</th>
+                        <th className="h-10 px-2 sm:px-3 w-24 sm:w-32 text-right font-normal">Avg monthly spend</th>
+                        <th className="h-10 px-2 sm:px-3 w-24 sm:w-36 font-normal">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-subtle">
@@ -806,13 +819,13 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                             </td>
                             <td className="px-2 sm:px-3">
                               {isIncluded ? (
-                                <span className="inline-flex max-w-full rounded-md px-1.5 py-0.5 text-xs bg-positive-subtle text-positive">
+                                <span className="inline-flex max-w-full rounded-md px-2 py-0.5 text-sm bg-positive-subtle text-positive">
                                   Included
                                 </span>
                               ) : (
                                 <span
                                   title="Excluded (discretionary)"
-                                  className="inline-flex max-w-full rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-muted"
+                                  className="inline-flex max-w-full rounded-md px-2 py-0.5 text-sm bg-surface-subtle text-sub"
                                 >
                                   Excluded (discretionary)
                                 </span>
@@ -840,9 +853,9 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
       {/* Goal create / edit modal */}
       {isGoalModalOpen && (
         <div className={modalOverlay}>
-          <div className="relative w-full md:max-w-lg bg-surface border border-default rounded-t-2xl md:rounded-xl shadow-xl overflow-y-auto flex flex-col max-h-[92dvh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter">
+          <div className="relative w-full md:max-w-lg bg-surface elevation-3 rounded-t-2xl md:rounded-2xl overflow-y-auto flex flex-col max-h-[92dvh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter">
             <div className="flex items-center justify-between p-5 border-b border-subtle">
-              <h2 className="text-base font-medium text-main">
+              <h2 className={sectionTitle}>
                 {editingGoal ? "Edit goal" : "New goal"}
               </h2>
               <button
@@ -908,7 +921,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                     onValueChange={(v) => setGoalForm({ ...goalForm, current_amount: v })}
                     className={`${inputCls} tabular-nums`}
                   />
-                  <span className="mt-1 block text-xs text-muted">
+                  <span className="mt-1 block text-sm text-sub">
                     A linked account overrides this
                   </span>
                 </div>
@@ -969,7 +982,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                   onChange={(e) => setGoalForm({ ...goalForm, notes: e.target.value })}
                   rows={2}
                   placeholder="Notes"
-                  className="w-full px-3 py-2 rounded-lg border border-default bg-input text-base md:text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]"
+                  className="w-full px-3 py-2 rounded-t-lg rounded-b-none border-0 border-b-2 border-default bg-surface-subtle text-base md:text-sm text-main placeholder:text-sub focus:outline-none focus:border-[var(--accent-primary)]"
                 />
               </div>
 

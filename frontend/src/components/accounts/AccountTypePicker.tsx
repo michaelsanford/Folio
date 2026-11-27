@@ -10,7 +10,7 @@ import {
 } from "../../constants/canadianAccountTypes";
 import { AccountIcon } from "../common/AccountIcon";
 import { CanadianRulesModal } from "./CanadianRulesModal";
-import { iconButton } from "../common/ui";
+import { chipTab, iconButton, loneText, raised } from "../common/ui";
 
 interface AccountTypePickerProps {
   value: AccountType;
@@ -104,25 +104,25 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         aria-expanded={isOpen}
-        className="w-full flex items-center justify-between gap-3 px-3 py-3 bg-input border border-default rounded-lg text-left transition-colors group cursor-pointer"
+        className="w-full flex items-center justify-between gap-3 px-3 py-3 rounded-t-lg rounded-b-none border-0 border-b-2 border-default bg-surface-subtle text-left transition-colors group cursor-pointer focus:outline-none focus:border-[var(--accent-primary)]"
       >
         <div className="flex items-center gap-3 min-w-0">
           <AccountIcon type={currentMeta.type} size="md" />
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-main flex flex-wrap items-center gap-x-2 gap-y-1 break-words">
+            <div className="text-base font-medium text-main flex flex-wrap items-center gap-x-2 gap-y-1 break-words">
               <span>{currentMeta.name}</span>
-              <span className="rounded-md px-1.5 py-0.5 text-xs font-mono font-normal bg-surface-subtle text-sub shrink-0">
+              <span className="rounded-md px-1.5 py-0.5 text-xs font-mono font-normal bg-surface text-sub shrink-0">
                 {currentMeta.badge}
               </span>
             </div>
-            <div className="text-xs text-muted mt-0.5 break-words">
+            <div className="text-sm text-sub mt-0.5 break-words">
               {ACCOUNT_CATEGORY_LABELS[currentMeta.category]} · {currentMeta.description}
             </div>
           </div>
         </div>
 
         <ChevronDown
-          className={`w-4 h-4 text-muted group-hover:text-main transition-transform shrink-0 ${
+          className={`w-5 h-5 text-sub group-hover:text-main transition-transform shrink-0 ${
             isOpen ? "rotate-180" : ""
           }`}
           strokeWidth={1.5}
@@ -149,13 +149,13 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
                 width: `${popoverStyle.width}px`,
                 maxHeight: `${popoverStyle.maxHeight}px`,
               }}
-              className="z-[101] rounded-xl bg-surface border border-default shadow-xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95"
+              className={`z-[101] rounded-lg ${raised} overflow-hidden flex flex-col animate-in fade-in zoom-in-95`}
             >
               {/* Search and Category Filter Tabs */}
               <div className="p-3 border-b border-subtle space-y-3 shrink-0">
                 <div className="relative">
                   <Search
-                    className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                    className="w-4 h-4 text-sub absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
                     strokeWidth={1.5}
                   />
                   <input
@@ -163,23 +163,19 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
                     placeholder="Search account types"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="w-full h-11 md:h-9 pl-9 pr-3 bg-input border border-default rounded-lg text-base md:text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
+                    className="w-full h-11 md:h-10 pl-9 pr-3 rounded-t-lg rounded-b-none border-0 border-b-2 border-default bg-surface-subtle text-base md:text-sm text-main placeholder:text-sub focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
                     autoFocus
                   />
                 </div>
 
                 {/* Category Tabs */}
-                <div className="flex flex-wrap gap-1 pb-0.5">
+                <div className="flex flex-wrap gap-x-1">
                   {categories.map((c) => (
                     <button
                       key={c.id}
                       type="button"
                       onClick={() => setSelectedCategory(c.id)}
-                      className={`h-10 md:h-7 px-2.5 md:px-2 rounded-md text-sm md:text-xs border transition-colors cursor-pointer ${
-                        selectedCategory === c.id
-                          ? "bg-surface-subtle border-default text-main font-medium"
-                          : "border-transparent text-sub hover:text-main bg-surface-hover"
-                      }`}
+                      className={chipTab(selectedCategory === c.id)}
                     >
                       {c.label}
                     </button>
@@ -212,14 +208,14 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-medium text-main">
+                              <span className="text-base font-medium text-main break-words">
                                 {item.name}
                               </span>
                               <span className="rounded-md px-1.5 py-0.5 text-xs font-mono bg-surface-subtle text-sub shrink-0">
                                 {item.badge}
                               </span>
                             </div>
-                            <p className="text-xs text-muted mt-0.5 leading-relaxed break-words">
+                            <p className="text-sm text-sub mt-0.5 leading-relaxed break-words">
                               {item.description}
                             </p>
                           </div>
@@ -247,7 +243,7 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
                     );
                   })
                 ) : (
-                  <div className="p-8 text-center text-sm text-muted">
+                  <div className={`p-8 text-center ${loneText}`}>
                     No account types match your search
                   </div>
                 )}

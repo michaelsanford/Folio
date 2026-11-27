@@ -12,7 +12,7 @@ import {
   type SymbolPosition,
 } from "../../utils/format";
 import { useFormatPrefs } from "../../hooks/useFormatPrefs";
-import { selectClass } from "./ui";
+import { fieldLabel, selectClass } from "./ui";
 
 const GROUP_OPTIONS: { value: GroupSeparator; label: string }[] = [
   { value: ",", label: "Comma  1,234" },
@@ -34,8 +34,8 @@ interface SegmentedProps<T extends string> {
 function Segmented<T extends string>({ label, value, options, onChange }: SegmentedProps<T>) {
   return (
     <div role="radiogroup" aria-label={label}>
-      <div className="text-xs text-sub mb-1">{label}</div>
-      <div className="flex rounded-lg border border-default overflow-hidden">
+      <div className="text-sm text-sub mb-1.5">{label}</div>
+      <div className="flex gap-1 rounded-lg bg-surface-subtle p-1">
         {options.map((o) => {
           const selected = o.value === value;
           return (
@@ -45,8 +45,8 @@ function Segmented<T extends string>({ label, value, options, onChange }: Segmen
               role="radio"
               aria-checked={selected}
               onClick={() => onChange(o.value)}
-              className={`flex-1 h-11 md:h-9 px-2 text-sm tabular-nums transition-colors cursor-pointer ${
-                selected ? "bg-accent-subtle text-main font-medium" : "bg-surface text-sub bg-surface-hover"
+              className={`flex-1 min-w-0 min-h-11 md:min-h-9 px-2 py-1 rounded-md text-base md:text-sm tabular-nums break-words transition-colors cursor-pointer ${
+                selected ? "bg-accent-subtle text-accent-subtle font-semibold" : "text-sub hover:text-main"
               }`}
             >
               {o.label}
@@ -84,10 +84,10 @@ export const NumberFormatSettings: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5">
         <div>
-          <label htmlFor="number-format-preset" className="block text-xs text-sub mb-1">
+          <label htmlFor="number-format-preset" className={fieldLabel}>
             Style
           </label>
           <select
@@ -105,7 +105,7 @@ export const NumberFormatSettings: React.FC = () => {
           </select>
         </div>
         <div>
-          <label htmlFor="number-format-group" className="block text-xs text-sub mb-1">
+          <label htmlFor="number-format-group" className={fieldLabel}>
             Thousands separator
           </label>
           <select
@@ -123,7 +123,7 @@ export const NumberFormatSettings: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5">
         <Segmented<NegativeStyle>
           label="Negative amounts"
           value={prefs.negativeStyle}
@@ -168,8 +168,8 @@ export const NumberFormatSettings: React.FC = () => {
         />
       </div>
 
-      <div className="rounded-lg bg-surface-subtle px-4 py-3 text-sm text-main tabular-nums flex flex-wrap gap-x-5 gap-y-1">
-        <span className="text-xs text-muted self-center">Preview</span>
+      <div className="text-base text-main tabular-nums flex flex-wrap gap-x-5 gap-y-1">
+        <span className="text-sm text-sub self-center">Preview</span>
         <span>{formatMoney(48210.4, {}, prefs)}</span>
         <span className="text-negative">{formatMoney(-1234.56, {}, prefs)}</span>
         <span>{formatPercent(4.5, false, prefs)}</span>

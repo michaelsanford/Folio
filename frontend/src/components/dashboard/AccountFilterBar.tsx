@@ -5,6 +5,7 @@ import { AccountIcon } from "../common/AccountIcon";
 import { ACCOUNT_FAMILIES, accountFamily, type AccountFamily } from "../../constants/canadianAccountTypes";
 import type { Account } from "../../types";
 import { useSession } from "../../hooks/useSession";
+import { raised } from "../common/ui";
 
 interface AccountFilterBarProps {
   accounts: Account[];
@@ -12,11 +13,12 @@ interface AccountFilterBarProps {
   onHiddenAccountsChange: (ids: string[]) => void;
 }
 
+// Filled chips: the accent tint marks what is counted; a dashed accent edge marks a part-counted group.
 const pill =
-  "inline-flex items-center gap-1.5 h-11 md:h-8 px-3 rounded-full border text-sm transition-colors cursor-pointer";
-const pillOn = "border-[var(--accent-primary)] bg-accent-subtle text-main";
+  "inline-flex items-center gap-1.5 min-h-11 md:min-h-9 px-4 py-1 rounded-full border text-base md:text-sm transition-colors cursor-pointer";
+const pillOn = "border-transparent bg-accent-subtle text-accent-subtle font-semibold";
 const pillPartial = "border-dashed border-[var(--accent-primary)] text-main";
-const pillOff = "border-default text-sub bg-surface-hover";
+const pillOff = "border-transparent bg-surface-subtle text-sub hover:text-main";
 
 /**
  * Which accounts the dashboard counts. Family chips include or exclude a whole
@@ -153,7 +155,7 @@ export const AccountFilterBar: React.FC<AccountFilterBarProps> = ({
             className={`${pill} ${state === "on" ? pillOn : state === "partial" ? pillPartial : pillOff}`}
           >
             {label}
-            <span className="text-xs tabular-nums text-muted">{members.length}</span>
+            <span className="text-sm tabular-nums opacity-80">{members.length}</span>
           </button>
         ))}
 
@@ -166,7 +168,7 @@ export const AccountFilterBar: React.FC<AccountFilterBarProps> = ({
         className={`${pill} ${pillOff}`}
       >
         {hiddenCount === 0 ? "Accounts" : `${accounts.length - hiddenCount} of ${accounts.length} accounts`}
-        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`} strokeWidth={1.5} />
+        <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? "rotate-180" : ""}`} strokeWidth={1.5} />
       </button>
 
       {isOpen &&
@@ -178,7 +180,7 @@ export const AccountFilterBar: React.FC<AccountFilterBarProps> = ({
               role="menu"
               aria-label="Choose accounts"
               style={{ position: "fixed", top: menuPos.top, left: menuPos.left, maxHeight: menuPos.maxHeight }}
-              className="z-[101] w-72 overflow-y-auto rounded-xl bg-surface border border-default shadow-xl p-1 animate-in fade-in zoom-in-95"
+              className={`z-[101] w-72 overflow-y-auto rounded-lg ${raised} p-1 animate-in fade-in zoom-in-95`}
             >
               {accounts.map((a) => {
                 const shown = !hidden.has(a.id);
@@ -200,8 +202,8 @@ export const AccountFilterBar: React.FC<AccountFilterBarProps> = ({
                     </span>
                     <AccountIcon type={a.type} icon={a.icon} color={a.color} size="sm" />
                     <span className="min-w-0">
-                      <span className={`block text-sm break-words md:truncate ${shown ? "text-main" : "text-muted"}`}>{a.name}</span>
-                      {a.institution && <span className="block text-xs text-muted break-words md:truncate">{a.institution}</span>}
+                      <span className={`block text-base md:text-sm break-words ${shown ? "text-main" : "text-sub"}`}>{a.name}</span>
+                      {a.institution && <span className="block text-sm text-sub break-words">{a.institution}</span>}
                     </span>
                   </button>
                 );

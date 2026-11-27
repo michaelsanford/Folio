@@ -50,9 +50,9 @@ export const CreditUsage: React.FC<CreditUsageProps> = ({ balance, limit, compac
   const percentUsed = Math.round(ratio * 100);
   return (
     <div className="space-y-1.5">
-      <div className="flex items-baseline justify-between gap-2 text-xs">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
         <span className="tabular-nums font-medium">{headline}</span>
-        <span className="text-muted tabular-nums">
+        <span className="text-sub tabular-nums">
           {balance < 0 ? `${money(-balance)} credit · ` : `${percentUsed}% used · `}
           {money(limit)} limit
         </span>

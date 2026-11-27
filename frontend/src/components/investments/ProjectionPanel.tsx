@@ -6,6 +6,7 @@ import { api } from "../../services/api";
 import { formatMoney, formatMoneyCompact, getDateLocale } from "../../utils/format";
 import { projectBalances } from "../../utils/projection";
 import type { ReturnHistoryResponse } from "../../types";
+import { inputClass, labelText, loneText, segmentButton, segmentTrack } from "../common/ui";
 
 interface ProjectionPanelProps {
   accountId: string;
@@ -99,7 +100,7 @@ export const ProjectionPanel: React.FC<ProjectionPanelProps> = ({ accountId, cur
         borderWidth: 1,
         padding: [8, 12],
         extraCssText: "border-radius: 8px; box-shadow: none;",
-        textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: chartTheme.fontFamily },
+        textStyle: { color: chartTheme.tooltipText, fontSize: chartTheme.labelFontSize, fontFamily: chartTheme.fontFamily },
         trigger: "axis",
         axisPointer: { type: "line", lineStyle: { color: chartTheme.axisLineColor } },
         formatter: (params: any[]) => {
@@ -124,7 +125,7 @@ export const ProjectionPanel: React.FC<ProjectionPanelProps> = ({ accountId, cur
         boundaryGap: false,
         axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
         axisTick: { show: false },
-        axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11, fontFamily: chartTheme.figureFontFamily, hideOverlap: true },
+        axisLabel: { color: chartTheme.subtleTextColor, fontSize: chartTheme.axisFontSize, fontFamily: chartTheme.figureFontFamily, hideOverlap: true },
       },
       yAxis: {
         type: "value",
@@ -132,7 +133,7 @@ export const ProjectionPanel: React.FC<ProjectionPanelProps> = ({ accountId, cur
         splitLine: { lineStyle: { color: chartTheme.gridLineColor } },
         axisLabel: {
           color: chartTheme.subtleTextColor,
-          fontSize: 11,
+          fontSize: chartTheme.axisFontSize,
           fontFamily: chartTheme.figureFontFamily,
           formatter: (v: number) => formatMoneyCompact(v, currency),
         },
@@ -185,11 +186,11 @@ export const ProjectionPanel: React.FC<ProjectionPanelProps> = ({ accountId, cur
     };
   }, [history, projection, marketValue, currency, chartTheme]);
 
-  if (error) return <p className="text-sm text-negative">{error}</p>;
-  if (!history) return <p className="text-sm text-muted">Loading return history…</p>;
+  if (error) return <p className="text-base text-negative">{error}</p>;
+  if (!history) return <p role="status" className={`py-8 text-center ${loneText}`}>Loading return history…</p>;
   if (!projection) {
     return (
-      <p className="text-sm text-muted">
+      <p className={`py-8 text-center ${loneText}`}>
         Projection needs at least 6 months of price history for these holdings (
         <span className="tabular-nums">{history.months_of_history}</span> so far). Update quotes regularly and it
         will appear here.
@@ -198,39 +199,35 @@ export const ProjectionPanel: React.FC<ProjectionPanelProps> = ({ accountId, cur
   }
 
   const end = projection.points.at(-1)!;
-  const btn = (active: boolean) =>
-    `h-8 px-3 text-sm rounded-md transition-colors cursor-pointer ${
-      active ? "bg-surface text-main shadow-sm" : "text-sub hover:text-main"
-    }`;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:justify-between">
-        <div className="flex flex-wrap items-end gap-4">
+        <div className="flex flex-wrap items-end gap-6">
           <div>
-            <div className="text-xs text-sub mb-1" id="projection-horizon">
+            <div className={`${labelText} mb-1`} id="projection-horizon">
               Horizon
             </div>
-            <div role="radiogroup" aria-labelledby="projection-horizon" className="inline-flex p-0.5 rounded-lg bg-surface-subtle">
+            <div role="radiogroup" aria-labelledby="projection-horizon" className={segmentTrack}>
               {HORIZONS.map((y) => (
-                <button key={y} type="button" role="radio" aria-checked={years === y} onClick={() => setYears(y)} className={btn(years === y)}>
+                <button key={y} type="button" role="radio" aria-checked={years === y} onClick={() => setYears(y)} className={segmentButton(years === y)}>
                   {y} yr
                 </button>
               ))}
             </div>
           </div>
           <label className="block">
-            <span className="block text-xs text-sub mb-1">Monthly contribution</span>
+            <span className={`block ${labelText} mb-1`}>Monthly contribution</span>
             <NumberField
               value={contribution}
               onValueChange={setContribution}
               step="any"
               placeholder="0"
-              className="w-36 h-9 px-3 rounded-lg border border-default bg-input text-sm text-main tabular-nums placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]"
+              className={`${inputClass.replace("w-full ", "")} w-36 tabular-nums`}
             />
           </label>
         </div>
-        <p className="text-xs text-muted">
+        <p className="text-sm text-sub">
           Based on <span className="tabular-nums">{history.months_of_history}</span> months:{" "}
           <span className="tabular-nums text-sub">{pct(history.annualized_return ?? 0)}</span> a year,{" "}
           <span className="tabular-nums text-sub">{pct(history.annualized_volatility ?? 0)}</span> volatility
@@ -239,26 +236,26 @@ export const ProjectionPanel: React.FC<ProjectionPanelProps> = ({ accountId, cur
 
       {option && <LazyChart option={option} className="h-72" />}
 
-      <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <dl className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-6">
         <div>
-          <dt className="text-xs text-sub">Median in {years} years</dt>
-          <dd className="mt-1 text-lg font-medium text-main tabular-nums">{formatMoney(end.p50, { currency, cents: false })}</dd>
+          <dt className={labelText}>Median in {years} years</dt>
+          <dd className="mt-1 text-xl md:text-2xl font-medium text-main tabular-nums">{formatMoney(end.p50, { currency, cents: false })}</dd>
         </div>
         <div>
-          <dt className="text-xs text-sub">80% of outcomes</dt>
-          <dd className="mt-1 text-lg font-medium text-main tabular-nums">
+          <dt className={labelText}>80% of outcomes</dt>
+          <dd className="mt-1 text-xl md:text-2xl font-medium text-main tabular-nums">
             {formatMoneyCompact(end.p10, currency)} – {formatMoneyCompact(end.p90, currency)}
           </dd>
         </div>
         <div>
-          <dt className="text-xs text-sub">You'd add</dt>
-          <dd className="mt-1 text-lg font-medium text-main tabular-nums">
+          <dt className={labelText}>You'd add</dt>
+          <dd className="mt-1 text-xl md:text-2xl font-medium text-main tabular-nums">
             {formatMoney(projection.totalContributed, { currency, cents: false })}
           </dd>
         </div>
       </dl>
 
-      <p className="text-xs text-muted">
+      <p className="text-sm text-sub">
         Past returns don't predict future results. The shaded bands hold the middle 50% and 80% of {PATHS.toLocaleString()}{" "}
         simulated paths drawn from this account's own monthly returns and volatility, valued at today's holdings.
       </p>

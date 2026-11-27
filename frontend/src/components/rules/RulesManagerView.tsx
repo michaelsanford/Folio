@@ -12,13 +12,23 @@ import type {
 import { api } from "../../services/api";
 import { NumberField } from "../common/NumberField";
 import {
-  card,
+  checkboxClass,
+  chipTab,
   dangerIconButton as deleteButton,
+  hairline,
   iconButton,
   inputClass,
+  labelText,
+  loneText,
   modalOverlay,
+  pageStack,
   primaryButton,
   secondaryButton,
+  section,
+  sectionHeader,
+  sectionSub,
+  sectionTitle,
+  segmentTrack,
 } from "../common/ui";
 import { ActionSheet, DetailList } from "../common/ActionSheet";
 
@@ -242,7 +252,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
         ? "AI"
         : "Unclassified";
     return (
-      <span className="rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-sub">{label}</span>
+      <span className="rounded-md px-1.5 py-0.5 text-sm bg-surface-subtle text-sub">{label}</span>
     );
   };
 
@@ -291,24 +301,21 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
     },
   ];
 
-  const tabClass = (active: boolean) =>
-    `h-11 md:h-8 px-3 flex items-center gap-2 rounded-lg text-sm transition-colors cursor-pointer ${
-      active ? "bg-surface-subtle text-main font-medium" : "text-sub hover:text-main bg-surface-hover"
-    }`;
+  const tabClass = (active: boolean) => `${chipTab(active)} -mb-px`;
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className={`max-w-7xl mx-auto ${pageStack}`}>
       {/* Header & Tab Switcher */}
       <header className="flex flex-col sm:flex-row items-stretch sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-medium text-main">Rules</h1>
+          <h1 className="text-2xl md:text-3xl font-semibold text-main">Rules</h1>
           <p className="text-sm text-sub mt-1">
             Set categorization rules or test the classification engine
           </p>
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex items-center gap-1 self-start sm:self-auto">
+        <div className={`${segmentTrack} self-start sm:self-auto`}>
           <button
             type="button"
             aria-pressed={activeTab === "rules"}
@@ -316,7 +323,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
             className={tabClass(activeTab === "rules")}
           >
             <span>Active rules</span>
-            <span className="text-xs tabular-nums font-normal text-muted">{rules.length}</span>
+            <span className="tabular-nums font-normal text-sub">{rules.length}</span>
           </button>
 
           <button
@@ -335,10 +342,10 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
 
       {/* TAB 1: ACTIVE RULES */}
       {activeTab === "rules" && (
-        <div className="space-y-6">
+        <div className={pageStack}>
           {/* Action Row */}
-          <div className="flex items-center justify-between gap-4">
-            <div className="text-sm text-sub">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="min-w-0 flex-1 basis-60 text-base text-sub">
               Rules run in priority order, starting from 1, when statements are imported
             </div>
             <button onClick={() => setIsModalOpen(true)} className={`${primaryButton} shrink-0`}>
@@ -347,13 +354,15 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
           </div>
 
           {/* Simple Matcher Sandbox */}
-          <section className={`${card} p-5 sm:p-6`}>
-            <h2 className="text-base font-medium text-main">Test rules</h2>
-            <p className="text-sm text-sub mt-1">
-              Enter raw statement text to see which rule matches and what category and payee it assigns
-            </p>
+          <section className={section}>
+            <div className={sectionHeader}>
+              <h2 className={sectionTitle}>Test rules</h2>
+              <p className={sectionSub}>
+                Enter raw statement text to see which rule matches and what category and payee it assigns
+              </p>
+            </div>
 
-            <div className="mt-4 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2">
+            <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2">
               <input
                 type="text"
                 placeholder="Statement text"
@@ -369,7 +378,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                   aria-label="Amount"
                   value={testAmount}
                   onValueChange={setTestAmount}
-                  className="w-28 h-11 md:h-9 px-3 rounded-lg border border-default bg-input text-base md:text-sm text-main tabular-nums placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
+                  className={`${inputClass} w-28 tabular-nums`}
                 />
                 <button onClick={handleTestMatch} className={`${secondaryButton} flex-1 sm:flex-none`}>
                   Test match
@@ -378,13 +387,13 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
             </div>
 
             {testResult && (
-              <div className="mt-4 p-4 rounded-lg bg-surface-subtle text-sm">
+              <div className={`mt-6 pt-4 ${hairline} text-base`}>
                 {testResult.matched ? (
                   <div className="flex items-start gap-3">
-                    <span className="w-1.5 h-1.5 rounded-full bg-positive mt-2 shrink-0" />
-                    <div>
-                      <div className="font-medium text-main">Match found</div>
-                      <div className="text-xs text-sub mt-1">
+                    <span className="w-2 h-2 rounded-full bg-positive mt-2 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="font-semibold text-main">Match found</div>
+                      <div className="text-sm text-sub mt-1 break-words">
                         Category{" "}
                         <span className="text-main">
                           {categories.find((c) => c.id === testResult.suggested_category_id)?.name ||
@@ -404,13 +413,13 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
           </section>
 
           {/* Rules Container */}
-          <div className={`${card} overflow-hidden`}>
+          <section className={section}>
             {/* Phone rules feed (< md): read-only; a tap opens the rule's sheet */}
-            <div className="block md:hidden divide-y divide-[var(--border-subtle)]">
+            <div className="block md:hidden border-y border-subtle divide-y divide-[var(--border-subtle)]">
               {isLoading ? (
-                <div className="p-8 text-center text-muted text-sm">Loading rules…</div>
+                <div role="status" className={`px-4 py-12 text-center ${loneText}`}>Loading rules…</div>
               ) : rules.length === 0 ? (
-                <div className="p-8 text-center text-muted text-sm">No rules yet</div>
+                <div className={`px-4 py-12 text-center ${loneText}`}>No rules yet</div>
               ) : (
                 rules.map((rule) => {
                   const cat = categories.find((c) => c.id === rule.category_id);
@@ -420,12 +429,12 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                       type="button"
                       onClick={() => setSheetRuleId(rule.id)}
                       aria-label={`Rule ${rule.pattern}, details and actions`}
-                      className="w-full p-4 flex items-start gap-3 text-left bg-surface-hover transition-colors cursor-pointer"
+                      className="w-full px-1 py-4 flex items-start gap-3 text-left bg-surface-hover transition-colors cursor-pointer"
                     >
                       <div className="flex-1 min-w-0 space-y-1.5">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="tabular-nums text-xs text-muted">#{rule.priority}</span>
-                          <span className="rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-sub">
+                          <span className="tabular-nums text-sm text-sub">#{rule.priority}</span>
+                          <span className="rounded-md px-1.5 py-0.5 text-sm bg-surface-subtle text-sub">
                             {PATTERN_TYPE_LABELS[rule.pattern_type] ?? rule.pattern_type}
                           </span>
                         </div>
@@ -439,13 +448,13 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                             <span className="text-sub break-words">{cat?.name || "Unknown"}</span>
                           </span>
                           {rule.normalized_payee_override && (
-                            <span className="text-muted break-words min-w-0">
+                            <span className="text-sub break-words min-w-0">
                               → <span className="text-main">{rule.normalized_payee_override}</span>
                             </span>
                           )}
                         </div>
                       </div>
-                      <ChevronRight className="w-5 h-5 mt-0.5 text-muted shrink-0" strokeWidth={1.5} aria-hidden="true" />
+                      <ChevronRight className="w-5 h-5 mt-0.5 text-sub shrink-0" strokeWidth={1.5} aria-hidden="true" />
                     </button>
                   );
                 })
@@ -453,12 +462,12 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
             </div>
 
             {/* Rules table (tablet and desktop, >= md) */}
-            <div className="hidden md:block">
+            <div className="hidden md:block border-b border-subtle">
               <table className="w-full table-fixed text-left text-sm">
-                <thead className="border-b border-subtle">
-                  <tr className="h-10 text-xs text-muted">
-                    <th className="px-3 font-normal w-16">Priority</th>
-                    <th className="px-3 font-normal w-24">Match type</th>
+                <thead className="border-y border-subtle">
+                  <tr className="h-10 text-sm text-sub">
+                    <th className="px-3 font-normal w-20">Priority</th>
+                    <th className="px-3 font-normal w-28">Match type</th>
                     <th className="px-3 font-normal">Pattern</th>
                     <th className="px-3 font-normal w-[22%]">Category</th>
                     <th className="hidden xl:table-cell px-3 font-normal w-[18%]">Payee override</th>
@@ -470,13 +479,13 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                 <tbody className="divide-y divide-[var(--border-subtle)]">
                   {isLoading ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-12 text-muted">
+                      <td colSpan={6} role="status" className={`text-center px-4 py-12 ${loneText}`}>
                         Loading rules…
                       </td>
                     </tr>
                   ) : rules.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-12 text-muted">
+                      <td colSpan={6} className={`text-center px-4 py-12 ${loneText}`}>
                         No rules yet
                       </td>
                     </tr>
@@ -485,9 +494,9 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                       const cat = categories.find((c) => c.id === rule.category_id);
                       return (
                         <tr key={rule.id} className="h-12 text-main bg-surface-hover transition-colors align-middle">
-                          <td className="px-3 tabular-nums text-xs text-muted">#{rule.priority}</td>
+                          <td className="px-3 tabular-nums text-sub">#{rule.priority}</td>
                           <td className="px-3">
-                            <span className="rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-sub whitespace-nowrap">
+                            <span className="rounded-md px-1.5 py-0.5 text-sm bg-surface-subtle text-sub whitespace-nowrap">
                               {PATTERN_TYPE_LABELS[rule.pattern_type] ?? rule.pattern_type}
                             </span>
                           </td>
@@ -496,7 +505,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                               {rule.pattern}
                             </div>
                             {rule.normalized_payee_override && (
-                              <div className="xl:hidden text-xs text-sub break-words">
+                              <div className="xl:hidden text-sm text-sub break-words">
                                 → {rule.normalized_payee_override}
                               </div>
                             )}
@@ -514,7 +523,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                           </td>
                           <td className="hidden xl:table-cell px-3 text-sub min-w-0">
                             <div className="break-words">
-                              {rule.normalized_payee_override || <span className="text-muted">–</span>}
+                              {rule.normalized_payee_override || <span className="text-sub">–</span>}
                             </div>
                           </td>
                           <td className="px-3 text-right">
@@ -534,40 +543,42 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                 </tbody>
               </table>
             </div>
-          </div>
+          </section>
         </div>
       )}
 
       {/* TAB 2: CLASSIFICATION ENGINE & SANDBOX */}
       {activeTab === "sandbox" && (
-        <div className="space-y-6">
+        <div className={pageStack}>
           {/* Engine Status Banner */}
-          <section className={`${card} p-5 sm:p-6`}>
-            <div className="flex items-center justify-between gap-4">
-              <h2 className="text-base font-medium text-main">Classification tiers</h2>
+          <section className={section}>
+            <div className={`flex flex-wrap items-start justify-between gap-x-4 gap-y-2 ${sectionHeader}`}>
+              <div className="min-w-0">
+                <h2 className={sectionTitle}>Classification tiers</h2>
+                <p className={sectionSub}>
+                  Each transaction goes through the tiers in order until one is confident enough
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={loadEngineStatus}
                 disabled={isStatusLoading}
-                className="h-11 md:h-8 px-3 md:px-2 flex items-center gap-2 rounded-lg text-sm text-sub hover:text-main bg-surface-hover transition-colors cursor-pointer"
+                className={secondaryButton}
                 title="Refresh status"
               >
                 <RefreshCw
-                  className={`w-4 h-4 text-muted ${isStatusLoading ? "animate-spin" : ""}`}
+                  className={`w-4 h-4 ${isStatusLoading ? "animate-spin" : ""}`}
                   strokeWidth={1.5}
                 />
                 <span>Refresh</span>
               </button>
             </div>
-            <p className="text-sm text-sub mt-1">
-              Each transaction goes through the tiers in order until one is confident enough
-            </p>
 
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-8">
               {tierCards.map((t) => (
-                <div key={t.tier} className="p-4 rounded-lg border border-subtle bg-surface-subtle">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted">{t.tier}</span>
+                <div key={t.tier} className={`min-w-0 pt-3 ${hairline}`}>
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <span className="text-sub">{t.tier}</span>
                     <span className="inline-flex items-center gap-1.5 text-sub">
                       <span
                         className={`w-1.5 h-1.5 rounded-full ${
@@ -577,24 +588,26 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                       {t.status}
                     </span>
                   </div>
-                  <div className="mt-2 text-sm font-medium text-main">{t.title}</div>
-                  <div className="mt-1 text-xs text-muted leading-relaxed">{t.description}</div>
+                  <div className="mt-2 text-base font-semibold text-main">{t.title}</div>
+                  <div className="mt-1 text-sm text-sub leading-relaxed">{t.description}</div>
                 </div>
               ))}
             </div>
           </section>
 
           {/* Live Interactive Classifier Sandbox */}
-          <section className={`${card} p-5 sm:p-6`}>
-            <h2 className="text-base font-medium text-main">Classifier sandbox</h2>
-            <p className="text-sm text-sub mt-1">
-              Enter raw statement text, an amount and an account to see which tier resolves it and how confident it is
-            </p>
+          <section className={section}>
+            <div className={sectionHeader}>
+              <h2 className={sectionTitle}>Classifier sandbox</h2>
+              <p className={sectionSub}>
+                Enter raw statement text, an amount and an account to see which tier resolves it and how confident it is
+              </p>
+            </div>
 
             <form
               onSubmit={handleRunLiveClassification}
               data-testid="live-classifier-form"
-              className="mt-4 space-y-4"
+              className="space-y-4"
             >
               <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                 {/* Raw Payee Input */}
@@ -670,27 +683,27 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                   id="sandboxEnableBedrock"
                   checked={sandboxEnableBedrock}
                   onChange={(e) => setSandboxEnableBedrock(e.target.checked)}
-                  className="rounded border-default bg-input accent-[var(--accent-primary)]"
+                  className={checkboxClass}
                 />
-                <label htmlFor="sandboxEnableBedrock" className="text-sm text-sub cursor-pointer select-none">
+                <label htmlFor="sandboxEnableBedrock" className="text-base md:text-sm text-sub cursor-pointer select-none">
                   Fall back to AI when local confidence is too low
                 </label>
               </div>
             </form>
 
             {classificationError && (
-              <div className="mt-4 p-4 rounded-lg bg-negative-subtle text-sm text-negative flex items-center gap-2">
+              <div className="mt-4 p-4 rounded-lg bg-negative-subtle text-base text-negative flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" strokeWidth={1.5} />
-                <span>{classificationError}</span>
+                <span className="min-w-0 break-words">{classificationError}</span>
               </div>
             )}
 
             {/* Results Card */}
             {classificationResult && (
-              <div className="mt-4 p-5 rounded-xl border border-subtle bg-surface-subtle space-y-4 animate-in fade-in">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-subtle">
-                  <div>
-                    <span className="text-xs text-muted">Result</span>
+              <div className={`mt-8 pt-6 ${hairline} space-y-5 animate-in fade-in`}>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <span className={labelText}>Result</span>
                     <div className="mt-1 flex items-center gap-2 flex-wrap">
                       <div className="flex items-center gap-2">
                         <span
@@ -702,7 +715,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                               "var(--text-muted)",
                           }}
                         />
-                        <span className="text-base font-medium text-main">
+                        <span className="text-lg font-semibold text-main break-words">
                           {classificationResult.category_name ||
                             categories.find((c) => c.id === classificationResult.category_id)?.name ||
                             (classificationResult.matched ? "Matched" : "Uncategorized")}
@@ -714,15 +727,15 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
 
                   {/* Confidence meter */}
                   <div className="w-full sm:w-56 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center justify-between text-sm">
                       <span className="tabular-nums text-main">
                         {Math.round(classificationResult.confidence * 100)}%
                       </span>
-                      <span className="text-muted">
+                      <span className="text-sub">
                         {getConfidenceLabel(classificationResult.confidence)}
                       </span>
                     </div>
-                    <div className="w-full h-1 bg-surface rounded-full overflow-hidden">
+                    <div className="w-full h-1.5 bg-surface-subtle rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-[width] duration-500 ${
                           classificationResult.confidence >= 0.85
@@ -740,31 +753,31 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                 </div>
 
                 {/* Details Grid */}
-                <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 text-base md:text-sm">
                   <div className="min-w-0">
-                    <dt className="text-xs text-muted">Normalized payee</dt>
+                    <dt className={labelText}>Normalized payee</dt>
                     <dd className="mt-1 text-main font-mono break-all">
                       {classificationResult.normalized_payee || sandboxPayee}
                     </dd>
                   </div>
 
                   <div className="min-w-0">
-                    <dt className="text-xs text-muted">Category ID</dt>
+                    <dt className={labelText}>Category ID</dt>
                     <dd className="mt-1 text-main font-mono break-all">
                       {classificationResult.category_id || "None"}
                     </dd>
                   </div>
 
                   <div className="min-w-0">
-                    <dt className="text-xs text-muted">Tier</dt>
+                    <dt className={labelText}>Tier</dt>
                     <dd className="mt-1 text-main font-mono">{classificationResult.tier}</dd>
                   </div>
                 </dl>
 
                 {/* Diagnostic Reason */}
-                <div className="pt-4 border-t border-subtle text-sm">
-                  <span className="text-xs text-muted">Reason</span>
-                  <div className="mt-1 text-sub font-mono text-xs leading-relaxed break-words">
+                <div className="text-sm">
+                  <span className={labelText}>Reason</span>
+                  <div className="mt-1 text-sub font-mono text-sm leading-relaxed break-words">
                     {classificationResult.reason || "Engine evaluated successfully"}
                   </div>
                 </div>
@@ -773,16 +786,18 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
           </section>
 
           {/* Batch Auto-Classify Uncategorized Transactions Card */}
-          <section className={`${card} p-5 sm:p-6`}>
-            <h2 className="text-base font-medium text-main">Classify uncategorized transactions</h2>
-            <p className="text-sm text-sub mt-1">
-              Run every ledger transaction without a category through the classification engine
-            </p>
+          <section className={section}>
+            <div className={sectionHeader}>
+              <h2 className={sectionTitle}>Classify uncategorized transactions</h2>
+              <p className={sectionSub}>
+                Run every ledger transaction without a category through the classification engine
+              </p>
+            </div>
 
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6 p-4 rounded-lg bg-surface-subtle border border-subtle text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6 text-base md:text-sm">
               {/* Confidence Threshold Slider */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <label htmlFor="minConfidenceSlider" className="text-main">Minimum confidence</label>
                   <span className="tabular-nums text-main">
                     {Math.round(minConfidence * 100)}%
@@ -798,7 +813,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                   onChange={(e) => setMinConfidence(parseFloat(e.target.value))}
                   className="w-full accent-[var(--accent-primary)] cursor-pointer"
                 />
-                <p className="text-xs text-muted">
+                <p className="text-sm text-sub">
                   Transactions scoring below {Math.round(minConfidence * 100)}% stay uncategorized for manual review
                 </p>
               </div>
@@ -811,9 +826,9 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                     id="batchEnableBedrock"
                     checked={batchEnableBedrock}
                     onChange={(e) => setBatchEnableBedrock(e.target.checked)}
-                    className="rounded border-default bg-input accent-[var(--accent-primary)]"
+                    className={checkboxClass}
                   />
-                  <label htmlFor="batchEnableBedrock" className="text-sm text-sub cursor-pointer select-none">
+                  <label htmlFor="batchEnableBedrock" className="text-base md:text-sm text-sub cursor-pointer select-none">
                     Use AI for ambiguous payees
                   </label>
                 </div>
@@ -837,18 +852,18 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
             </div>
 
             {batchError && (
-              <div className="mt-4 p-4 rounded-lg bg-negative-subtle text-sm text-negative flex items-center gap-2">
+              <div className="mt-4 p-4 rounded-lg bg-negative-subtle text-base text-negative flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" strokeWidth={1.5} />
-                <span>{batchError}</span>
+                <span className="min-w-0 break-words">{batchError}</span>
               </div>
             )}
 
             {batchResultSummary && (
-              <div className="mt-4 p-4 rounded-lg bg-positive-subtle text-sm flex items-start gap-3 animate-in fade-in">
-                <span className="w-1.5 h-1.5 rounded-full bg-positive mt-2 shrink-0" />
-                <div>
-                  <div className="font-medium text-main">Auto-classification complete</div>
-                  <div className="text-xs mt-1 text-sub">{batchResultSummary}</div>
+              <div className="mt-6 p-4 rounded-lg bg-positive-subtle text-base flex items-start gap-3 animate-in fade-in">
+                <span className="w-2 h-2 rounded-full bg-positive mt-2 shrink-0" />
+                <div className="min-w-0">
+                  <div className="font-semibold text-main">Auto-classification complete</div>
+                  <div className="text-sm mt-1 text-sub break-words">{batchResultSummary}</div>
                 </div>
               </div>
             )}
@@ -889,10 +904,10 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
         <div className={modalOverlay}>
           <form
             onSubmit={handleCreateRule}
-            className="w-full md:max-w-md max-h-[92dvh] md:max-h-[90vh] overflow-y-auto rounded-t-2xl md:rounded-xl bg-surface border border-default shadow-xl pb-[env(safe-area-inset-bottom)] md:pb-0 animate-in sheet-enter"
+            className="w-full md:max-w-md max-h-[92dvh] md:max-h-[90vh] overflow-y-auto rounded-t-2xl md:rounded-2xl bg-surface elevation-3 pb-[env(safe-area-inset-bottom)] md:pb-0 animate-in sheet-enter"
           >
-            <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-subtle">
-              <h3 className="text-base font-medium text-main">New rule</h3>
+            <div className="flex items-center justify-between gap-4 px-6 pt-6 pb-2">
+              <h3 className={sectionTitle}>New rule</h3>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
@@ -903,7 +918,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
               </button>
             </div>
 
-            <div className="p-6 space-y-4 text-sm">
+            <div className="px-6 py-4 space-y-4 text-base md:text-sm">
               <div>
                 <label htmlFor="rulePattern" className={fieldLabel}>Pattern (keyword or regex)</label>
                 <input
@@ -980,7 +995,8 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 px-6 py-4 border-t border-subtle">
+            <div className="flex justify-end gap-2 px-6 pt-2 pb-6">
+
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}

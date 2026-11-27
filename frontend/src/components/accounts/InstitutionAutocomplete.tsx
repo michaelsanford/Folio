@@ -5,6 +5,7 @@ import {
   searchCanadianInstitutions,
   type CanadianInstitution,
 } from "../../constants/canadianInstitutions";
+import { raised } from "../common/ui";
 
 interface InstitutionAutocompleteProps {
   value: string;
@@ -115,10 +116,10 @@ export const InstitutionAutocomplete: React.FC<InstitutionAutocompleteProps> = (
             setHighlightedIndex(-1);
           }}
           onKeyDown={handleKeyDown}
-          className="w-full h-9 pl-3 pr-9 bg-input border border-default focus:outline-none focus:border-[var(--accent-primary)] rounded-lg text-main text-sm transition-colors placeholder:text-muted"
+          className="w-full h-11 md:h-10 pl-3 pr-12 md:pr-10 rounded-t-lg rounded-b-none border-0 border-b-2 border-default bg-surface-subtle focus:outline-none focus:border-[var(--accent-primary)] text-main text-base md:text-sm transition-colors placeholder:text-sub"
         />
 
-        <div className="absolute right-1 flex items-center">
+        <div className="absolute right-0 md:right-1 flex items-center">
           {value ? (
             <button
               type="button"
@@ -127,7 +128,7 @@ export const InstitutionAutocomplete: React.FC<InstitutionAutocompleteProps> = (
                 onChange("");
                 inputRef.current?.focus();
               }}
-              className="h-7 w-7 flex items-center justify-center text-muted hover:text-main rounded-md transition-colors"
+              className="size-11 md:size-8 flex items-center justify-center text-sub hover:text-main rounded-full transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" strokeWidth={1.5} />
             </button>
@@ -136,7 +137,7 @@ export const InstitutionAutocomplete: React.FC<InstitutionAutocompleteProps> = (
               type="button"
               aria-label="Show institutions"
               onClick={() => setIsOpen(!isOpen)}
-              className="h-7 w-7 flex items-center justify-center text-muted hover:text-main rounded-md transition-colors"
+              className="size-11 md:size-8 flex items-center justify-center text-sub hover:text-main rounded-full transition-colors cursor-pointer"
             >
               <ChevronDown className="w-4 h-4" strokeWidth={1.5} />
             </button>
@@ -162,7 +163,7 @@ export const InstitutionAutocomplete: React.FC<InstitutionAutocompleteProps> = (
                 width: `${popoverStyle.width}px`,
                 maxHeight: `${popoverStyle.maxHeight}px`,
               }}
-              className="z-[101] rounded-xl bg-surface border border-default shadow-xl overflow-y-auto p-1 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 text-sm"
+              className={`z-[101] rounded-lg ${raised} overflow-y-auto p-1 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 text-base md:text-sm`}
             >
               {filtered.length > 0 ? (
                 filtered.map((inst, index) => {
@@ -180,7 +181,7 @@ export const InstitutionAutocomplete: React.FC<InstitutionAutocompleteProps> = (
                         handleSelect(inst);
                       }}
                       onMouseEnter={() => setHighlightedIndex(index)}
-                      className={`w-full h-9 shrink-0 flex items-center justify-between gap-2 px-3 rounded-lg text-left transition-colors cursor-pointer ${
+                      className={`w-full min-h-11 md:min-h-9 py-1.5 shrink-0 flex items-center justify-between gap-2 px-3 rounded-lg text-left transition-colors cursor-pointer ${
                         isSelected
                           ? "bg-accent-subtle"
                           : isHighlighted
@@ -188,11 +189,11 @@ export const InstitutionAutocomplete: React.FC<InstitutionAutocompleteProps> = (
                           : ""
                       }`}
                     >
-                      <div className="truncate">
-                        <span className="text-sm text-main">
+                      <div className="min-w-0 break-words">
+                        <span className="text-base md:text-sm text-main">
                           {inst.shortName}
                         </span>
-                        <span className="text-xs text-muted ml-2 truncate">
+                        <span className="text-sm text-sub ml-2">
                           {inst.name !== inst.shortName ? inst.name : ""}
                         </span>
                       </div>
@@ -204,7 +205,7 @@ export const InstitutionAutocomplete: React.FC<InstitutionAutocompleteProps> = (
                   );
                 })
               ) : (
-                <div className="p-3 text-center text-xs text-muted">
+                <div className="p-3 text-center text-sm text-sub break-words">
                   Press Enter to use “<span className="text-main">{value}</span>”
                 </div>
               )}

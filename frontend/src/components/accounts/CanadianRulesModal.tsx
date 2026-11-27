@@ -4,7 +4,7 @@ import { ExternalLink, X } from "lucide-react";
 import type { AccountType } from "../../types";
 import { getAccountTypeMeta, CANADIAN_ACCOUNT_TYPES } from "../../constants/canadianAccountTypes";
 import { AccountIcon } from "../common/AccountIcon";
-import { iconButton } from "../common/ui";
+import { iconButton, secondaryButton } from "../common/ui";
 
 interface CanadianRulesModalProps {
   accountType: AccountType;
@@ -25,15 +25,15 @@ export const CanadianRulesModal: React.FC<CanadianRulesModalProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 z-[120] flex items-end md:items-center justify-center md:p-4 bg-black/60 animate-in fade-in">
-      <div className="w-full md:max-w-xl rounded-t-2xl md:rounded-xl bg-surface border border-default shadow-xl overflow-hidden flex flex-col max-h-[92dvh] md:max-h-[90vh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter">
+      <div className="w-full md:max-w-xl rounded-t-2xl md:rounded-2xl bg-surface elevation-3 overflow-hidden flex flex-col max-h-[92dvh] md:max-h-[90vh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-subtle flex items-start justify-between gap-4">
+        <div className="px-6 pt-6 pb-2 md:px-8 md:pt-8 flex items-start justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <AccountIcon type={meta.type} size="lg" />
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-base font-medium text-main">{meta.name}</h3>
-                <span className="rounded-md px-1.5 py-0.5 text-xs font-mono bg-surface-subtle text-sub">
+                <h3 className="font-display text-xl font-semibold text-main break-words">{meta.name}</h3>
+                <span className="rounded-md px-1.5 py-0.5 text-sm font-mono bg-surface-subtle text-sub">
                   {meta.badge}
                 </span>
               </div>
@@ -46,20 +46,20 @@ export const CanadianRulesModal: React.FC<CanadianRulesModalProps> = ({
             aria-label="Close"
             className={iconButton}
           >
-            <X className="w-4 h-4" strokeWidth={1.5} />
+            <X className="w-5 h-5" strokeWidth={1.75} />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-5 overflow-y-auto space-y-6 text-sm">
+        <div className="px-6 py-4 md:px-8 overflow-y-auto space-y-8 text-base">
           {/* Key CRA & Regulatory Rules */}
           <div>
-            <h4 className="text-sm font-medium text-main mb-3">Key rules</h4>
+            <h4 className="text-base font-semibold text-main mb-3">Key rules</h4>
             <ul className="space-y-2">
               {meta.keyRules.map((rule, idx) => (
-                <li key={idx} className="flex items-start gap-3 text-sm text-sub">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-muted)] mt-2 shrink-0" />
-                  <span className="leading-relaxed">{rule}</span>
+                <li key={idx} className="flex items-start gap-3 text-base text-sub">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] mt-2.5 shrink-0" />
+                  <span className="leading-relaxed min-w-0 break-words">{rule}</span>
                 </li>
               ))}
             </ul>
@@ -67,10 +67,10 @@ export const CanadianRulesModal: React.FC<CanadianRulesModalProps> = ({
 
           {/* Official Government Documentation */}
           {meta.craUrl && (
-            <div className="p-4 rounded-xl bg-surface-subtle border border-subtle flex items-center justify-between gap-4">
+            <div className="p-4 rounded-lg bg-surface-subtle flex flex-wrap items-center justify-between gap-4">
               <div className="min-w-0">
-                <div className="text-sm font-medium text-main">Government of Canada guide</div>
-                <div className="text-xs text-muted mt-0.5">
+                <div className="text-base font-semibold text-main">Government of Canada guide</div>
+                <div className="text-sm text-sub mt-0.5">
                   CRA and FCAC guidelines and limits
                 </div>
               </div>
@@ -79,27 +79,27 @@ export const CanadianRulesModal: React.FC<CanadianRulesModalProps> = ({
                 href={meta.craUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="h-9 px-4 inline-flex items-center gap-2 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors shrink-0"
+                className={`${secondaryButton} shrink-0`}
               >
                 <span>Canada.ca</span>
-                <ExternalLink className="w-4 h-4 text-muted" strokeWidth={1.5} />
+                <ExternalLink className="w-4 h-4" strokeWidth={1.5} />
               </a>
             </div>
           )}
 
           {/* Quick Account Switcher */}
-          <div className="pt-4 border-t border-subtle">
-            <div className="text-sm text-sub mb-2">Other account types</div>
+          <div>
+            <h4 className="text-base font-semibold text-main mb-3">Other account types</h4>
             <div className="flex flex-wrap gap-1">
               {Object.values(CANADIAN_ACCOUNT_TYPES).map((item) => (
                 <button
                   key={item.type}
                   onClick={() => onSelectType ? onSelectType(item.type) : undefined}
                   aria-pressed={item.type === meta.type}
-                  className={`h-7 px-2 rounded-md text-xs border transition-colors cursor-pointer ${
+                  className={`min-h-11 md:min-h-9 px-3 rounded-lg text-base md:text-sm transition-colors cursor-pointer ${
                     item.type === meta.type
-                      ? "bg-accent-subtle text-accent-subtle border-accent-main/30 font-medium"
-                      : "border-default text-sub hover:text-main bg-surface-hover"
+                      ? "bg-accent-subtle text-accent-subtle font-semibold"
+                      : "text-sub hover:text-main bg-surface-hover"
                   }`}
                 >
                   {item.shortName}
@@ -110,10 +110,10 @@ export const CanadianRulesModal: React.FC<CanadianRulesModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-subtle flex justify-end">
+        <div className="px-6 py-4 md:px-8 md:pb-6 flex justify-end">
           <button
             onClick={onClose}
-            className="h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer"
+            className={secondaryButton}
           >
             Close
           </button>

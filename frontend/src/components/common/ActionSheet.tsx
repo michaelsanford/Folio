@@ -97,14 +97,14 @@ export const ActionSheet: React.FC<ActionSheetProps> = ({ open, onClose, title, 
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="w-full md:max-w-md max-h-[92dvh] overflow-y-auto rounded-t-2xl md:rounded-xl bg-surface border border-default shadow-xl pb-[env(safe-area-inset-bottom)] focus:outline-none animate-in sheet-enter"
+        className="w-full md:max-w-md max-h-[92dvh] overflow-y-auto rounded-t-2xl md:rounded-2xl bg-surface elevation-3 pb-[env(safe-area-inset-bottom)] focus:outline-none animate-in sheet-enter"
       >
         <div className="md:hidden flex justify-center pt-2" aria-hidden="true">
           <span className="h-1 w-10 rounded-full bg-[var(--border-strong)]" />
         </div>
         <div className="flex items-start gap-3 px-4 pt-3 pb-3">
           <div className="flex-1 min-w-0">
-            <h2 id={titleId} className="text-lg font-medium text-main break-words">
+            <h2 id={titleId} className="font-display text-xl font-semibold text-main break-words">
               {title}
             </h2>
             {subtitle && <div className="mt-0.5 text-sm text-sub break-words">{subtitle}</div>}
@@ -113,7 +113,7 @@ export const ActionSheet: React.FC<ActionSheetProps> = ({ open, onClose, title, 
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="size-11 shrink-0 -mr-2 -mt-1 inline-flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover cursor-pointer"
+            className="size-11 shrink-0 -mr-2 -mt-1 inline-flex items-center justify-center rounded-full text-sub hover:text-main bg-surface-hover cursor-pointer"
           >
             <X className="w-5 h-5" strokeWidth={1.75} />
           </button>

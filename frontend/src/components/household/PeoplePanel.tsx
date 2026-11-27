@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { RotateCw, UserX, UserCheck, Trash2 } from "lucide-react";
 import type { HouseholdMember, Me, Person, PersonRole } from "../../types";
 import { api } from "../../services/api";
-import { iconButton } from "../common/ui";
+import { compactSelectClass, iconButton, sectionHeader, sectionSub } from "../common/ui";
 
 interface PeoplePanelProps {
   me: Me | null;
@@ -31,8 +31,7 @@ const STATUS_LABELS: Record<Person["status"], string> = {
   DISABLED: "No access",
 };
 
-const inputClass =
-  "h-11 md:h-9 px-3 rounded-lg border border-default bg-input text-base md:text-sm text-main focus:outline-none focus:border-[var(--accent-primary)]";
+const inputClass = `${compactSelectClass} max-w-full`;
 
 const formatDate = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" }) : null;
@@ -97,37 +96,37 @@ export const PeoplePanel: React.FC<PeoplePanelProps> = ({ me, members, onChanged
   const visible = canManage ? people : people.filter((p) => p.status !== "DISABLED");
 
   return (
-    <section aria-labelledby="people-heading" className="space-y-3">
-      <div>
-        <h3 id="people-heading" className="text-base font-medium text-main">
+    <section aria-labelledby="people-heading" className="space-y-4">
+      <div className={sectionHeader}>
+        <h3 id="people-heading" className="font-display text-lg font-semibold text-main">
           Sign-ins
         </h3>
-        <p className="text-xs text-muted mt-1">
+        <p className={sectionSub}>
           Link each sign-in to a member so new entries and “Mine” filters know who you are.
         </p>
       </div>
 
       {error && (
-        <div role="alert" className="p-3 rounded-lg bg-negative-subtle text-xs text-negative">
+        <div role="alert" className="p-3 rounded-lg bg-negative-subtle text-sm text-negative break-words">
           {error}
         </div>
       )}
       {notice && (
-        <div role="status" className="p-3 rounded-lg bg-surface-subtle text-xs text-sub">
+        <div role="status" className="p-3 rounded-lg bg-surface-subtle text-sm text-sub break-words">
           {notice}
         </div>
       )}
 
       {/* You */}
-      <div className="p-3 rounded-lg border border-default bg-surface flex flex-col sm:flex-row sm:items-center gap-3">
+      <div className="py-3 flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-main">You</div>
-          <div className="text-xs text-muted break-words">
+          <div className="text-base font-medium text-main">You</div>
+          <div className="text-sm text-sub break-words">
             {me?.email || "Signed in with the vault passphrase"}
             {me ? ` · ${ROLE_LABELS[me.role]}` : ""}
           </div>
         </div>
-        <label className="flex items-center gap-2 text-xs text-sub">
+        <label className="flex flex-wrap items-center gap-2 text-sm text-sub">
           <span>You are</span>
           <select
             aria-label="Which household member you are"
@@ -145,7 +144,7 @@ export const PeoplePanel: React.FC<PeoplePanelProps> = ({ me, members, onChanged
       </div>
 
       {visible.filter((p) => !p.is_me).length > 0 && (
-        <ul className="space-y-2" aria-label="People">
+        <ul className="border-t border-subtle divide-y divide-subtle" aria-label="People">
           {visible
             .filter((p) => !p.is_me)
             .map((p) => {
@@ -154,22 +153,22 @@ export const PeoplePanel: React.FC<PeoplePanelProps> = ({ me, members, onChanged
               return (
                 <li
                   key={p.user_key}
-                  className={`p-3 rounded-lg border border-default bg-surface flex flex-col sm:flex-row sm:items-center gap-3 ${
+                  className={`py-4 flex flex-col sm:flex-row sm:items-center gap-3 ${
                     p.status === "DISABLED" ? "opacity-60" : ""
                   }`}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium text-main break-words min-w-0">{name}</span>
+                      <span className="text-base font-medium text-main break-words min-w-0">{name}</span>
                       <span
-                        className={`text-[11px] px-1.5 py-0.5 rounded ${
+                        className={`text-xs px-1.5 py-0.5 rounded ${
                           p.status === "ACTIVE" ? "bg-surface-subtle text-sub" : "bg-warning-subtle text-warning"
                         }`}
                       >
                         {STATUS_LABELS[p.status]}
                       </span>
                     </div>
-                    <div className="text-xs text-muted break-words">
+                    <div className="text-sm text-sub break-words">
                       {p.display_name && p.email ? `${p.email} · ` : ""}
                       {p.status === "INVITED"
                         ? `Invited ${formatDate(p.created_at)}${p.invited_by_name ? ` by ${p.invited_by_name}` : ""}`
@@ -269,7 +268,7 @@ export const PeoplePanel: React.FC<PeoplePanelProps> = ({ me, members, onChanged
                       </button>
                     </div>
                   ) : (
-                    <div className="text-xs text-sub">
+                    <div className="text-sm text-sub break-words">
                       {ROLE_LABELS[p.role]}
                       {p.member_name ? ` · ${p.member_name}` : ""}
                     </div>

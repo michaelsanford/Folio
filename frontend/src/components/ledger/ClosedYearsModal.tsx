@@ -3,7 +3,7 @@ import { Download, Lock, LockOpen, X } from "lucide-react";
 import type { PeriodsResponse, YearClosure } from "../../types";
 import { api } from "../../services/api";
 import { useSession } from "../../hooks/useSession";
-import { iconButton } from "../common/ui";
+import { iconButton, loneText, modalOverlay, secondaryButton, sectionSub, sectionTitle } from "../common/ui";
 
 interface ClosedYearsModalProps {
   onClose: () => void;
@@ -11,8 +11,7 @@ interface ClosedYearsModalProps {
   onChanged: () => void;
 }
 
-const button =
-  "h-11 md:h-8 px-4 md:px-3 inline-flex items-center gap-1.5 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default";
+const button = `${secondaryButton} disabled:cursor-default`;
 
 const formatBytes = (n?: number | null) =>
   n == null ? "" : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
@@ -99,20 +98,20 @@ export const ClosedYearsModal: React.FC<ClosedYearsModalProps> = ({ onClose, onC
   const reopened = data?.closures.filter((c) => !c.is_active) ?? [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center md:p-4 bg-black/60 animate-in fade-in" onClick={onClose}>
+    <div className={modalOverlay} onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="closed-years-title"
-        className="relative w-full md:max-w-lg bg-surface border border-default rounded-t-2xl md:rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[92dvh] md:max-h-[90vh] animate-in sheet-enter"
+        className="relative w-full md:max-w-lg bg-surface elevation-3 rounded-t-2xl md:rounded-2xl overflow-hidden flex flex-col max-h-[92dvh] md:max-h-[90vh] animate-in sheet-enter"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 p-5 border-b border-subtle">
-          <div>
-            <h2 id="closed-years-title" className="text-base font-medium text-main">
+          <div className="min-w-0">
+            <h2 id="closed-years-title" className={sectionTitle}>
               Closed years
             </h2>
-            <p className="text-xs text-muted mt-1">
+            <p className={sectionSub}>
               {data?.closed_through_year != null
                 ? `Transactions up to Dec 31, ${data.closed_through_year} are locked.`
                 : "Close a finished year to lock its transactions and keep an archived copy."}
@@ -127,66 +126,67 @@ export const ClosedYearsModal: React.FC<ClosedYearsModalProps> = ({ onClose, onC
           </button>
         </div>
 
-        <div className="p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:pb-5 overflow-y-auto space-y-5">
+        <div className="p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:pb-5 overflow-y-auto space-y-8">
           {error && (
-            <div role="alert" className="p-3 rounded-lg bg-negative-subtle text-xs text-negative">
+            <div role="alert" className="p-3 rounded-lg bg-negative-subtle text-sm text-negative break-words">
               {error}
             </div>
           )}
           {notice && (
-            <div role="status" className="p-3 rounded-lg bg-surface-subtle text-xs text-sub">
+            <div role="status" className="p-3 rounded-lg bg-surface-subtle text-sm text-sub break-words">
               {notice}
             </div>
           )}
 
           {isOwner && data && data.closable_years.length > 0 && (
-            <section aria-labelledby="closable-heading" className="space-y-2">
-              <h3 id="closable-heading" className="text-sm font-medium text-main">
+            <section aria-labelledby="closable-heading" className="space-y-3">
+              <h3 id="closable-heading" className="text-base font-semibold text-main">
                 Ready to close
               </h3>
-              <ul className="space-y-2">
+              <ul className="border-y border-subtle divide-y divide-subtle">
                 {data.closable_years.map((year) => (
-                  <li key={year} className="flex items-center justify-between p-3 rounded-lg border border-default">
-                    <span className="text-sm text-main tabular-nums">{year}</span>
+                  <li key={year} className="flex items-center justify-between gap-3 py-2">
+                    <span className="text-base text-main tabular-nums">{year}</span>
                     <button className={button} disabled={busy !== null} onClick={() => close(year)}>
-                      <Lock className="w-3.5 h-3.5" strokeWidth={1.5} />
+                      <Lock className="w-4 h-4" strokeWidth={1.5} />
+
                       {busy === year ? "Closing…" : `Close ${year}`}
                     </button>
                   </li>
                 ))}
               </ul>
-              <p className="text-xs text-muted">
+              <p className="text-sm text-sub">
                 Closing a year also locks every year before it.
               </p>
             </section>
           )}
 
-          <section aria-labelledby="closed-heading" className="space-y-2">
-            <h3 id="closed-heading" className="text-sm font-medium text-main">
+          <section aria-labelledby="closed-heading" className="space-y-3">
+            <h3 id="closed-heading" className="text-base font-semibold text-main">
               Closed
             </h3>
-            {data && active.length === 0 && <p className="text-sm text-muted">No years are closed.</p>}
-            <ul className="space-y-2">
+            {data && active.length === 0 && <p className={`py-4 ${loneText}`}>No years are closed.</p>}
+            <ul className={[...active, ...reopened].length > 0 ? "border-y border-subtle divide-y divide-subtle" : undefined}>
               {[...active, ...reopened].map((c) => (
-                <li key={c.year} className="p-3 rounded-lg border border-default flex flex-col sm:flex-row sm:items-center gap-3">
+                <li key={c.year} className="py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 text-sm text-main">
+                    <div className="flex flex-wrap items-center gap-2 text-base text-main">
                       {c.is_active ? (
-                        <Lock className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} aria-hidden="true" />
+                        <Lock className="w-4 h-4 text-sub" strokeWidth={1.5} aria-hidden="true" />
                       ) : (
-                        <LockOpen className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} aria-hidden="true" />
+                        <LockOpen className="w-4 h-4 text-sub" strokeWidth={1.5} aria-hidden="true" />
                       )}
                       <span className="tabular-nums">{c.year}</span>
-                      {!c.is_active && <span className="text-xs text-muted">reopened</span>}
+                      {!c.is_active && <span className="text-sm text-sub">reopened</span>}
                     </div>
-                    <div className="text-xs text-muted">
+                    <div className="text-sm text-sub break-words">
                       Closed {formatDate(c.closed_at)}
                       {c.closed_by_name ? ` by ${c.closed_by_name}` : ""}
                       {c.row_counts?.transactions != null ? ` · ${c.row_counts.transactions} transactions` : ""}
                       {c.archive_bytes ? ` · ${formatBytes(c.archive_bytes)}` : ""}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2 -ml-4 sm:ml-0">
                     {c.archive_available && (
                       <button
                         className={button}
@@ -194,7 +194,8 @@ export const ClosedYearsModal: React.FC<ClosedYearsModalProps> = ({ onClose, onC
                         onClick={() => void download(c)}
                         aria-label={`Download the ${c.year} archive`}
                       >
-                        <Download className="w-3.5 h-3.5" strokeWidth={1.5} />
+                        <Download className="w-4 h-4" strokeWidth={1.5} />
+
                         Archive
                       </button>
                     )}
@@ -205,7 +206,8 @@ export const ClosedYearsModal: React.FC<ClosedYearsModalProps> = ({ onClose, onC
                         disabled={busy !== null}
                         onClick={() => void act(c.year, () => api.periods.reopen(c.year), `${c.year} is open for changes again.`)}
                       >
-                        <LockOpen className="w-3.5 h-3.5" strokeWidth={1.5} />
+                        <LockOpen className="w-4 h-4" strokeWidth={1.5} />
+
                         Reopen
                       </button>
                     )}
@@ -215,7 +217,7 @@ export const ClosedYearsModal: React.FC<ClosedYearsModalProps> = ({ onClose, onC
             </ul>
           </section>
 
-          <p className="text-xs text-muted">
+          <p className="text-sm text-sub">
             Archives are compressed SQLite files (.db.zst) kept in long-term storage. Imports skip rows dated in a closed
             year.
           </p>

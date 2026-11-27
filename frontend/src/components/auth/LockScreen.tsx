@@ -30,10 +30,10 @@ type CognitoStep =
 const MIN_COGNITO_PASSWORD_LENGTH = 20;
 
 const ICON_CLASS =
-  "w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none";
+  "w-5 h-5 text-sub absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none";
 
 const INPUT_CLASS =
-  "w-full h-11 rounded-lg bg-input border border-default text-main text-sm placeholder:text-muted outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] transition-shadow";
+  "w-full h-12 rounded-t-lg rounded-b-none border-0 border-b-2 border-default bg-surface-subtle text-main text-base placeholder:text-sub outline-none focus:border-[var(--accent-primary)] transition-colors";
 
 type InputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "className" | "id"> & {
   id: string;
@@ -103,19 +103,19 @@ const PasswordField: React.FC<PasswordFieldProps> = ({
         id={id}
         type={visible ? "text" : "password"}
         {...input}
-        className={`${INPUT_CLASS} pl-9 pr-11 font-mono`}
+        className={`${INPUT_CLASS} pl-10 pr-12 font-mono`}
       />
       <KeyRound className={ICON_CLASS} strokeWidth={1.5} aria-hidden="true" />
       <button
         type="button"
         onClick={onToggleVisible}
-        className="absolute right-1.5 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center rounded-md text-muted hover:text-main outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] transition-colors cursor-pointer"
+        className="absolute right-0.5 top-1/2 -translate-y-1/2 size-11 flex items-center justify-center rounded-full text-sub hover:text-main outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] transition-colors cursor-pointer"
         aria-label={visible ? toggleLabels[1] : toggleLabels[0]}
       >
         {visible ? (
-          <EyeOff className="w-4 h-4" strokeWidth={1.5} />
+          <EyeOff className="w-5 h-5" strokeWidth={1.5} />
         ) : (
-          <Eye className="w-4 h-4" strokeWidth={1.5} />
+          <Eye className="w-5 h-5" strokeWidth={1.5} />
         )}
       </button>
     </div>
@@ -137,7 +137,7 @@ const CodeField: React.FC<CodeFieldProps> = ({ label, id, ...input }) => (
         autoComplete="one-time-code"
         maxLength={12}
         {...input}
-        className={`${INPUT_CLASS} pl-9 pr-3 font-mono tracking-widest`}
+        className={`${INPUT_CLASS} pl-10 pr-3 font-mono tracking-widest`}
       />
       <Smartphone className={ICON_CLASS} strokeWidth={1.5} aria-hidden="true" />
     </div>
@@ -155,7 +155,7 @@ const PrimaryButton: React.FC<PrimaryButtonProps> = ({ disabled, isLoading, chil
   <button
     type="submit"
     disabled={disabled}
-    className="w-full h-11 px-4 rounded-lg bg-accent-main hover:bg-[var(--accent-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-accent-main text-accent-contrast text-sm font-semibold flex items-center justify-center gap-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)] transition-colors active:scale-[0.98] cursor-pointer"
+    className="w-full h-12 px-4 rounded-lg bg-accent-main hover:bg-[var(--accent-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-accent-main text-accent-contrast text-base font-semibold flex items-center justify-center gap-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)] transition-colors active:scale-[0.98] cursor-pointer"
   >
     {isLoading ? (
       <div className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin"></div>
@@ -175,9 +175,9 @@ const SecondaryButton: React.FC<SecondaryButtonProps> = ({ onClick, children }) 
   <button
     type="button"
     onClick={onClick}
-    className="w-full h-9 px-3 rounded-lg text-sm text-muted hover:text-main flex items-center justify-center gap-1.5 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] transition-colors cursor-pointer"
+    className="w-full h-11 px-3 rounded-lg text-base text-sub hover:text-main flex items-center justify-center gap-1.5 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] transition-colors cursor-pointer"
   >
-    <RotateCcw className="w-3.5 h-3.5" strokeWidth={1.5} aria-hidden="true" />
+    <RotateCcw className="w-4 h-4" strokeWidth={1.5} aria-hidden="true" />
     <span>{children}</span>
   </button>
 );
@@ -187,7 +187,7 @@ const ErrorNote: React.FC<{ message: string | null }> = ({ message }) =>
   message ? (
     <div
       role="alert"
-      className="px-3 py-2.5 rounded-r-md border-l-2 border-negative bg-negative-subtle text-negative text-sm"
+      className="px-3 py-2.5 rounded-lg bg-negative-subtle text-negative text-base break-words"
     >
       {message}
     </div>
@@ -195,7 +195,7 @@ const ErrorNote: React.FC<{ message: string | null }> = ({ message }) =>
 
 /** Short explanatory text at the top of a challenge step. */
 const StepIntro: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="text-sm text-sub leading-relaxed">{children}</div>
+  <div className="text-base md:text-lg text-sub leading-relaxed break-words">{children}</div>
 );
 
 export const LockScreen: React.FC<LockScreenProps> = ({
@@ -455,19 +455,18 @@ export const LockScreen: React.FC<LockScreenProps> = ({
             <FolioMark className="w-24 h-24 sm:w-[200px] sm:h-[200px]" />
             Folio
           </h1>
-          <p className="mt-2 text-sm text-sub max-w-[260px]">{headerSubtitle}</p>
+          <p className="mt-3 text-base md:text-lg text-sub max-w-[280px]">{headerSubtitle}</p>
         </div>
 
         {/* Divider */}
         <div aria-hidden="true" className="hidden sm:block w-px self-stretch bg-[var(--border-subtle)]" />
 
         {/* Form column */}
-        <div className="w-full sm:w-[320px] sm:shrink-0 sm:pl-10 flex flex-col gap-3">
-          <div className="relative overflow-hidden bg-surface border border-default rounded-lg p-6">
-            <div aria-hidden="true" className="absolute inset-x-0 top-0 h-0.5 bg-accent-main" />
+        <div className="w-full sm:w-[340px] sm:shrink-0 sm:pl-10 flex flex-col gap-8">
+          <div className="min-w-0">
 
             {stepper && (
-              <p className="mb-4 text-xs text-muted">
+              <p className="mb-5 text-base md:text-lg text-sub">
                 <span className="text-accent-main font-medium">Step {stepper.n} of 3</span>
                 {" · "}
                 {stepper.label}
@@ -475,8 +474,8 @@ export const LockScreen: React.FC<LockScreenProps> = ({
             )}
 
             {authMode === "unconfigured" && !isInitialSetup ? (
-              <div className="flex flex-col gap-2 text-sm text-sub">
-                <p className="text-main font-medium">Authentication unavailable</p>
+              <div className="flex flex-col gap-2 text-base md:text-lg text-sub">
+                <p className="text-main font-semibold">Authentication unavailable</p>
                 <p>
                   No master passphrase or account sign-in is configured on this server.
                   Configure deployment credentials and redeploy before accessing this vault.
@@ -540,7 +539,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
                       required
                       hint={
                         <span
-                          className={`text-xs ${meetsCognitoPolicy ? "text-accent-main" : "text-muted"}`}
+                          className={`text-sm ${meetsCognitoPolicy ? "text-accent-main" : "text-sub"}`}
                         >
                           {newPassword.length}/{MIN_COGNITO_PASSWORD_LENGTH}+ chars
                           {/[a-z]/.test(newPassword) ? " · lowercase OK" : " · needs lowercase"}
@@ -583,20 +582,20 @@ export const LockScreen: React.FC<LockScreenProps> = ({
 
                     {qrDataUri && (
                       <div className="flex justify-center">
-                        <div className="p-2.5 rounded-lg bg-white border border-default inline-block">
+                        <div className="p-2.5 rounded-lg bg-white inline-block">
                           <img src={qrDataUri} alt="Authenticator QR code" className="w-44 h-44" />
                         </div>
                       </div>
                     )}
 
                     {totpSecret && (
-                      <div className="p-3 rounded-lg bg-input border border-default flex flex-col gap-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-muted">Manual setup key</span>
+                      <div className="p-3 rounded-lg bg-surface-subtle flex flex-col gap-1.5">
+                        <div className="flex flex-wrap items-center justify-between gap-x-3">
+                          <span className="text-sm text-sub">Manual setup key</span>
                           <button
                             type="button"
                             onClick={handleCopySecret}
-                            className="inline-flex items-center gap-1 rounded text-xs text-sub hover:text-main outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] cursor-pointer"
+                            className="min-h-11 md:min-h-0 inline-flex items-center gap-1 rounded text-sm text-sub hover:text-main outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] cursor-pointer"
                           >
                             {copiedSecret ? (
                               <>
@@ -643,7 +642,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
                   >
                     <StepIntro>
                       {challengeUsername && (
-                        <div className="text-main font-medium mb-1 truncate">{challengeUsername}</div>
+                        <div className="text-main font-medium mb-1 break-words">{challengeUsername}</div>
                       )}
                       {challengeMessage || "Enter the 6-digit code from your authenticator app."}
                     </StepIntro>
@@ -690,8 +689,8 @@ export const LockScreen: React.FC<LockScreenProps> = ({
             )}
           </div>
 
-          <p className="flex items-center justify-center gap-1.5 text-xs text-muted">
-            <ShieldCheck className="w-3.5 h-3.5" strokeWidth={1.5} aria-hidden="true" />
+          <p className="flex flex-wrap items-center justify-center gap-1.5 text-sm text-sub text-center">
+            <ShieldCheck className="w-4 h-4" strokeWidth={1.5} aria-hidden="true" />
             <span>{securityNote}</span>
           </p>
         </div>

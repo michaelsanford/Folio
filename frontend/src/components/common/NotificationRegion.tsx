@@ -54,19 +54,19 @@ export const NotificationRegion: React.FC = () => {
             ? "text-negative"
             : n.tone === "warning"
               ? "text-warning"
-              : "text-muted";
+              : "text-sub";
         return (
           <div
             key={n.id}
-            className="pointer-events-auto flex items-start gap-3 p-4 rounded-xl bg-surface border border-default shadow-xl text-sm text-main animate-in fade-in slide-in-from-bottom-2"
+            className="pointer-events-auto flex items-start gap-3 p-4 rounded-lg bg-surface elevation-2 text-base text-main animate-in fade-in slide-in-from-bottom-2"
           >
-            <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${toneClass}`} strokeWidth={1.5} aria-hidden="true" />
-            <span className="flex-1">{n.message}</span>
+            <Icon className={`w-5 h-5 mt-0.5 shrink-0 ${toneClass}`} strokeWidth={1.5} aria-hidden="true" />
+            <span className="flex-1 min-w-0 break-words">{n.message}</span>
             <button
               type="button"
               onClick={() => dismiss(n.id)}
               aria-label="Dismiss notification"
-              className="w-6 h-6 -mr-1 -mt-0.5 inline-flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer shrink-0"
+              className="size-11 md:size-8 -mr-2 -my-2 md:-my-1 inline-flex items-center justify-center rounded-full text-sub hover:text-main bg-surface-hover transition-colors cursor-pointer shrink-0"
             >
               <X className="w-4 h-4" strokeWidth={1.5} />
             </button>

@@ -39,21 +39,19 @@ export const ThemePickerModal: React.FC<ThemePickerModalProps> = ({ isOpen, onCl
         key={t.id}
         onClick={() => setTheme(t.id as ThemeId)}
         aria-pressed={isSelected}
-        className={`relative text-left p-4 rounded-lg border transition-colors cursor-pointer ${
-          isSelected
-            ? "bg-surface-subtle border-accent-main"
-            : "bg-surface border-default hover:border-[var(--border-strong)] bg-surface-hover"
+        className={`relative min-w-0 text-left p-4 rounded-lg transition-colors cursor-pointer ${
+          isSelected ? "bg-accent-subtle" : "bg-surface-hover"
         }`}
       >
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-main">{t.name}</span>
-          {isSelected && <Check className="w-4 h-4 text-accent-main" strokeWidth={1.5} />}
+          <span className={`text-base font-semibold break-words ${isSelected ? "text-accent-subtle" : "text-main"}`}>{t.name}</span>
+          {isSelected && <Check className="w-5 h-5 shrink-0 text-accent-subtle" strokeWidth={2} />}
         </div>
 
-        <p className="text-xs text-muted mb-3 leading-snug">{t.description}</p>
+        <p className="text-sm text-sub mb-3 leading-snug break-words">{t.description}</p>
 
         {/* Colour swatches */}
-        <div className="flex items-center gap-1 pt-2 border-t border-subtle">
+        <div className="flex items-center gap-1.5">
           <div
             className="w-4 h-4 rounded-full border border-subtle"
             style={{ backgroundColor: canvasColor }}
@@ -74,33 +72,33 @@ export const ThemePickerModal: React.FC<ThemePickerModalProps> = ({ isOpen, onCl
   return (
     <div className={modalOverlay}>
       <div
-        className="w-full md:max-w-2xl bg-surface border border-default rounded-t-2xl md:rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[92dvh] md:max-h-[90vh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter"
+        className="w-full md:max-w-2xl bg-surface elevation-3 rounded-t-2xl md:rounded-2xl overflow-hidden flex flex-col max-h-[92dvh] md:max-h-[90vh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter"
         role="dialog"
         aria-modal="true"
         aria-labelledby="theme-modal-title"
       >
         {/* Header */}
-        <div className="flex items-center justify-between gap-3 px-4 md:px-6 py-4 border-b border-subtle">
-          <div>
-            <h2 id="theme-modal-title" className="text-base font-medium text-main">
+        <div className="flex items-start justify-between gap-3 px-6 pt-6 pb-2 md:px-8 md:pt-8">
+          <div className="min-w-0">
+            <h2 id="theme-modal-title" className="font-display text-xl md:text-2xl font-semibold text-main">
               Appearance
             </h2>
-            <p className="text-xs text-muted mt-1">Colour mode, type, palette and number formats</p>
+            <p className="text-sm text-sub mt-1">Colour mode, type, palette and number formats</p>
           </div>
           <button
             onClick={onClose}
             className={iconButton}
             aria-label="Close appearance settings"
           >
-            <X className="w-4 h-4" strokeWidth={1.5} />
+            <X className="w-5 h-5" strokeWidth={1.75} />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-4 md:p-6 space-y-6 overflow-y-auto">
+        <div className="px-6 pb-6 pt-4 md:px-8 md:pb-8 space-y-10 overflow-y-auto">
           {/* Mode selector */}
           <div>
-            <div className="text-xs text-muted mb-2">Colour mode</div>
+            <h3 className="text-base font-semibold text-main mb-3">Colour mode</h3>
             <div className="grid grid-cols-3 gap-2">
               {(
                 [
@@ -116,19 +114,19 @@ export const ThemePickerModal: React.FC<ThemePickerModalProps> = ({ isOpen, onCl
                     key={m.id}
                     onClick={() => setMode(m.id)}
                     aria-pressed={isSelected}
-                    className={`h-11 md:h-9 flex items-center justify-center gap-2 px-3 rounded-lg border text-sm transition-colors cursor-pointer ${
+                    className={`min-h-11 md:min-h-10 flex flex-wrap items-center justify-center gap-x-2 px-3 py-1 rounded-lg text-base md:text-sm transition-colors cursor-pointer ${
                       isSelected
-                        ? "bg-surface-subtle text-main font-medium border-accent-main"
-                        : "bg-surface text-sub border-default hover:text-main bg-surface-hover"
+                        ? "bg-accent-subtle text-accent-subtle font-semibold"
+                        : "bg-surface-subtle text-sub hover:text-main"
                     }`}
                   >
                     <Icon
-                      className={`w-4 h-4 ${isSelected ? "text-accent-main" : "text-muted"}`}
+                      className={`w-4 h-4 ${isSelected ? "text-accent-subtle" : "text-sub"}`}
                       strokeWidth={1.5}
                     />
                     <span>{m.label}</span>
                     {isSelected && m.id === "system" && (
-                      <span className="text-xs text-muted font-normal">({resolvedMode})</span>
+                      <span className="text-sm font-normal">({resolvedMode})</span>
                     )}
                   </button>
                 );
@@ -138,9 +136,9 @@ export const ThemePickerModal: React.FC<ThemePickerModalProps> = ({ isOpen, onCl
 
           {/* Type styles */}
           <div>
-            <div className="flex items-baseline justify-between mb-2">
-              <div className="text-xs text-muted">Type style</div>
-              <span className="text-xs text-muted">Fonts for text, headings and figures</span>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-4">
+              <h3 className="text-base font-semibold text-main">Type style</h3>
+              <span className="text-sm text-sub">Fonts for text, headings and figures</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {TYPE_STYLES.map((t) => {
@@ -150,15 +148,13 @@ export const ThemePickerModal: React.FC<ThemePickerModalProps> = ({ isOpen, onCl
                     key={t.id}
                     onClick={() => setTypeStyle(t.id)}
                     aria-pressed={isSelected}
-                    className={`relative text-left p-4 rounded-lg border transition-colors cursor-pointer ${
-                      isSelected
-                        ? "bg-surface-subtle border-accent-main"
-                        : "bg-surface border-default hover:border-[var(--border-strong)] bg-surface-hover"
+                    className={`relative min-w-0 text-left p-4 rounded-lg transition-colors cursor-pointer ${
+                      isSelected ? "bg-accent-subtle" : "bg-surface-hover"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-main">{t.name}</span>
-                      {isSelected && <Check className="w-4 h-4 text-accent-main" strokeWidth={1.5} />}
+                      <span className={`text-base font-semibold break-words ${isSelected ? "text-accent-subtle" : "text-main"}`}>{t.name}</span>
+                      {isSelected && <Check className="w-5 h-5 shrink-0 text-accent-subtle" strokeWidth={2} />}
                     </div>
                     {/* Sample set in the style's own fonts, so the choice is visible before applying it */}
                     <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-main">
@@ -166,13 +162,13 @@ export const ThemePickerModal: React.FC<ThemePickerModalProps> = ({ isOpen, onCl
                         Net worth
                       </span>
                       <span
-                        className="text-lg font-medium whitespace-nowrap"
+                        className="text-lg font-medium break-words"
                         style={{ fontFamily: t.figures, fontVariantNumeric: "tabular-nums" }}
                       >
                         {formatMoney(248310.42, {}, formatPrefs)}
                       </span>
                     </div>
-                    <p className="text-xs text-muted mt-2 leading-snug" style={{ fontFamily: t.sans }}>
+                    <p className="text-sm text-sub mt-2 leading-snug break-words" style={{ fontFamily: t.sans }}>
                       {t.description}
                     </p>
                   </button>
@@ -183,9 +179,9 @@ export const ThemePickerModal: React.FC<ThemePickerModalProps> = ({ isOpen, onCl
 
           {/* Financial themes */}
           <div>
-            <div className="flex items-baseline justify-between mb-2">
-              <div className="text-xs text-muted">Financial palettes</div>
-              <span className="text-xs text-muted">Grounded and institutional</span>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-4">
+              <h3 className="text-base font-semibold text-main">Financial palettes</h3>
+              <span className="text-sm text-sub">Grounded and institutional</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {financialThemes.map(renderThemeCard)}
@@ -194,9 +190,9 @@ export const ThemePickerModal: React.FC<ThemePickerModalProps> = ({ isOpen, onCl
 
           {/* Developer themes */}
           <div>
-            <div className="flex items-baseline justify-between mb-2">
-              <div className="text-xs text-muted">Developer themes</div>
-              <span className="text-xs text-muted">Familiar editor and terminal palettes</span>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-4">
+              <h3 className="text-base font-semibold text-main">Developer themes</h3>
+              <span className="text-sm text-sub">Familiar editor and terminal palettes</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {developerThemes.map(renderThemeCard)}
@@ -205,9 +201,9 @@ export const ThemePickerModal: React.FC<ThemePickerModalProps> = ({ isOpen, onCl
 
           {/* Accessibility themes */}
           <div>
-            <div className="flex items-baseline justify-between mb-2">
-              <div className="text-xs text-muted">Accessibility</div>
-              <span className="text-xs text-muted">Maximum contrast</span>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-4">
+              <h3 className="text-base font-semibold text-main">Accessibility</h3>
+              <span className="text-sm text-sub">Maximum contrast</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {accessibilityThemes.map(renderThemeCard)}
@@ -215,18 +211,18 @@ export const ThemePickerModal: React.FC<ThemePickerModalProps> = ({ isOpen, onCl
           </div>
 
           {/* Number formats */}
-          <div className="pt-6 border-t border-subtle">
-            <div className="flex items-baseline justify-between mb-3">
-              <div className="text-xs text-muted">Numbers and currency</div>
-              <span className="text-xs text-muted">Saved on this device</span>
+          <div>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-4">
+              <h3 className="text-base font-semibold text-main">Numbers and currency</h3>
+              <span className="text-sm text-sub">Saved on this device</span>
             </div>
             <NumberFormatSettings />
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 md:px-6 py-4 border-t border-subtle">
-          <div className="text-xs text-muted">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 md:px-8 py-4 border-t border-subtle">
+          <div className="text-sm text-sub min-w-0 break-words">
             Active: <span className="text-main">{THEMES.find((t) => t.id === theme)?.name}</span> ({resolvedMode})
           </div>
           <button

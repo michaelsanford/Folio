@@ -25,6 +25,7 @@ import { clearSession, setSession } from "./utils/session";
 import { useCanEdit, useSession } from "./hooks/useSession";
 import { WelcomeDialog } from "./components/household/WelcomeDialog";
 import { ShellLoading, StartupSplash } from "./components/common/StartupSplash";
+import { loneText, primaryButton, secondaryButton, sectionSub, sectionTitle } from "./components/common/ui";
 import { clearSessionHint, readSessionHint, writeSessionHint } from "./utils/sessionHint";
 
 // Each view is its own chunk, so the first paint only downloads the shell and
@@ -67,12 +68,12 @@ const LockScreen = lazy(() =>
 const DEFAULT_LIMITS: ServerLimits = { max_upload_mb: 25 };
 
 const Spinner: React.FC = () => (
-  <div className="animate-spin rounded-full h-4 w-4 border-2 border-[var(--border-default)] border-t-[var(--accent-primary)]"></div>
+  <div className="animate-spin rounded-full h-6 w-6 shrink-0 border-2 border-[var(--border-default)] border-t-[var(--accent-primary)]"></div>
 );
 
 const ViewFallback: React.FC = () => (
   // Tall enough that the view replacing it does not push the page around.
-  <div role="status" className="min-h-[60vh] py-16 flex items-center justify-center gap-3 text-sm text-muted">
+  <div role="status" className={`min-h-[60vh] py-16 px-4 flex items-center justify-center gap-4 text-center ${loneText}`}>
     <Spinner />
     Loading…
   </div>
@@ -343,7 +344,7 @@ function AppContent() {
     return (
       <Suspense
         fallback={
-          <div className="min-h-screen bg-canvas flex items-center justify-center gap-3 text-sm text-muted">
+          <div className={`min-h-screen bg-canvas px-4 flex items-center justify-center gap-4 text-center ${loneText}`}>
             <Spinner />
             Loading…
           </div>
@@ -369,7 +370,7 @@ function AppContent() {
       {loadFailed && !isLoading && (
         <div
           role="alert"
-          className="mb-4 px-4 py-2.5 rounded-lg bg-surface-subtle text-xs text-sub flex items-center justify-between gap-3"
+          className="mb-8 px-4 py-3 rounded-lg bg-warning-subtle text-base text-main flex flex-wrap items-center justify-between gap-3"
         >
           <span>Folio isn&rsquo;t responding. Some figures may be missing.</span>
           <button
@@ -378,7 +379,7 @@ function AppContent() {
               setIsLoading(true);
               void loadAllData();
             }}
-            className="h-7 px-3 rounded-lg border border-default bg-surface bg-surface-hover text-main text-xs font-medium transition-colors cursor-pointer"
+            className={secondaryButton}
           >
             Try again
           </button>
@@ -386,36 +387,36 @@ function AppContent() {
       )}
 
       {!canEdit && (
-        <div role="status" className="mb-4 px-4 py-2.5 rounded-lg bg-surface-subtle text-xs text-sub">
+        <div role="status" className="mb-8 px-4 py-3 rounded-lg bg-surface-subtle text-base text-sub">
           You have view-only access to this household. Ask an owner if you need to make changes.
         </div>
       )}
 
       {/* Empty State Banner if no accounts configured */}
       {accounts.length === 0 && !isLoading && !loadFailed && canEdit && activeTab !== "ingestion" && (
-        <div className="mb-6 p-5 rounded-xl bg-surface border border-default flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="mb-12 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
           <div>
-            <div className="text-base font-medium text-main">Welcome to Folio</div>
-            <div className="text-sm text-muted mt-1">
+            <div className={sectionTitle}>Welcome to Folio</div>
+            <div className={sectionSub}>
               Import a bank statement to create accounts automatically, add accounts manually, or load sample Canadian data
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
               onClick={() => setActiveTab("ingestion")}
-              className="flex-1 sm:flex-none h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer"
+              className={`flex-1 sm:flex-none ${secondaryButton}`}
             >
               Import statement
             </button>
             <button
               onClick={() => setActiveTab("accounts")}
-              className="flex-1 sm:flex-none h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer"
+              className={`flex-1 sm:flex-none ${secondaryButton}`}
             >
               Add account
             </button>
             <button
               onClick={handleSeedDemoData}
-              className="flex-1 sm:flex-none h-9 px-4 flex items-center justify-center gap-2 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] cursor-pointer"
+              className={`flex-1 sm:flex-none ${primaryButton}`}
             >
               <span>Load demo data</span>
               <ArrowRight className="w-4 h-4" strokeWidth={1.5} />

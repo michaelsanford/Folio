@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   ArrowRight,
   RefreshCw,
-  Building2,
   AlertCircle,
 } from "lucide-react";
 import type {
@@ -24,11 +23,22 @@ import {
   DestinationSelect,
   NewAccountFields,
 } from "./AccountDraftFields";
-import { checkboxClass, compactSelectClass, inputClass, primaryButton, secondaryButton } from "../common/ui";
+import {
+  checkboxClass,
+  chipTab,
+  compactSelectClass,
+  inputClass,
+  pageStack,
+  primaryButton,
+  secondaryButton,
+  section,
+  sectionHeader,
+  sectionTitle,
+} from "../common/ui";
 
 // Width is set where it is used.
 const selectClass = inputClass.replace("w-full ", "");
-const chip = "inline-flex items-center rounded-md px-1.5 py-0.5 text-xs";
+const chip = "inline-flex items-center rounded-md px-2 py-0.5 text-sm";
 
 interface IngestionWorkspaceProps {
   accounts: Account[];
@@ -549,11 +559,11 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
     visibleItems.every(({ rowKey }) => selectedRowKeys.has(rowKey));
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className={`${pageStack} max-w-7xl mx-auto`}>
       {/* Header & account selection */}
       <header className="flex flex-col sm:flex-row items-stretch sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-medium text-main">Import statements</h1>
+          <h1 className="text-3xl md:text-4xl leading-tight font-semibold text-main">Import statements</h1>
           <p className="mt-1 text-sm text-sub">
             Upload CSV exports, PDF statements, OFX/QFX downloads, or a broker holdings export.
             Accounts are detected and created automatically when needed.
@@ -585,7 +595,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
       {errorMessage && (
         <div
           role="alert"
-          className="px-4 py-3 rounded-xl bg-negative-subtle border border-default flex items-center justify-between gap-3 text-sm animate-in fade-in"
+          className="px-4 py-3 rounded-lg bg-negative-subtle flex items-center justify-between gap-3 text-base md:text-sm animate-in fade-in"
         >
           <div className="flex items-center gap-2 text-main">
             <AlertCircle className="w-4 h-4 text-negative shrink-0" strokeWidth={1.5} />
@@ -594,7 +604,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
           <button
             type="button"
             onClick={() => setErrorMessage(null)}
-            className="text-sub hover:text-main text-sm transition-colors cursor-pointer"
+            className="min-h-11 md:min-h-0 text-sub hover:text-main text-base md:text-sm transition-colors cursor-pointer"
           >
             Dismiss
           </button>
@@ -603,7 +613,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
 
       {/* Success notification */}
       {successMessage && (
-        <div className="px-4 py-3 rounded-xl bg-positive-subtle flex items-center justify-between gap-3 text-sm animate-in fade-in">
+        <div className="px-4 py-3 rounded-lg bg-positive-subtle flex items-center justify-between gap-3 text-base md:text-sm animate-in fade-in">
           <div className="flex items-center gap-2 text-main">
             <CheckCircle2 className="w-4 h-4 text-positive shrink-0" strokeWidth={1.5} />
             <span>{successMessage}</span>
@@ -611,7 +621,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
           <button
             type="button"
             onClick={() => setSuccessMessage(null)}
-            className="text-sub hover:text-main text-sm transition-colors cursor-pointer"
+            className="min-h-11 md:min-h-0 text-sub hover:text-main text-base md:text-sm transition-colors cursor-pointer"
           >
             Dismiss
           </button>
@@ -626,7 +636,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
           className={`relative cursor-pointer border border-dashed rounded-xl p-6 sm:p-12 text-center transition-colors ${
-            isDragging ? "border-accent-main bg-accent-subtle" : "border-default bg-surface bg-surface-hover"
+            isDragging ? "border-accent-main bg-accent-subtle" : "border-default bg-surface-hover"
           }`}
         >
           <input
@@ -643,23 +653,23 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
 
           <div className="flex flex-col items-center justify-center gap-4">
             {isLoading ? (
-              <RefreshCw className="w-6 h-6 text-muted animate-spin" strokeWidth={1.5} />
+              <RefreshCw className="w-7 h-7 text-sub animate-spin" strokeWidth={1.5} />
             ) : (
-              <UploadCloud className="w-6 h-6 text-muted" strokeWidth={1.5} />
+              <UploadCloud className="w-7 h-7 text-sub" strokeWidth={1.5} />
             )}
 
             <div className="space-y-1">
-              <p className="text-base font-medium text-main">
+              <p className="text-lg font-medium text-main">
                 {isLoading ? "Reading statement…" : "Drop a statement here, or browse"}
               </p>
-              <p className="text-sm text-sub">
+              <p className="text-base text-sub">
                 Single or multi-account CSV exports, PDF statements, and OFX, QFX or QBO files,
                 or a broker holdings export (CSV) to load an investment account
               </p>
-              <p className="text-xs text-muted">Up to {maxUploadMb} MB per file</p>
+              <p className="text-sm text-sub">Up to {maxUploadMb} MB per file</p>
             </div>
 
-            <p className="text-xs text-muted">
+            <p className="text-sm text-sub">
               Missing accounts are detected for review, duplicates are flagged, and transfers can be paired automatically
             </p>
           </div>
@@ -689,13 +699,13 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
 
       {/* Parse preview table & reconciliation */}
       {preview && preview.kind !== "HOLDINGS" && (
-        <div className="space-y-4 animate-in fade-in">
+        <div className={`${pageStack} animate-in fade-in`}>
           {/* Summary strip */}
-          <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 p-4 rounded-xl bg-surface border border-subtle">
+          <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2 min-w-0">
-                <FileText className="w-4 h-4 text-muted shrink-0" strokeWidth={1.5} />
-                <span className="text-sm font-medium text-main break-all md:break-words min-w-0">
+                <FileText className="w-5 h-5 text-sub shrink-0" strokeWidth={1.5} />
+                <span className="text-base font-medium text-main break-all md:break-words min-w-0">
                   {preview.filename}
                 </span>
                 <span className={`${chip} bg-surface-subtle text-sub`}>
@@ -703,7 +713,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                 </span>
               </div>
 
-              <div className="flex items-center gap-2 text-xs text-muted">
+              <div className="flex flex-wrap items-center gap-2 text-sm text-sub">
                 <span>
                   <span className="tabular-nums text-main">{preview.total_parsed}</span> parsed
                 </span>
@@ -763,21 +773,21 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
 
           {/* Rows the parser could not read: shown so nothing is skipped silently */}
           {(preview.row_errors?.length ?? 0) > 0 && (
-            <details className="p-4 rounded-xl bg-surface border border-subtle text-sm">
-              <summary className="cursor-pointer text-warning font-medium">
+            <details className="text-base md:text-sm">
+              <summary className="min-h-11 md:min-h-0 cursor-pointer text-warning font-medium">
                 {preview.row_errors!.length === 1
                   ? "1 row skipped because it couldn't be read"
                   : `${preview.row_errors!.length} rows skipped because they couldn't be read`}
               </summary>
-              <ul className="mt-3 space-y-1 text-xs text-sub">
+              <ul className="mt-3 space-y-1 text-sm text-sub">
                 {preview.row_errors!.map((rowError, idx) => (
                   <li key={`${rowError.row_number ?? "x"}-${idx}`} className="break-words">
                     {rowError.row_number != null && (
-                      <span className="tabular-nums text-muted">Row {rowError.row_number}: </span>
+                      <span className="tabular-nums text-sub">Row {rowError.row_number}: </span>
                     )}
                     {rowError.message}
                     {rowError.value ? (
-                      <span className="text-muted"> ({rowError.field} “{rowError.value}”)</span>
+                      <span className="text-sub"> ({rowError.field} “{rowError.value}”)</span>
                     ) : null}
                   </li>
                 ))}
@@ -787,21 +797,20 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
 
           {/* Detected accounts review */}
           {detectedAccounts.length > 0 && (
-            <section className="p-4 rounded-xl bg-surface border border-subtle space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-muted shrink-0" strokeWidth={1.5} />
-                  <h2 className="text-sm font-medium text-main">
+            <section className={section}>
+              <div className={`${sectionHeader} flex flex-col sm:flex-row sm:items-end justify-between gap-2`}>
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <h2 className={sectionTitle}>
                     Accounts in this statement
                   </h2>
-                  <span className="text-xs text-muted">
+                  <span className="text-sm text-sub">
                     {detectedAccounts.length} detected
                     {matchedCount > 0 ? ` · ${matchedCount} matched` : ""}
                     {newAccountsCount > 0 ? ` · ${newAccountsCount} new` : ""}
                   </span>
                 </div>
 
-                <label className="inline-flex items-center gap-2 text-xs text-sub cursor-pointer">
+                <label className="inline-flex items-center gap-2 min-h-11 md:min-h-0 text-sm text-sub cursor-pointer">
                   <input
                     type="checkbox"
                     checked={autoDetectTransfers}
@@ -812,7 +821,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                 </label>
               </div>
 
-              <div className="divide-y divide-subtle border border-subtle rounded-lg overflow-hidden">
+              <div className="border-y border-subtle divide-y divide-subtle">
                 {detectedAccounts.map((det) => {
                   const draft = accountResolutions[det.source_account_key];
                   if (!draft) return null;
@@ -827,7 +836,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                   return (
                     <div
                       key={det.source_account_key}
-                      className="p-3 bg-canvas/40 flex flex-col gap-3"
+                      className="py-4 flex flex-col gap-3"
                     >
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                         <div className="flex flex-wrap items-center gap-2 min-w-0">
@@ -840,7 +849,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                             aria-label={`Include ${det.suggested_name}`}
                             className={checkboxClass}
                           />
-                          <span className="text-sm font-medium text-main whitespace-normal break-words">
+                          <span className="text-base font-medium text-main whitespace-normal break-words">
                             {draft.mode === "existing" && draft.existing_account_id
                               ? accounts.find((a) => a.id === draft.existing_account_id)?.name ||
                                 det.suggested_name
@@ -860,7 +869,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                           >
                             {draft.mode === "existing" ? "Existing" : "New account"}
                           </span>
-                          <span className="text-xs text-muted tabular-nums">
+                          <span className="text-sm text-sub tabular-nums">
                             {selectedForAccount}/{det.transaction_count} selected
                           </span>
                         </div>
@@ -889,15 +898,11 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
 
           {/* Account filter pills for multi-account previews */}
           {detectedAccounts.length > 1 && (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-end gap-x-1 border-b border-subtle">
               <button
                 type="button"
                 onClick={() => setActiveAccountFilter("ALL")}
-                className={`h-11 md:h-8 px-3 rounded-lg text-sm md:text-xs font-medium transition-colors cursor-pointer ${
-                  activeAccountFilter === "ALL"
-                    ? "bg-accent-main text-accent-contrast"
-                    : "bg-surface border border-default text-sub hover:text-main"
-                }`}
+                className={chipTab(activeAccountFilter === "ALL")}
               >
                 All ({preview.items.length})
               </button>
@@ -913,11 +918,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                     key={det.source_account_key}
                     type="button"
                     onClick={() => setActiveAccountFilter(det.source_account_key)}
-                    className={`min-h-11 md:min-h-8 py-1.5 px-3 max-w-full whitespace-normal break-words text-left rounded-lg text-sm md:text-xs font-medium transition-colors cursor-pointer ${
-                      activeAccountFilter === det.source_account_key
-                        ? "bg-accent-main text-accent-contrast"
-                        : "bg-surface border border-default text-sub hover:text-main"
-                    }`}
+                    className={`max-w-full whitespace-normal break-words text-left ${chipTab(activeAccountFilter === det.source_account_key)}`}
                   >
                     {label} ({det.transaction_count})
                   </button>
@@ -927,8 +928,8 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
           )}
 
           {/* Review container */}
-          <div className="rounded-xl border border-subtle bg-surface overflow-hidden">
-            {/* Phone cards (< md) */}
+          <div className="border-y border-subtle">
+            {/* Phone rows (< md) */}
             <div className="block md:hidden divide-y divide-subtle">
               {visibleItems.map(({ item, rowKey }) => {
                 const isChecked = selectedRowKeys.has(rowKey);
@@ -937,8 +938,8 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                 return (
                   <div
                     key={rowKey}
-                    className={`p-4 flex items-start gap-3 transition-colors ${
-                      item.is_duplicate ? "text-muted" : isChecked ? "" : "opacity-60"
+                    className={`py-4 flex items-start gap-3 transition-colors ${
+                      item.is_duplicate ? "text-sub" : isChecked ? "" : "opacity-60"
                     }`}
                   >
                     <input
@@ -952,14 +953,14 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1 leading-snug">
-                          <div className="text-sm text-main whitespace-normal break-words">
+                          <div className="text-base text-main whitespace-normal break-words">
                             {item.normalized_payee}
                           </div>
-                          <div className="text-xs text-muted font-mono whitespace-normal break-words">
+                          <div className="text-sm text-sub font-mono whitespace-normal break-all">
                             {item.raw_payee}
                           </div>
                           {item.notes && (
-                            <div className="text-xs text-sub whitespace-normal break-words">
+                            <div className="text-sm text-sub whitespace-normal break-words">
                               {item.notes}
                             </div>
                           )}
@@ -967,25 +968,25 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                         <Money
                           value={item.amount}
                           signed
-                          className={`text-sm shrink-0 ${
+                          className={`text-base shrink-0 ${
                             item.amount >= 0 ? "text-positive" : "text-main"
                           }`}
                         />
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
-                        <span className="text-muted tabular-nums">
+                      <div className="flex flex-wrap items-center gap-2 mt-2 text-sm">
+                        <span className="text-sub tabular-nums">
                           {item.transaction_date}
                         </span>
                         {showAccountColumn && (
                           <>
-                            <span className="text-muted">·</span>
+                            <span className="text-sub">·</span>
                             <span className={`${chip} max-w-full whitespace-normal break-words bg-surface-subtle text-sub`}>
                               {getResolvedAccountLabel(item)}
                             </span>
                           </>
                         )}
-                        <span className="text-muted">·</span>
+                        <span className="text-sub">·</span>
 
                         <select
                           value={assignedCat}
@@ -1024,7 +1025,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
             {/* Review list (tablet and desktop, >= md); date and account fold into
                 the payee cell below lg */}
             <div className="hidden md:block" data-testid="ingestion-desktop-review">
-              <div className="flex items-center gap-3 px-3 py-2.5 text-xs text-muted border-b border-subtle">
+              <div className="flex items-center gap-3 px-3 py-2.5 text-sm text-sub border-b border-subtle">
                 <div className="w-6 shrink-0 flex justify-center">
                   <input
                     type="checkbox"
@@ -1034,13 +1035,13 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                     className={checkboxClass}
                   />
                 </div>
-                <div className="hidden lg:block w-[84px] shrink-0">Date</div>
+                <div className="hidden lg:block w-[100px] shrink-0">Date</div>
                 {showAccountColumn && (
                   <div className="hidden lg:block w-[16%] min-w-[120px] shrink-0">Account</div>
                 )}
                 <div className="flex-1 min-w-0">Payee</div>
                 <div className="w-[132px] lg:w-[156px] shrink-0">Category</div>
-                <div className="w-[84px] lg:w-[14%] shrink-0">Status</div>
+                <div className="w-[100px] lg:w-[14%] shrink-0">Status</div>
                 <div className="w-[96px] shrink-0 text-right">Amount</div>
               </div>
 
@@ -1057,10 +1058,10 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                       key={rowKey}
                       className={`flex items-start gap-3 px-3 py-2.5 text-sm transition-colors ${
                         item.is_duplicate
-                          ? "text-muted"
+                          ? "text-sub"
                           : isChecked
                           ? "text-main"
-                          : "text-muted opacity-60"
+                          : "text-sub opacity-60"
                       }`}
                     >
                       <div className="w-6 shrink-0 pt-0.5 flex justify-center">
@@ -1073,12 +1074,12 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                         />
                       </div>
 
-                      <div className="hidden lg:block w-[84px] shrink-0 tabular-nums text-xs text-muted pt-0.5">
+                      <div className="hidden lg:block w-[100px] shrink-0 tabular-nums text-sub pt-0.5">
                         {item.transaction_date}
                       </div>
 
                       {showAccountColumn && (
-                        <div className="hidden lg:block w-[16%] min-w-[120px] shrink-0 text-xs text-sub leading-snug whitespace-normal break-words">
+                        <div className="hidden lg:block w-[16%] min-w-[120px] shrink-0 text-sm text-sub leading-snug whitespace-normal break-words">
                           {accountLabel}
                         </div>
                       )}
@@ -1087,12 +1088,12 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                         <div className="text-main whitespace-normal break-words">
                           {item.normalized_payee}
                         </div>
-                        <div className="lg:hidden text-xs text-sub whitespace-normal break-words">
+                        <div className="lg:hidden text-sm text-sub whitespace-normal break-words">
                           <span className="tabular-nums">{item.transaction_date}</span>
                           {showAccountColumn && <> · {accountLabel}</>}
                         </div>
                         {showDetailLine && (
-                          <div className="text-xs text-muted whitespace-normal break-words">
+                          <div className="text-sm text-sub whitespace-normal break-words">
                             <span className="font-mono break-all">{item.raw_payee}</span>
                             {item.notes && (
                               <span className="text-sub"> · {item.notes}</span>
@@ -1117,24 +1118,24 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                         </select>
                       </div>
 
-                      <div className="w-[84px] lg:w-[14%] shrink-0">
+                      <div className="w-[100px] lg:w-[14%] shrink-0">
                         {item.in_closed_period ? (
                           <span
-                            className="inline-block rounded-md px-1.5 py-0.5 text-xs leading-snug whitespace-normal break-words bg-surface-subtle text-sub"
+                            className="inline-block rounded-md px-2 py-0.5 text-sm leading-snug whitespace-normal break-words bg-surface-subtle text-sub"
                             title="This year is closed; the row is skipped"
                           >
                             Closed year
                           </span>
                         ) : item.is_duplicate ? (
-                          <span className="inline-block rounded-md px-1.5 py-0.5 text-xs leading-snug whitespace-normal break-words bg-warning-subtle text-warning">
+                          <span className="inline-block rounded-md px-2 py-0.5 text-sm leading-snug whitespace-normal break-words bg-warning-subtle text-warning">
                             Duplicate
                           </span>
                         ) : item.potential_transfer_account_name ? (
-                          <span className="inline-block rounded-md px-1.5 py-0.5 text-xs leading-snug whitespace-normal break-words bg-surface-subtle text-sub">
+                          <span className="inline-block rounded-md px-2 py-0.5 text-sm leading-snug whitespace-normal break-words bg-surface-subtle text-sub">
                             Transfer · {item.potential_transfer_account_name}
                           </span>
                         ) : (
-                          <span className="inline-block rounded-md px-1.5 py-0.5 text-xs leading-snug whitespace-normal break-words bg-positive-subtle text-positive">
+                          <span className="inline-block rounded-md px-2 py-0.5 text-sm leading-snug whitespace-normal break-words bg-positive-subtle text-positive">
                             New
                           </span>
                         )}

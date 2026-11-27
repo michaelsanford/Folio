@@ -10,19 +10,18 @@ const css = readFileSync(resolve(process.cwd(), "src/index.css"), "utf-8");
 
 /**
  * Every theme's text colours must stay readable on every background they sit
- * on: WCAG AA (4.5:1) for normal text, AAA (7:1) for the High contrast theme.
+ * on. Body, secondary and muted text reach WCAG AAA (7:1) everywhere, so
+ * supporting text never reads as greyed out; accents and gain/loss/warning
+ * colours reach AA (4.5:1), or AAA in the High contrast theme.
  * Hover backgrounds are left out: they are momentary.
  */
-const TEXT_TOKENS = [
-  "text-primary",
-  "text-secondary",
-  "text-muted",
+const PLAIN_TEXT_TOKENS = ["text-primary", "text-secondary", "text-muted", "fin-neutral"] as const;
+const COLOURED_TEXT_TOKENS = [
   "accent-primary",
   "accent-subtle-text",
   "fin-positive",
   "fin-negative",
   "fin-warning",
-  "fin-neutral",
 ] as const;
 const BACKGROUNDS = ["bg-canvas", "bg-surface", "bg-surface-subtle", "bg-sidebar"] as const;
 
@@ -49,12 +48,14 @@ describe("theme contrast", () => {
     const tokens = themeTokens(theme, mode);
     const target = theme === "high-contrast" ? 7 : 4.5;
     const failures: string[] = [];
-    for (const fg of TEXT_TOKENS) {
+    const check = (fg: string, min: number) => {
       for (const bg of BACKGROUNDS) {
         const ratio = contrast(tokens[fg], tokens[bg]);
-        if (ratio < target) failures.push(`--${fg} ${tokens[fg]} on --${bg} ${tokens[bg]}: ${ratio.toFixed(2)}`);
+        if (ratio < min) failures.push(`--${fg} ${tokens[fg]} on --${bg} ${tokens[bg]}: ${ratio.toFixed(2)}`);
       }
-    }
+    };
+    for (const fg of PLAIN_TEXT_TOKENS) check(fg, 7);
+    for (const fg of COLOURED_TEXT_TOKENS) check(fg, target);
     const onAccent = contrast(tokens["accent-contrast"], tokens["accent-primary"]);
     if (onAccent < target) failures.push(`--accent-contrast on --accent-primary: ${onAccent.toFixed(2)}`);
     expect(failures).toEqual([]);

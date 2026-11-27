@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { loneText, primaryButton, secondaryButton } from "./ui";
 
 interface Props {
   children: ReactNode;
@@ -33,24 +34,24 @@ export class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="p-6 max-w-xl mx-auto my-12 rounded-xl bg-surface border border-default text-center animate-in fade-in">
-          <AlertTriangle className="w-5 h-5 text-negative mx-auto mb-3" strokeWidth={1.5} aria-hidden="true" />
-          <h2 className="text-base font-medium text-main">
+        <div className="px-4 py-16 max-w-xl mx-auto text-center animate-in fade-in">
+          <AlertTriangle className="w-7 h-7 text-negative mx-auto mb-4" strokeWidth={1.5} aria-hidden="true" />
+          <h2 className="font-display text-xl md:text-2xl font-semibold text-main break-words">
             {this.props.fallbackTitle || "Something went wrong in this view"}
           </h2>
-          <p className="text-sm text-muted mt-2 max-w-md mx-auto">
+          <p className={`${loneText} mt-3 max-w-md mx-auto break-words`}>
             {this.state.error?.message || "An unexpected error occurred while rendering this view."}
           </p>
-          <div className="mt-6 flex items-center justify-center gap-3">
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <button
               onClick={() => this.setState({ hasError: false, error: null })}
-              className="h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer"
+              className={secondaryButton}
             >
               Try again
             </button>
             <button
               onClick={this.handleReset}
-              className="h-9 px-4 flex items-center gap-2 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] cursor-pointer"
+              className={primaryButton}
             >
               <RefreshCw className="w-4 h-4" strokeWidth={1.5} />
               <span>Reload app</span>

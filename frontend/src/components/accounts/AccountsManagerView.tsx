@@ -23,14 +23,18 @@ import { useCanEdit, useSession } from "../../hooks/useSession";
 import { useIsPhone } from "../../hooks/useMediaQuery";
 import { ActionSheet, type SheetAction } from "../common/ActionSheet";
 import {
-  card,
   chipTab,
   dangerIconButton,
   iconButton,
   inputClass,
+  labelText,
+  loneText,
   modalOverlay,
+  modalPanel,
+  pageStack,
   primaryButton,
   secondaryButton,
+  section,
 } from "../common/ui";
 
 const fieldLabel = "block text-sm text-sub mb-2";
@@ -356,20 +360,20 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
   });
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className={`max-w-7xl mx-auto ${pageStack}`}>
       {/* Header */}
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-medium text-main">Accounts</h1>
+          <h1 className="text-3xl md:text-4xl leading-tight font-semibold text-main">Accounts</h1>
           <p className="text-sm text-sub mt-1">
             Registered accounts (TFSA, RRSP, FHSA, RESP), deposit accounts, mortgages and loans
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {onManageHousehold && (
             <button type="button" onClick={onManageHousehold} className={secondaryButton}>
-              <Users className="w-4 h-4 text-muted" strokeWidth={1.5} /> Manage household
+              <Users className="w-4 h-4" strokeWidth={1.5} /> Manage household
             </button>
           )}
           {canEdit && (
@@ -380,29 +384,30 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
         </div>
       </header>
 
-      {/* Metrics Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className={`${card} p-5`}>
-          <div className="text-sm text-sub">Assets</div>
-          <Money value={totalAssets} className="block mt-2 font-display text-2xl font-medium leading-none text-main" />
+      {/* Totals, set straight on the page */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-8">
+        <div className="min-w-0">
+          <div className={labelText}>Assets</div>
+          <Money value={totalAssets} className="block mt-2 font-display text-2xl md:text-3xl font-medium leading-none text-main" />
         </div>
-        <div className={`${card} p-5`}>
-          <div className="text-sm text-sub">Liabilities and debt</div>
-          <Money value={totalLiabilities} className="block mt-2 font-display text-2xl font-medium leading-none text-main" />
+        <div className="min-w-0">
+          <div className={labelText}>Liabilities and debt</div>
+          <Money value={totalLiabilities} className="block mt-2 font-display text-2xl md:text-3xl font-medium leading-none text-main" />
         </div>
-        <div className={`${card} p-5`}>
-          <div className="text-sm text-sub">Net position</div>
+        <div className="min-w-0">
+          <div className={labelText}>Net position</div>
           <Money
             value={totalAssets - totalLiabilities}
-            className={`block mt-2 text-2xl font-medium leading-none ${
+            className={`block mt-2 font-display text-2xl md:text-3xl font-medium leading-none ${
               totalAssets - totalLiabilities >= 0 ? "text-main" : "text-negative"
             }`}
           />
         </div>
       </div>
 
+      <section className={section}>
       {/* Filter Category Tabs */}
-      <div className="flex flex-wrap items-center gap-1 pb-2 border-b border-subtle">
+      <div className="flex flex-wrap items-center gap-x-1 border-b border-subtle">
         {filterTabs.map((tab) => {
           const isActive = activeFilterCategory === tab.id;
           return (
@@ -413,35 +418,35 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
               className={chipTab(isActive)}
             >
               <span>{tab.label}</span>
-              <span className="text-xs tabular-nums font-normal text-muted">{tab.count}</span>
+              <span className="text-sm tabular-nums font-normal text-sub">{tab.count}</span>
             </button>
           );
         })}
       </div>
 
-      {/* Accounts Grid */}
+      {/* Accounts, as a ruled grid of open items */}
       {displayedAccounts.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-10">
           {displayedAccounts.map((acc) => {
             const meta = getAccountTypeMeta(acc.type);
             const isAsset = isAssetAccount(acc.type);
 
             if (acc.redacted) {
               return (
-                <div key={acc.id} className={`${card} p-5 flex flex-col justify-between`}>
+                <div key={acc.id} className="min-w-0 py-6 border-b border-subtle flex flex-col justify-between">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="h-10 w-10 shrink-0 rounded-lg bg-surface-subtle flex items-center justify-center">
-                      <Lock className="w-4 h-4 text-muted" strokeWidth={1.5} aria-hidden="true" />
+                      <Lock className="w-4 h-4 text-sub" strokeWidth={1.5} aria-hidden="true" />
                     </span>
                     <div className="min-w-0">
-                      <h3 className="text-base font-medium text-main break-words">{acc.name}</h3>
-                      <p className="text-xs text-muted break-words mt-0.5">
+                      <h3 className="text-lg font-medium text-main break-words">{acc.name}</h3>
+                      <p className="text-sm text-sub break-words mt-0.5">
                         {meta.shortName} · shared as totals only
                       </p>
                     </div>
                   </div>
-                  <div className="mt-5 pt-4 border-t border-subtle flex items-baseline justify-between gap-2">
-                    <span className="text-xs text-muted">{isAsset ? "Current balance" : "Owed"}</span>
+                  <div className="mt-5 flex flex-wrap items-baseline justify-between gap-x-2">
+                    <span className="text-sm text-sub">{isAsset ? "Current balance" : "Owed"}</span>
                     <Money
                       value={isAsset ? acc.current_balance : Math.abs(acc.current_balance)}
                       className="text-lg font-medium text-main"
@@ -454,7 +459,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
             return (
               <div
                 key={acc.id}
-                className={`${card} p-5 flex flex-col justify-between`}
+                className="min-w-0 py-6 border-b border-subtle flex flex-col justify-between"
                 onClick={
                   isPhone
                     ? (e) => {
@@ -477,10 +482,10 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                         title={isPhone ? undefined : "Change icon and colour"}
                       />
                       <div className="min-w-0">
-                        <h3 className="text-base font-medium text-main break-words">
+                        <h3 className="text-lg font-medium text-main break-words">
                           {acc.name}
                         </h3>
-                        <p className="text-xs text-muted break-words mt-0.5">
+                        <p className="text-sm text-sub break-words mt-0.5">
                           {acc.institution || meta.shortName}
                           {acc.account_number_mask ? ` ··${acc.account_number_mask}` : ""}
                         </p>
@@ -532,11 +537,11 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                   </div>
 
                   {/* Badge */}
-                  <div className="mt-4 flex items-center gap-x-3 gap-y-1 flex-wrap text-xs">
-                    <span className="rounded-md px-1.5 py-0.5 font-mono bg-surface-subtle text-sub break-words max-w-full">
+                  <div className="mt-4 flex items-center gap-x-3 gap-y-1 flex-wrap text-sm">
+                    <span className="rounded-md px-1.5 py-0.5 text-xs font-mono bg-surface-subtle text-sub break-words max-w-full">
                       {meta.badge}
                     </span>
-                    <span className="text-muted">
+                    <span className="text-sub">
                       {ACCOUNT_CATEGORY_LABELS[meta.category]}
                     </span>
                     <span className="inline-flex items-center gap-1.5 text-sub">
@@ -553,12 +558,12 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                       {ownerLabel(acc, householdMembers)}
                     </span>
                     {acc.visibility === "TOTALS" && (
-                      <span className="inline-flex items-center gap-1 text-muted" title="Others see it in totals only">
+                      <span className="inline-flex items-center gap-1 text-sub" title="Others see it in totals only">
                         <EyeOff className="w-3.5 h-3.5" strokeWidth={1.5} aria-hidden="true" /> Totals only
                       </span>
                     )}
                     {acc.visibility === "PRIVATE" && (
-                      <span className="inline-flex items-center gap-1 text-muted" title="Only its owners see it">
+                      <span className="inline-flex items-center gap-1 text-sub" title="Only its owners see it">
                         <Lock className="w-3.5 h-3.5" strokeWidth={1.5} aria-hidden="true" /> Private
                       </span>
                     )}
@@ -566,9 +571,9 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                 </div>
 
                 {/* Balance & Financial Details */}
-                <div className="mt-5 pt-4 border-t border-subtle space-y-2">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-xs text-muted">
+                <div className="mt-5 space-y-2">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                    <span className="text-sm text-sub">
                       {isAsset ? "Current balance" : acc.current_balance < 0 ? "In credit" : "Owed"}
                     </span>
                     <Money
@@ -583,16 +588,16 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleOpenEdit(acc)}
-                      className="text-xs text-muted hover:text-main underline-offset-4 hover:underline cursor-pointer"
+                      className="min-h-11 md:min-h-0 text-left text-sm text-sub hover:text-main underline-offset-4 hover:underline cursor-pointer"
                     >
                       Add a credit limit to see credit left
                     </button>
                   )}
 
                   {acc.interest_rate ? (
-                    <div className="flex items-center justify-between text-xs text-muted">
+                    <div className="flex flex-wrap items-center justify-between gap-x-2 text-sm text-sub">
                       <span>Interest rate (APR)</span>
-                      <span className="tabular-nums text-sub">{acc.interest_rate}%</span>
+                      <span className="tabular-nums text-main">{acc.interest_rate}%</span>
                     </div>
                   ) : null}
 
@@ -607,8 +612,8 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
           })}
         </div>
       ) : (
-        <div className={`${card} p-12 text-center flex flex-col items-center gap-4`}>
-          <p className="text-muted text-sm">No accounts in this category</p>
+        <div className={`py-16 px-4 text-center flex flex-col items-center gap-6 ${loneText}`}>
+          <p>No accounts in this category</p>
           {canEdit && (
           <button onClick={handleOpenCreate} className={primaryButton}>
             <Plus className="w-4 h-4" strokeWidth={1.5} /> Add account
@@ -616,17 +621,18 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
           )}
         </div>
       )}
+      </section>
 
       {/* Create / Edit Modal */}
       {isModalOpen && (
         <div className={modalOverlay}>
           <form
             onSubmit={handleSubmit}
-            className="w-full md:max-w-xl rounded-t-2xl md:rounded-xl bg-surface border border-default shadow-xl max-h-[92dvh] overflow-y-auto pb-[env(safe-area-inset-bottom)] animate-in sheet-enter"
+            className={`${modalPanel} md:max-w-xl`}
           >
-            <div className="flex items-start justify-between gap-4 px-4 md:px-6 py-4 border-b border-subtle">
-              <div>
-                <h3 className="text-base font-medium text-main">
+            <div className="flex items-start justify-between gap-4 mb-6">
+              <div className="min-w-0">
+                <h3 className="font-display text-xl md:text-2xl font-semibold text-main">
                   {editingAccount ? "Edit account" : "Add account"}
                 </h3>
                 <p className="text-sm text-sub mt-1">
@@ -640,11 +646,11 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                 aria-label="Close"
                 className={`${iconButton} shrink-0`}
               >
-                <X className="w-4 h-4" strokeWidth={1.5} />
+                <X className="w-5 h-5" strokeWidth={1.75} />
               </button>
             </div>
 
-            <div className="p-4 md:p-6 space-y-5 text-sm">
+            <div className="space-y-6 text-base">
               {/* Account Type Picker */}
               <div>
                 <label className={fieldLabel}>Account type</label>
@@ -667,10 +673,10 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                           type="button"
                           aria-pressed={selected}
                           onClick={() => toggleOwner(m.id)}
-                          className={`h-8 px-3 inline-flex items-center gap-2 rounded-full border text-sm transition-colors cursor-pointer ${
+                          className={`min-h-11 md:min-h-9 px-4 py-1 inline-flex items-center gap-2 rounded-full text-base md:text-sm transition-colors cursor-pointer ${
                             selected
-                              ? "border-[var(--accent-primary)] bg-surface-subtle text-main"
-                              : "border-default text-sub bg-surface-hover"
+                              ? "bg-accent-subtle text-accent-subtle font-semibold"
+                              : "bg-surface-subtle text-sub hover:text-main"
                           }`}
                         >
                           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: m.color || "#6b7280" }} />
@@ -680,9 +686,9 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                     })}
                   </div>
                 ) : (
-                  <p className="text-xs text-muted">Add household members to record who owns each account.</p>
+                  <p className="text-sm text-sub">Add household members to record who owns each account.</p>
                 )}
-                <p className="text-xs text-muted mt-2 leading-relaxed">
+                <p className="text-sm text-sub mt-2 leading-relaxed">
                   None selected means shared. In Canada, registered accounts (TFSA, RRSP, FHSA) are individual legal registrations. Joint ownership applies to chequing, savings and mortgages.
                 </p>
               </fieldset>
@@ -694,8 +700,8 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                     {VISIBILITY_OPTIONS.map((opt) => (
                       <label
                         key={opt.value}
-                        className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${
-                          formData.visibility === opt.value ? "border-[var(--accent-primary)]" : "border-default"
+                        className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                          formData.visibility === opt.value ? "bg-accent-subtle" : "bg-surface-hover"
                         } ${canChangeVisibility ? "" : "opacity-60 cursor-default"}`}
                       >
                         <input
@@ -706,18 +712,18 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                           onChange={() => setFormData({ ...formData, visibility: opt.value })}
                           className="mt-1"
                         />
-                        <span>
-                          <span className="block text-sm text-main">{opt.label}</span>
-                          <span className="block text-xs text-muted">{opt.hint}</span>
+                        <span className="min-w-0">
+                          <span className="block text-base md:text-sm font-medium text-main break-words">{opt.label}</span>
+                          <span className="block text-sm text-sub break-words">{opt.hint}</span>
                         </span>
                       </label>
                     ))}
                   </div>
                   {!canChangeVisibility && (
-                    <p className="text-xs text-muted mt-2">Only this account&rsquo;s owners can change who sees it.</p>
+                    <p className="text-sm text-sub mt-2">Only this account&rsquo;s owners can change who sees it.</p>
                   )}
                   {canChangeVisibility && hidingNeedsMe && (
-                    <p role="alert" className="text-xs text-negative mt-2">
+                    <p role="alert" className="text-sm text-negative mt-2">
                       Add yourself as an owner to hide it from others.
                     </p>
                   )}
@@ -737,7 +743,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                     onClick={() => setIsIconPickerOpen(true)}
                     title="Change icon and colour"
                   />
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <input
                       type="text"
                       placeholder="Account name"
@@ -822,7 +828,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                       <div
                         role="radiogroup"
                         aria-labelledby="min-payment-label"
-                        className="inline-flex p-0.5 rounded-lg border border-default bg-input"
+                        className="inline-flex flex-wrap gap-1 p-1 rounded-lg bg-surface-subtle"
                       >
                         {MINIMUM_PAYMENT_MODES.map(([mode, label]) => (
                           <button
@@ -831,9 +837,9 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                             role="radio"
                             aria-checked={formData.minimum_payment_mode === mode}
                             onClick={() => setFormData({ ...formData, minimum_payment_mode: mode })}
-                            className={`h-8 px-3 rounded-md text-sm transition-colors cursor-pointer ${
+                            className={`min-h-11 md:min-h-9 px-3 rounded-md text-base md:text-sm transition-colors cursor-pointer ${
                               formData.minimum_payment_mode === mode
-                                ? "bg-surface-subtle text-main font-medium"
+                                ? "bg-accent-subtle text-accent-subtle font-semibold"
                                 : "text-sub hover:text-main"
                             }`}
                           >
@@ -857,18 +863,18 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                             }
                             className={`${inputClass} pr-7 tabular-nums`}
                           />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted pointer-events-none">
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-sub pointer-events-none">
                             %
                           </span>
                         </div>
                       )}
                     </div>
-                    <p className="text-xs text-muted mt-2 leading-relaxed">
+                    <p className="text-sm text-sub mt-2 leading-relaxed">
                       A line of credit has no term. The balance goes up and down as you draw and repay.
                       {estimatedMinimum > 0 && (
                         <>
                           {" "}At today&apos;s balance the minimum is about{" "}
-                          <span className="tabular-nums text-sub">{formatMoney(estimatedMinimum)}</span>{" "}
+                          <span className="tabular-nums text-main">{formatMoney(estimatedMinimum)}</span>{" "}
                           a month.
                         </>
                       )}
@@ -945,7 +951,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
               )}
             </div>
 
-            <div className="flex justify-end gap-2 px-6 py-4 border-t border-subtle">
+            <div className="flex flex-wrap justify-end gap-2 mt-8">
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}

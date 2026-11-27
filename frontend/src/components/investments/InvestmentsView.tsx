@@ -20,7 +20,22 @@ import type {
 import { api } from "../../services/api";
 import { useCanEdit } from "../../hooks/useSession";
 import { ActionSheet, DetailList } from "../common/ActionSheet";
-import { card, dangerIconButton, iconButton, inputClass, modalOverlay, modalPanel, primaryButton, secondaryButton } from "../common/ui";
+import {
+  dangerIconButton,
+  iconButton,
+  inputClass,
+  labelText,
+  loneText,
+  modalOverlay,
+  modalPanel,
+  pageStack,
+  primaryButton,
+  secondaryButton,
+  section,
+  sectionHeader,
+  sectionSub,
+  sectionTitle,
+} from "../common/ui";
 
 interface InvestmentsViewProps {
   accounts: Account[];
@@ -383,7 +398,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
     borderWidth: 1,
     padding: [8, 12],
     extraCssText: "border-radius: 8px; box-shadow: none;",
-    textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: chartTheme.fontFamily },
+    textStyle: { color: chartTheme.tooltipText, fontSize: chartTheme.labelFontSize, fontFamily: chartTheme.fontFamily },
   };
 
   const allocationOptions = useMemo(() => {
@@ -414,7 +429,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           radius: ["55%", "80%"],
           avoidLabelOverlap: true,
           itemStyle: { borderColor: chartTheme.tooltipBg, borderWidth: 2 },
-          label: { color: chartTheme.textColor, fontSize: 11, fontFamily: chartTheme.figureFontFamily },
+          label: { color: chartTheme.textColor, fontSize: chartTheme.axisFontSize, fontFamily: chartTheme.figureFontFamily },
           data,
         },
       ],
@@ -446,7 +461,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           radius: ["55%", "80%"],
           avoidLabelOverlap: true,
           itemStyle: { borderColor: chartTheme.tooltipBg, borderWidth: 2 },
-          label: { color: chartTheme.textColor, fontSize: 11, fontFamily: chartTheme.fontFamily },
+          label: { color: chartTheme.textColor, fontSize: chartTheme.axisFontSize, fontFamily: chartTheme.fontFamily },
           data,
         },
       ],
@@ -474,7 +489,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         splitLine: { lineStyle: { color: chartTheme.gridLineColor } },
         axisLabel: {
           color: chartTheme.subtleTextColor,
-          fontSize: 11,
+          fontSize: chartTheme.axisFontSize,
           fontFamily: chartTheme.figureFontFamily,
           formatter: (v: number) => formatMoneyCompact(v, currency),
         },
@@ -484,7 +499,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         data: rows.map((h) => h.symbol),
         axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
         axisTick: { show: false },
-        axisLabel: { color: chartTheme.textColor, fontSize: 11, fontFamily: chartTheme.figureFontFamily },
+        axisLabel: { color: chartTheme.textColor, fontSize: chartTheme.axisFontSize, fontFamily: chartTheme.figureFontFamily },
       },
       series: [
         {
@@ -532,7 +547,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
       },
       legend: {
         data: series.map((s) => s.name),
-        textStyle: { color: chartTheme.textColor, fontSize: 11 },
+        textStyle: { color: chartTheme.textColor, fontSize: chartTheme.axisFontSize },
         icon: "circle",
         itemWidth: 8,
         itemHeight: 8,
@@ -544,14 +559,14 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         data: [...PERIOD_ORDER],
         axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
         axisTick: { show: false },
-        axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11, fontFamily: chartTheme.figureFontFamily },
+        axisLabel: { color: chartTheme.subtleTextColor, fontSize: chartTheme.axisFontSize, fontFamily: chartTheme.figureFontFamily },
       },
       yAxis: {
         type: "value",
         splitLine: { lineStyle: { color: chartTheme.gridLineColor } },
         axisLabel: {
           color: chartTheme.subtleTextColor,
-          fontSize: 11,
+          fontSize: chartTheme.axisFontSize,
           fontFamily: chartTheme.figureFontFamily,
           formatter: (v: number) => `${v}%`,
         },
@@ -572,7 +587,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
       },
       legend: {
         data: ["Money you added", "Market growth"],
-        textStyle: { color: chartTheme.textColor, fontSize: 11 },
+        textStyle: { color: chartTheme.textColor, fontSize: chartTheme.axisFontSize },
         icon: "circle",
         itemWidth: 8,
         itemHeight: 8,
@@ -584,7 +599,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         data: ["Portfolio"],
         axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
         axisTick: { show: false },
-        axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11, fontFamily: chartTheme.figureFontFamily },
+        axisLabel: { color: chartTheme.subtleTextColor, fontSize: chartTheme.axisFontSize, fontFamily: chartTheme.figureFontFamily },
       },
       yAxis: {
         type: "value",
@@ -592,7 +607,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         splitLine: { lineStyle: { color: chartTheme.gridLineColor } },
         axisLabel: {
           color: chartTheme.subtleTextColor,
-          fontSize: 11,
+          fontSize: chartTheme.axisFontSize,
           fontFamily: chartTheme.figureFontFamily,
           formatter: (v: number) => formatMoneyCompact(v),
         },
@@ -621,13 +636,13 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
   const btnPrimary = primaryButton;
   const btnSecondary = secondaryButton;
   const inputCls = inputClass;
-  const labelCls = "block text-sm md:text-xs text-sub mb-1";
+  const labelCls = `block ${labelText} mb-1`;
 
   if (investmentAccounts.length === 0) {
     return (
-      <div className={`${card} max-w-3xl mx-auto p-6 py-12 text-center`}>
-        <h2 className="text-base font-medium text-main">No investment accounts yet</h2>
-        <p className="mt-1 text-sm text-sub max-w-md mx-auto">
+      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+        <h2 className={sectionTitle}>No investment accounts yet</h2>
+        <p className="mt-2 text-base text-sub max-w-md mx-auto">
           Create an account of type <span className="text-main font-medium">Investment</span>{" "}
           to track holdings, cost basis, and returns. Balances are derived from your positions.
         </p>
@@ -643,9 +658,9 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
   const fxAvailable = fxRate?.rate !== null && fxRate?.rate !== undefined;
 
   return (
-    <div className="max-w-7xl mx-auto flex flex-col gap-6">
+    <div className={`max-w-7xl mx-auto ${pageStack}`}>
       {error && (
-        <div className="p-3 rounded-lg bg-negative-subtle border border-negative/30 text-sm text-negative flex items-center justify-between gap-3">
+        <div className="p-4 rounded-lg bg-negative-subtle text-base md:text-sm text-negative flex items-center justify-between gap-3">
           <span>{error}</span>
           <button onClick={() => setError(null)} className="text-negative hover:underline underline-offset-4 font-medium">
             Dismiss
@@ -653,7 +668,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         </div>
       )}
       {notice && (
-        <div className="p-3 rounded-lg bg-positive-subtle border border-positive/30 text-sm text-positive flex items-center justify-between gap-3">
+        <div className="p-4 rounded-lg bg-positive-subtle text-base md:text-sm text-positive flex items-center justify-between gap-3">
           <span>{notice}</span>
           <button onClick={() => setNotice(null)} className="text-positive hover:underline underline-offset-4 font-medium">
             Dismiss
@@ -662,7 +677,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
       )}
 
       {/* Account selector and actions */}
-      <div className={`${card} p-4 flex flex-col md:flex-row md:items-center justify-between gap-4`}>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <select
             value={accountId}
@@ -688,13 +703,13 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
               <span className="w-1.5 h-1.5 rounded-full bg-positive" />
               <span>USD/CAD</span>
               <span className="tabular-nums text-main">{fxRate.rate!.toFixed(4)}</span>
-              <span className="text-xs text-muted hidden sm:inline">Bank of Canada</span>
+              <span className="text-sm text-sub hidden sm:inline">Bank of Canada</span>
             </div>
           )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted tabular-nums" aria-live="polite">
+          <span className="text-sm text-sub tabular-nums" aria-live="polite">
             {isFetchingQuotes
               ? "Refreshing quotes…"
               : quotesRefreshedAt
@@ -730,7 +745,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
       </div>
 
       {performance && performance.unpriced_holdings.length > 0 && (
-        <div className="p-3 rounded-lg bg-warning-subtle border border-warning/30 text-sm text-warning flex items-start gap-2">
+        <div className="p-4 rounded-lg bg-warning-subtle text-base md:text-sm text-warning flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" strokeWidth={1.5} />
           <span>
             No price recorded for{" "}
@@ -748,96 +763,96 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
 
       {/* KPI row */}
       {performance && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className={`${card} p-5`}>
-            <div className="text-sm text-sub">Market value</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-8">
+          <div className="min-w-0">
+            <div className={labelText}>Market value</div>
             <Money
               value={performance.market_value}
               currency={currency}
-              className="block mt-2 font-display text-2xl font-medium leading-none text-main"
+              className="block mt-2 font-display text-2xl md:text-3xl font-medium leading-none text-main break-words"
             />
-            <div className="mt-2 text-xs text-muted">
+            <div className="mt-2 text-sm text-sub">
               Cost <span className="tabular-nums">{formatMoney(performance.cost_basis, { currency })}</span>
             </div>
           </div>
 
-          <div className={`${card} p-5`}>
-            <div className="text-sm text-sub">Unrealized gain</div>
+          <div className="min-w-0">
+            <div className={labelText}>Unrealized gain</div>
             <Money
               value={performance.unrealized_gain}
               currency={currency}
               signed
-              className={`block mt-2 text-2xl font-medium leading-none ${
+              className={`block mt-2 text-2xl md:text-3xl font-medium leading-none break-words ${
                 performance.unrealized_gain >= 0 ? "text-positive" : "text-negative"
               }`}
             />
-            <div className="mt-2 text-xs text-muted">Against cost basis</div>
+            <div className="mt-2 text-sm text-sub">Against cost basis</div>
           </div>
 
-          <div className={`${card} p-5`}>
-            <div className="text-sm text-sub">Money you added</div>
+          <div className="min-w-0">
+            <div className={labelText}>Money you added</div>
             <Money
               value={performance.net_invested}
               currency={currency}
-              className="block mt-2 font-display text-2xl font-medium leading-none text-main"
+              className="block mt-2 font-display text-2xl md:text-3xl font-medium leading-none text-main break-words"
             />
-            <div className="mt-2 text-xs text-muted">Contributions less withdrawals</div>
+            <div className="mt-2 text-sm text-sub">Contributions less withdrawals</div>
           </div>
 
-          <div className={`${card} p-5`}>
-            <div className="text-sm text-sub">Market growth</div>
+          <div className="min-w-0">
+            <div className={labelText}>Market growth</div>
             <Money
               value={performance.market_growth}
               currency={currency}
               signed
-              className={`block mt-2 text-2xl font-medium leading-none ${
+              className={`block mt-2 text-2xl md:text-3xl font-medium leading-none break-words ${
                 performance.market_growth >= 0 ? "text-positive" : "text-negative"
               }`}
             />
-            <div className="mt-2 text-xs text-muted">Value beyond what you put in</div>
+            <div className="mt-2 text-sm text-sub">Value beyond what you put in</div>
           </div>
         </div>
       )}
 
       {/* Holdings table */}
-      <section className={`${card} overflow-hidden`}>
-        <div className="flex items-center px-5 sm:px-6 h-14 border-b border-subtle">
-          <h2 className="text-base font-medium text-main">Holdings</h2>
+      <section className={section}>
+        <div className={sectionHeader}>
+          <h2 className={sectionTitle}>Holdings</h2>
         </div>
 
-        {/* Phone cards (< md): read-only; details and Remove are in a sheet */}
-        <div className="block md:hidden divide-y divide-subtle" data-testid="holdings-phone-list">
+        {/* Phone rows (< md): read-only; details and Remove are in a sheet */}
+        <div className="block md:hidden border-y border-subtle divide-y divide-subtle" data-testid="holdings-phone-list">
           {isLoading ? (
-            <div className="py-8 text-center text-sm text-muted">Loading positions…</div>
+            <div className={`py-10 px-4 text-center ${loneText}`}>Loading positions…</div>
           ) : (performance?.holdings.length ?? 0) === 0 ? (
-            <div className="py-8 text-center text-sm text-muted">
+            <div className={`py-10 px-4 text-center ${loneText}`}>
               No holdings yet. Add one, or import a holdings export from your broker.
             </div>
           ) : (
             sortedHoldings.map((h) => (
               <div
                 key={h.holding_id}
-                className="p-4 space-y-2"
+                className="py-4 space-y-2"
                 onClick={(e) => {
                   if (!(e.target as HTMLElement).closest("button, a")) setSheetHolding(h);
                 }}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm text-main font-mono break-all">{h.symbol}</div>
-                    {h.name && <div className="text-xs text-muted break-words">{h.name}</div>}
+                    <div className="text-base text-main font-mono break-all">{h.symbol}</div>
+                    {h.name && <div className="text-sm text-sub break-words">{h.name}</div>}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="text-right">
-                      <Money value={h.market_value} currency={currency} className="text-sm text-main" />
-                      <div className="text-xs tabular-nums">
+                      <Money value={h.market_value} currency={currency} className="text-base text-main" />
+                      <div className="text-sm tabular-nums">
                         <Money
                           value={h.unrealized_gain}
                           currency={currency}
                           signed
                           className={h.unrealized_gain >= 0 ? "text-positive" : "text-negative"}
                         />{" "}
-                        <span className="text-muted">({percent(h.unrealized_gain_pct)})</span>
+                        <span className="text-sub">({percent(h.unrealized_gain_pct)})</span>
                       </div>
                     </div>
                     <button
@@ -850,7 +865,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                     </button>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted tabular-nums">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-sub tabular-nums">
                   <span>{weight(h)} of portfolio</span>
                   <span>·</span>
                   <span>Qty {formatNumber(Number(h.quantity), 8)}</span>
@@ -876,24 +891,24 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
         </div>
 
         {/* Holdings table (tablet and desktop); cost basis and weight from lg */}
-        <div className="hidden md:block">
-          <table className="w-full table-fixed text-sm">
+        <div className="hidden md:block border-b border-subtle">
+          <table className="w-full table-fixed text-sm lg:text-base">
             <thead>
-              <tr className="text-xs text-muted border-b border-subtle">
-                <th className="text-left font-normal h-9 px-3 w-[20%]">Symbol</th>
-                <th className="text-right font-normal h-9 px-3 w-[12%]">Quantity</th>
-                <th className="text-right font-normal h-9 px-3 w-[14%]">Price</th>
-                <th className="hidden lg:table-cell text-right font-normal h-9 px-3 w-[13%]">Cost basis</th>
-                <th className="text-right font-normal h-9 px-3 w-[14%]">Market value</th>
-                <th className="hidden lg:table-cell text-right font-normal h-9 px-3 w-[9%]">Weight</th>
-                <th className="text-right font-normal h-9 px-3 w-[13%]">Unrealized</th>
-                <th className="h-9 px-2 w-11"></th>
+              <tr className="text-sm text-sub border-y border-subtle">
+                <th className="text-left font-normal h-10 px-3 w-[20%]">Symbol</th>
+                <th className="text-right font-normal h-10 px-3 w-[12%]">Quantity</th>
+                <th className="text-right font-normal h-10 px-3 w-[14%]">Price</th>
+                <th className="hidden lg:table-cell text-right font-normal h-10 px-3 w-[13%]">Cost basis</th>
+                <th className="text-right font-normal h-10 px-3 w-[14%]">Market value</th>
+                <th className="hidden lg:table-cell text-right font-normal h-10 px-3 w-[9%]">Weight</th>
+                <th className="text-right font-normal h-10 px-3 w-[13%]">Unrealized</th>
+                <th className="h-10 px-2 w-11"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-subtle">
               {isLoading && (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-sm text-muted">
+                  <td colSpan={8} className={`py-10 px-4 text-center ${loneText}`}>
                     Loading positions…
                   </td>
                 </tr>
@@ -901,7 +916,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
 
               {!isLoading && (performance?.holdings.length ?? 0) === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-sm text-muted">
+                  <td colSpan={8} className={`py-10 px-4 text-center ${loneText}`}>
                     No holdings yet. Add one, or import a holdings export from your broker.
                   </td>
                 </tr>
@@ -915,7 +930,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                         {h.symbol}
                       </div>
                       {h.name && (
-                        <div className="text-xs text-muted break-words">
+                        <div className="text-sm text-sub break-words">
                           {h.name}
                         </div>
                       )}
@@ -928,10 +943,10 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                         <>
                           <Money value={h.price ?? 0} currency={currency} className="text-main" />
                           <QuoteBadge source={h.price_source} session={h.price_session} quotedAt={h.price_quoted_at} />
-                          <div className="text-xs tabular-nums text-muted">{priceDetail(h, currency)}</div>
+                          <div className="text-sm tabular-nums text-sub">{priceDetail(h, currency)}</div>
                         </>
                       ) : (
-                        <span className="text-xs text-warning">No price</span>
+                        <span className="text-sm text-warning">No price</span>
                       )}
                     </td>
                     <td className="hidden lg:table-cell px-3 text-right whitespace-nowrap">
@@ -948,7 +963,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                         signed
                         className={h.unrealized_gain >= 0 ? "text-positive" : "text-negative"}
                       />
-                      <div className="text-xs tabular-nums text-muted">
+                      <div className="text-sm tabular-nums text-sub">
                         {percent(h.unrealized_gain_pct)}
                       </div>
                     </td>
@@ -971,20 +986,22 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
 
       {/* Returns */}
       {performance && (
-        <section className={`${card} p-5 sm:p-6`}>
-          <h2 className="text-base font-medium text-main">Returns</h2>
-          <p className="mt-1 text-sm text-sub">
+        <section className={section}>
+          <div className={sectionHeader}>
+          <h2 className={sectionTitle}>Returns</h2>
+          <p className={sectionSub}>
             <span className="text-main">Time-weighted</span> measures investment performance, ignoring deposit timing.{" "}
             <span className="text-main">Money-weighted</span> measures what you earned including timing.
           </p>
+          </div>
 
-          <div className="mt-4">
-            <table className="w-full table-fixed text-xs sm:text-sm">
+          <div>
+            <table className="w-full table-fixed text-sm sm:text-base">
               <thead>
-                <tr className="text-xs text-muted border-b border-subtle">
-                  <th className="text-left font-normal h-9 pr-2 w-[32%] sm:w-auto">Measure</th>
+                <tr className="text-sm text-sub border-y border-subtle">
+                  <th className="text-left font-normal h-10 pr-2 w-[32%] sm:w-auto">Measure</th>
                   {PERIOD_ORDER.map((p) => (
-                    <th key={p} className="text-right font-normal h-9 px-1 sm:px-3">
+                    <th key={p} className="text-right font-normal h-10 px-1 sm:px-3">
                       {p}
                     </th>
                   ))}
@@ -997,7 +1014,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                     ["Money-weighted", "money_weighted"],
                   ] as const
                 ).map(([label, key]) => (
-                  <tr key={key} className="h-10 border-b border-subtle last:border-0">
+                  <tr key={key} className="h-12 border-b border-subtle">
                     <td className="pr-2 text-main break-words">{label}</td>
                     {PERIOD_ORDER.map((p) => {
                       const value = performance.returns[p]?.[key] ?? null;
@@ -1006,7 +1023,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                           key={p}
                           className={`px-1 sm:px-3 text-right tabular-nums ${
                             value === null
-                              ? "text-muted"
+                              ? "text-sub"
                               : value >= 0
                                 ? "text-positive"
                                 : "text-negative"
@@ -1021,13 +1038,13 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
               </tbody>
             </table>
           </div>
-          <p className="mt-4 text-xs text-muted">
+          <p className="mt-4 text-sm text-sub">
             A dash means there is not enough data for that period
           </p>
           {returnsChartOptions && (
             <>
-              <h3 className="mt-6 text-sm font-medium text-main">Returns by period</h3>
-              <LazyChart option={returnsChartOptions} className="h-56 mt-2" />
+              <h3 className="mt-10 text-base font-semibold text-main">Returns by period</h3>
+              <LazyChart option={returnsChartOptions} className="h-56 mt-3" />
             </>
           )}
         </section>
@@ -1035,35 +1052,42 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
 
       {/* Allocation */}
       {performance && performance.holdings.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <section className={`${card} p-5 sm:p-6`}>
-            <h2 className="text-base font-medium text-main">Allocation by position</h2>
-            <p className="mt-1 text-sm text-sub">Share of market value. Positions under 3% are grouped</p>
-            <LazyChart option={allocationOptions} className="h-64 mt-4" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16">
+          <section className={section}>
+            <div className={sectionHeader}>
+            <h2 className={sectionTitle}>Allocation by position</h2>
+            <p className={sectionSub}>Share of market value. Positions under 3% are grouped</p>
+            </div>
+            <LazyChart option={allocationOptions} className="h-64" />
           </section>
 
-          <section className={`${card} p-5 sm:p-6`}>
-            <h2 className="text-base font-medium text-main">Allocation by asset class</h2>
-            <p className="mt-1 text-sm text-sub">Equity, bonds, cash and the rest</p>
-            <LazyChart option={assetClassOptions} className="h-64 mt-4" />
+          <section className={section}>
+            <div className={sectionHeader}>
+            <h2 className={sectionTitle}>Allocation by asset class</h2>
+            <p className={sectionSub}>Equity, bonds, cash and the rest</p>
+            </div>
+            <LazyChart option={assetClassOptions} className="h-64" />
           </section>
 
-          <section className={`${card} p-5 sm:p-6`}>
-            <h2 className="text-base font-medium text-main">Gain and loss by position</h2>
-            <p className="mt-1 text-sm text-sub">Unrealized, against what each position cost</p>
+          <section className={section}>
+            <div className={sectionHeader}>
+            <h2 className={sectionTitle}>Gain and loss by position</h2>
+            <p className={sectionSub}>Unrealized, against what each position cost</p>
+            </div>
             <LazyChart
               option={gainLossOptions}
-              className="mt-4"
               style={{ height: Math.max(160, performance.holdings.length * 28 + 32) }}
             />
           </section>
 
-          <section className={`${card} p-5 sm:p-6`}>
-            <h2 className="text-base font-medium text-main">Contributions vs growth</h2>
-            <p className="mt-1 text-sm text-sub">
+          <section className={section}>
+            <div className={sectionHeader}>
+            <h2 className={sectionTitle}>Contributions vs growth</h2>
+            <p className={sectionSub}>
               How much of the balance you saved, and how much the market added
             </p>
-            {growthOptions && <LazyChart option={growthOptions} className="h-64 mt-4" />}
+            </div>
+            {growthOptions && <LazyChart option={growthOptions} className="h-64" />}
           </section>
         </div>
       )}
@@ -1071,17 +1095,17 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
       {/* Projection: opt-in, fetched only once opened */}
       {performance && performance.holdings.length > 0 && (
         <details
-          className={`${card} group`}
+          className={`${section} group border-y border-subtle`}
           onToggle={(e) => (e.currentTarget as HTMLDetailsElement).open && setProjectionOpened(true)}
         >
-          <summary className="flex items-center justify-between gap-3 px-5 sm:px-6 h-14 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-            <span className="text-base font-medium text-main">Projection</span>
+          <summary className="flex items-center justify-between gap-3 min-h-16 py-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+            <span className={sectionTitle}>Projection</span>
             <span className="flex items-center gap-2 text-sm text-sub">
               <span className="hidden sm:inline">Where this account could be, from its own past returns</span>
-              <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180" strokeWidth={1.5} />
+              <ChevronDown className="w-5 h-5 shrink-0 transition-transform group-open:rotate-180" strokeWidth={1.5} />
             </span>
           </summary>
-          <div className="px-5 sm:px-6 pb-6 pt-2 border-t border-subtle">
+          <div className="pb-8 pt-2">
             {projectionOpened && (
               <ProjectionPanel accountId={accountId} currency={currency} marketValue={performance.market_value} />
             )}
@@ -1090,7 +1114,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
       )}
 
       {/* Canadian market coverage and BoC FX context */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs text-muted">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 text-sm text-sub">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span>
             <abbr className="quote-badge no-underline" title="Delayed quote">D</abbr> Delayed about 15 minutes, from Yahoo
@@ -1128,7 +1152,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
             onSubmit={handleAddHolding}
             className={`${modalPanel} md:max-w-md flex flex-col gap-4`}
           >
-            <h3 className="text-base font-medium text-main">Add holding</h3>
+            <h3 className={sectionTitle}>Add holding</h3>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -1155,9 +1179,9 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
             </div>
 
             {newHolding.symbol.trim() && (
-              <div id="symbol-lookup" aria-live="polite" className="-mt-2 text-xs">
+              <div id="symbol-lookup" aria-live="polite" className="-mt-2 text-sm">
                 {isLookingUp && !symbolLookup ? (
-                  <span className="text-muted">Looking up {newHolding.symbol.trim().toUpperCase()}…</span>
+                  <span className="text-sub">Looking up {newHolding.symbol.trim().toUpperCase()}…</span>
                 ) : symbolLookup?.found ? (
                   <span className="text-sub">
                     <span className="font-mono text-main">{symbolLookup.query}</span>
@@ -1241,13 +1265,13 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
               </div>
             </div>
             {addMarketValue !== null && (
-              <p className="-mt-2 text-xs text-sub" aria-live="polite" data-testid="new-holding-value">
+              <p className="-mt-2 text-sm text-sub" aria-live="polite" data-testid="new-holding-value">
                 Market value ≈{" "}
                 <span className="tabular-nums text-main">{formatMoney(addMarketValue, { currency })}</span>{" "}
                 ({formatNumber(addQuantity!, 8)} × {formatMoney(addPrice!, { currency })})
               </p>
             )}
-            <p className="text-xs text-muted">
+            <p className="text-sm text-sub">
               For Canadian securities, add <span className="font-mono text-sub">.TO</span> for TSX (e.g.{" "}
               <span className="font-mono text-sub">XEQT.TO</span>, <span className="font-mono text-sub">VFV.TO</span>) or{" "}
               <span className="font-mono text-sub">.V</span> for TSX Venture. US equities use standard tickers (e.g.{" "}
@@ -1274,8 +1298,8 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
             className={`${modalPanel} md:max-w-md flex flex-col gap-4`}
           >
             <div>
-              <h3 className="text-base font-medium text-main">Update prices</h3>
-              <p className="mt-1 text-xs text-muted">
+              <h3 className={sectionTitle}>Update prices</h3>
+              <p className={sectionSub}>
                 Manual quote overrides. Folio also fetches automated quotes for TSX/TSX-V (
                 <span className="font-mono text-sub">.TO</span>, <span className="font-mono text-sub">.V</span>), US
                 equities, and Bank of Canada exchange rates. Paste one{" "}
@@ -1302,7 +1326,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                 value={priceText}
                 onChange={(e) => setPriceText(e.target.value)}
                 placeholder={"VFV.TO,145.20\nXEQT.TO,33.85\nZAG.TO,14.02"}
-                className="w-full px-3 py-2 rounded-lg border border-default bg-input text-sm text-main font-mono placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]"
+                className="w-full px-3 py-2 rounded-t-lg rounded-b-none border-0 border-b-2 border-default bg-surface-subtle text-base md:text-sm text-main font-mono placeholder:text-sub focus:outline-none focus:border-[var(--accent-primary)]"
               />
             </div>
 
@@ -1345,7 +1369,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                     signed
                     className={sheetHolding.unrealized_gain >= 0 ? "text-positive" : "text-negative"}
                   />{" "}
-                  <span className="text-muted">({percent(sheetHolding.unrealized_gain_pct)})</span>
+                  <span className="text-sub">({percent(sheetHolding.unrealized_gain_pct)})</span>
                 </>,
               ],
               ["Quantity", <span className="tabular-nums">{formatNumber(Number(sheetHolding.quantity), 8)}</span>],
@@ -1359,7 +1383,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                       session={sheetHolding.price_session}
                       quotedAt={sheetHolding.price_quoted_at}
                     />
-                    <div className="text-sm text-muted tabular-nums">{priceDetail(sheetHolding, currency)}</div>
+                    <div className="text-sm text-sub tabular-nums">{priceDetail(sheetHolding, currency)}</div>
                   </>
                 ) : (
                   <span className="text-warning">No price</span>

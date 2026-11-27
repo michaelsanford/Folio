@@ -10,7 +10,7 @@ import {
 } from "../../constants/iconPalette";
 import { AccountIcon } from "../common/AccountIcon";
 import { Money } from "../common/Money";
-import { iconButton, primaryButton, secondaryButton } from "../common/ui";
+import { chipTab, iconButton, labelText, primaryButton, scrollList, secondaryButton } from "../common/ui";
 
 interface AccountIconPickerModalProps {
   isOpen: boolean;
@@ -24,14 +24,9 @@ interface AccountIconPickerModalProps {
   onSave: (icon: string, color: string) => void;
 }
 
-const sectionLabel = "block text-sm text-sub";
-const linkButton = "text-xs text-accent-subtle hover:underline underline-offset-4 cursor-pointer";
-const tabClass = (active: boolean) =>
-  `h-10 md:h-8 px-3 rounded-lg text-sm md:text-xs border transition-colors cursor-pointer ${
-    active
-      ? "bg-surface-subtle border-default text-main font-medium"
-      : "border-transparent text-sub hover:text-main bg-surface-hover"
-  }`;
+const sectionLabel = `block ${labelText}`;
+const linkButton =
+  "min-h-11 md:min-h-0 text-sm text-accent-subtle text-right hover:underline underline-offset-4 cursor-pointer";
 
 export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
   isOpen,
@@ -79,11 +74,11 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[120] flex items-end md:items-center justify-center md:p-4 bg-black/60 animate-in fade-in">
-      <div className="w-full md:max-w-xl rounded-t-2xl md:rounded-xl bg-surface border border-default shadow-xl overflow-hidden flex flex-col max-h-[92dvh] md:max-h-[90vh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter">
+      <div className="w-full md:max-w-xl rounded-t-2xl md:rounded-2xl bg-surface elevation-3 overflow-hidden flex flex-col max-h-[92dvh] md:max-h-[90vh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-subtle flex items-start justify-between gap-4">
-          <div>
-            <h3 className="text-base font-medium text-main">Account icon and colour</h3>
+        <div className="px-6 pt-6 pb-2 md:px-8 md:pt-8 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="font-display text-xl font-semibold text-main">Account icon and colour</h3>
             <p className="text-sm text-sub mt-1">
               Pick an icon and a color to tell this account apart
             </p>
@@ -95,16 +90,16 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
             aria-label="Close"
             className={iconButton}
           >
-            <X className="w-4 h-4" strokeWidth={1.5} />
+            <X className="w-5 h-5" strokeWidth={1.75} />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 overflow-y-auto space-y-6 text-sm">
+        <div className="px-6 py-4 md:px-8 overflow-y-auto space-y-8 text-base">
           {/* Live Card Preview */}
           <div>
             <label className={`${sectionLabel} mb-2`}>Preview</label>
-            <div className="p-4 rounded-xl bg-surface-subtle border border-subtle flex items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 <AccountIcon
                   type={accountType}
@@ -113,25 +108,25 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
                   size="lg"
                 />
                 <div className="min-w-0">
-                  <div className="text-sm font-medium text-main break-words">
+                  <div className="text-base font-medium text-main break-words">
                     {accountName || meta.name}
                   </div>
-                  <div className="text-xs text-muted mt-0.5 break-words">
+                  <div className="text-sm text-sub mt-0.5 break-words">
                     {institution || "Institution"} · {meta.shortName}
                   </div>
                 </div>
               </div>
 
               <div className="text-right shrink-0">
-                <Money value={balance} className="block text-base font-medium text-main" />
-                <div className="text-xs text-muted mt-1">Current balance</div>
+                <Money value={balance} className="block text-lg font-medium text-main" />
+                <div className="text-sm text-sub mt-1">Current balance</div>
               </div>
             </div>
           </div>
 
           {/* Color Palette Swatches */}
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 mb-2">
               <label className={sectionLabel}>Color</label>
               <button
                 type="button"
@@ -170,7 +165,7 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
 
           {/* Icon Category Tabs & Glyphs Grid */}
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 mb-2">
               <label className={sectionLabel}>Icon</label>
               <button
                 type="button"
@@ -182,13 +177,13 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
             </div>
 
             {/* Category Tabs */}
-            <div className="flex flex-wrap gap-1 pb-1 mb-2">
+            <div className="flex flex-wrap gap-x-1 mb-3">
               {categories.map((c) => (
                 <button
                   key={c.id}
                   type="button"
                   onClick={() => setActiveCategory(c.id)}
-                  className={tabClass(activeCategory === c.id)}
+                  className={chipTab(activeCategory === c.id)}
                 >
                   {c.label}
                 </button>
@@ -196,7 +191,7 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
             </div>
 
             {/* Icons Grid */}
-            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 md:max-h-52 md:overflow-y-auto p-1 md:pr-2">
+            <div className={`grid grid-cols-4 sm:grid-cols-7 gap-2 md:max-h-52 md:overflow-y-auto p-1 ${scrollList}`}>
               {filteredIcons.map((opt: IconOption) => {
                 const isSelected = selectedIcon === opt.id;
                 const IconComponent = opt.icon;
@@ -207,17 +202,15 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
                     title={opt.name}
                     aria-pressed={isSelected}
                     onClick={() => setSelectedIcon(opt.id)}
-                    className={`min-h-14 flex flex-col items-center justify-center gap-1 p-2 rounded-lg border transition-colors cursor-pointer ${
-                      isSelected
-                        ? "bg-accent-subtle border-accent-main/40 text-main"
-                        : "border-subtle bg-surface-hover text-sub"
+                    className={`min-h-14 min-w-0 flex flex-col items-center justify-center gap-1 p-2 rounded-lg transition-colors cursor-pointer ${
+                      isSelected ? "bg-accent-subtle text-accent-subtle" : "bg-surface-hover text-sub"
                     }`}
                   >
                     <IconComponent
-                      className="w-4 h-4"
+                      className="w-5 h-5"
                       style={{ color: isSelected ? selectedColor : undefined, strokeWidth: 1.5 }}
                     />
-                    <span className="text-xs text-muted break-words w-full text-center">
+                    <span className="text-xs break-words w-full text-center">
                       {opt.name.split(" ")[0]}
                     </span>
                   </button>
@@ -228,7 +221,7 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-subtle flex items-center justify-end gap-2">
+        <div className="px-6 py-4 md:px-8 md:pb-6 flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
             onClick={onClose}

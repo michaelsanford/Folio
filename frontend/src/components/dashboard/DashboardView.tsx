@@ -6,9 +6,21 @@ import { AccountFilterBar } from "./AccountFilterBar";
 import { CreditUsage } from "../accounts/CreditUsage";
 import { isAssetAccount } from "../../constants/canadianAccountTypes";
 import { useChartTheme } from "../../hooks/useChartTheme";
+import { useIsPhone } from "../../hooks/useMediaQuery";
 import { formatMoney, formatMoneyCompact, getDateLocale } from "../../utils/format";
 import type { Account, DashboardAnalyticsResponse } from "../../types";
-import { card, primaryButton, wrapOnPhone } from "../common/ui";
+import {
+  labelText,
+  loneText,
+  scrollList,
+  pageStack,
+  primaryButton,
+  section,
+  sectionHeader,
+  sectionSub,
+  sectionTitle,
+  wrapOnPhone,
+} from "../common/ui";
 
 interface DashboardViewProps {
   analytics: DashboardAnalyticsResponse | null;
@@ -19,15 +31,26 @@ interface DashboardViewProps {
   onHiddenAccountsChange?: (ids: string[]) => void;
 }
 
-const StatCard: React.FC<{ label: string; children: React.ReactNode; meta: React.ReactNode }> = ({
+let measureCanvas: HTMLCanvasElement | undefined;
+/** Width in pixels of a chart label, so the chart can leave room for it. */
+function measureText(text: string, size: number, family: string): number {
+  measureCanvas ??= document.createElement("canvas");
+  const ctx = measureCanvas.getContext("2d");
+  if (!ctx) return text.length * size * 0.6;
+  ctx.font = `${size}px ${family}`;
+  return ctx.measureText(text).width;
+}
+
+/** One figure of the month, set straight on the page: label, figure, note. */
+const Figure: React.FC<{ label: string; children: React.ReactNode; meta: React.ReactNode }> = ({
   label,
   children,
   meta,
 }) => (
-  <div className={`${card} p-5`}>
-    <div className="text-sm text-sub">{label}</div>
-    <div className="mt-2 font-display text-2xl font-medium leading-none">{children}</div>
-    <div className="mt-2 text-xs text-muted">{meta}</div>
+  <div className="min-w-0">
+    <div className={labelText}>{label}</div>
+    <div className="mt-2 font-display text-2xl md:text-3xl font-medium leading-none">{children}</div>
+    <div className="mt-2 text-sm text-sub">{meta}</div>
   </div>
 );
 
@@ -39,12 +62,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onHiddenAccountsChange,
 }) => {
   const chartTheme = useChartTheme();
+  const isPhone = useIsPhone();
   const hidden = new Set(hiddenAccountIds);
   const hiddenCount = accounts.filter((a) => hidden.has(a.id)).length;
 
   if (!analytics) {
     return (
-      <div className="flex items-center justify-center h-64 text-sm text-muted">
+      <div role="status" className={`flex items-center justify-center h-64 ${loneText}`}>
         <div className="animate-spin rounded-full h-5 w-5 border-2 border-subtle border-t-[var(--accent-primary)] mr-3"></div>
         Loading dashboard
       </div>
@@ -65,7 +89,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     borderWidth: 1,
     padding: [8, 12],
     extraCssText: "border-radius: 8px; box-shadow: none;",
-    textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: chartTheme.fontFamily },
+    textStyle: { color: chartTheme.tooltipText, fontSize: chartTheme.labelFontSize, fontFamily: chartTheme.fontFamily },
   };
 
   // Net worth: the main chart. One accent line on a ruled monthly grid.
@@ -87,7 +111,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       data: net_worth_history.map((h) => h.date),
       axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
       axisTick: { show: false },
-      axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11, fontFamily: chartTheme.figureFontFamily, margin: 12 },
+      axisLabel: { color: chartTheme.subtleTextColor, fontSize: chartTheme.axisFontSize, fontFamily: chartTheme.figureFontFamily, margin: 12 },
       splitLine: { show: true, lineStyle: { color: chartTheme.gridLineColor } },
       boundaryGap: false,
     },
@@ -98,7 +122,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       splitLine: { lineStyle: { color: chartTheme.gridLineColor } },
       axisLabel: {
         color: chartTheme.subtleTextColor,
-        fontSize: 11,
+        fontSize: chartTheme.axisFontSize,
         fontFamily: chartTheme.figureFontFamily,
         formatter: (val: number) => formatMoneyCompact(val),
       },
@@ -116,7 +140,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           show: true,
           color: chartTheme.textColor,
           fontFamily: chartTheme.figureFontFamily,
-          fontSize: 11,
+          fontSize: chartTheme.axisFontSize,
           offset: [-8, -16],
           align: "right",
           formatter: (p: any) => formatMoney(Number(p.value), { cents: false }),
@@ -137,6 +161,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     return categoryColors.get(name) || chartTheme.neutralColor;
   };
 
+  // Room on the right for the category names: as wide as the longest one, up
+  // to a cap. A longer name wraps onto a second line (then ends in an
+  // ellipsis; the tooltip and Top categories show it in full), and the nodes
+  // are spaced by the label height so wrapped names never run into each other.
+  const sankeyLabelWidths = sankey.nodes.map((n) =>
+    measureText(n.name, chartTheme.labelFontSize, chartTheme.fontFamily) * 1.1,
+  );
+  const sankeyLabelRoom = Math.min(isPhone ? 150 : 280, Math.max(48, ...sankeyLabelWidths) + 16);
+  const sankeyLabelLines = Math.min(
+    2,
+    Math.max(1, ...sankeyLabelWidths.map((w) => Math.ceil(w / (sankeyLabelRoom - 12)))),
+  );
+  const sankeyLineHeight = Math.round(chartTheme.labelFontSize * 1.25);
+
   const sankeyOptions = {
     backgroundColor: "transparent",
     tooltip: {
@@ -155,11 +193,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         type: "sankey",
         layout: "none",
         left: 0,
-        right: 120,
+        right: sankeyLabelRoom,
         top: 8,
-        bottom: 8,
+        bottom: 8 + (sankeyLabelLines - 1) * sankeyLineHeight,
         nodeWidth: 8,
-        nodeGap: 10,
+        nodeGap: sankeyLabelLines * sankeyLineHeight + 6,
         emphasis: { focus: "adjacency" },
         data: sankey.nodes.map((n) => ({
           name: n.name,
@@ -171,18 +209,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           value: l.value,
         })),
         lineStyle: { color: "target", curveness: 0.5, opacity: 0.18 },
-        label: { color: chartTheme.textColor, fontSize: 12, fontFamily: chartTheme.fontFamily },
+        label: {
+          color: chartTheme.textColor,
+          fontSize: chartTheme.labelFontSize,
+          fontFamily: chartTheme.fontFamily,
+          width: sankeyLabelRoom - 12,
+          overflow: "break",
+          lineHeight: sankeyLineHeight,
+          height: sankeyLabelLines * sankeyLineHeight,
+          lineOverflow: "truncate",
+        },
         itemStyle: { borderWidth: 0, borderRadius: 2 },
       },
     ],
   };
 
   return (
-    <div className="max-w-[1440px] mx-auto flex flex-col gap-6">
+    <div className={`max-w-[1440px] mx-auto ${pageStack}`}>
       {/* Header: the month and where net worth stands */}
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-[28px] leading-tight font-medium text-main">{monthTitle}</h1>
+          <h1 className="text-3xl md:text-4xl leading-tight font-semibold text-main">{monthTitle}</h1>
           <p className="mt-1 text-sm text-sub">
             {hiddenCount === 0 ? (
               "Household overview"
@@ -212,11 +259,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="text-sm text-sub">Net worth</div>
           <Money
             value={analytics.current_net_worth}
-            className={`block mt-1 text-[32px] leading-none font-medium ${
+            className={`block mt-1 text-4xl leading-none font-medium ${
               analytics.current_net_worth < 0 ? "text-negative" : "text-main"
             }`}
           />
-          <div className="mt-2 text-xs tabular-nums text-muted">
+          <div className="mt-2 text-sm tabular-nums text-sub">
             {monthChange !== null && (
               <span className={monthChange >= 0 ? "text-positive" : "text-negative"}>
                 {formatMoney(monthChange, { signed: true, cents: false })}
@@ -240,29 +287,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       )}
 
       {/* Main chart */}
-      <section className={`${card} p-5 sm:p-6`}>
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-base font-medium text-main">Net worth</h2>
-          <span className="text-xs text-muted">Month-end balances</span>
+      <section className={section}>
+        <div className={sectionHeader}>
+          <h2 className={sectionTitle}>Net worth</h2>
+          <p className={sectionSub}>Month-end balances</p>
         </div>
         {net_worth_history.length > 1 ? (
-          <LazyChart option={netWorthOptions} className="h-64 sm:h-80 mt-4" />
+          <LazyChart option={netWorthOptions} className="h-64 sm:h-80" />
         ) : (
-          <div className="h-64 sm:h-80 mt-4 flex items-center justify-center text-sm text-muted">
+          <div className={`h-64 sm:h-80 px-4 flex items-center justify-center text-center ${loneText}`}>
             Net worth history appears after the first month of balances
           </div>
         )}
       </section>
 
       {/* This month */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard label="Income" meta="This month">
+      <section className={section} aria-labelledby="this-month">
+        <h2 id="this-month" className={`${sectionTitle} ${sectionHeader}`}>This month</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-8">
+        <Figure label="Income" meta="Everything that came in">
           <Money value={monthly_cash_flow.total_income} className="text-main" />
-        </StatCard>
-        <StatCard label="Expenses" meta="This month, fixed and variable">
+        </Figure>
+        <Figure label="Expenses" meta="Fixed and variable">
           <Money value={monthly_cash_flow.total_expenses} className="text-main" />
-        </StatCard>
-        <StatCard
+        </Figure>
+        <Figure
           label="Net savings"
           meta={<span className="tabular-nums">{monthly_cash_flow.savings_rate}% of income</span>}
         >
@@ -271,18 +320,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             signed
             className={monthly_cash_flow.net_savings >= 0 ? "text-positive" : "text-negative"}
           />
-        </StatCard>
-      </div>
+        </Figure>
+        </div>
+      </section>
 
       {/* Cash flow + categories */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <section className={`${card} lg:col-span-2 p-5 sm:p-6`}>
-          <h2 className="text-base font-medium text-main">Cash flow</h2>
-          <p className="mt-1 text-sm text-sub">Where this month's income went</p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 lg:gap-16">
+        <section className={`${section} lg:col-span-2`}>
+          <div className={sectionHeader}>
+            <h2 className={sectionTitle}>Cash flow</h2>
+            <p className={sectionSub}>Where this month's income went</p>
+          </div>
           {sankey.links.length > 0 ? (
-            <LazyChart option={sankeyOptions} className="h-72 mt-4" />
+            <LazyChart option={sankeyOptions} className={sankeyLabelLines > 1 ? "h-[28rem]" : "h-80"} />
           ) : (
-            <div className="h-72 mt-4 flex flex-col items-center justify-center gap-3 text-sm text-muted">
+            <div className={`h-80 px-4 flex flex-col items-center justify-center gap-4 text-center ${loneText}`}>
               <p>No income or spending recorded this month</p>
               <button
                 onClick={() => onNavigate("ingestion")}
@@ -294,41 +346,43 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           )}
         </section>
 
-        <section className={`${card} p-5 sm:p-6 flex flex-col`}>
-          <h2 className="text-base font-medium text-main">Top categories</h2>
-          <p className="mt-1 text-sm text-sub">Spending this month</p>
-          <div className="flex-1 mt-4 flex flex-col gap-4 md:overflow-y-auto md:max-h-72 md:pr-1">
+        <section className={`${section} flex flex-col`}>
+          <div className={sectionHeader}>
+            <h2 className={sectionTitle}>Top categories</h2>
+            <p className={sectionSub}>Spending this month</p>
+          </div>
+          <div className={`flex-1 flex flex-col gap-5 md:overflow-y-auto md:max-h-72 ${scrollList}`}>
             {category_spending.length > 0 ? (
               category_spending.map((cat) => (
                 <div key={cat.category_id}>
-                  <div className="flex items-center justify-between gap-3 text-sm">
+                  <div className="flex items-start justify-between gap-3 text-sm">
                     <div className="flex items-center gap-2 min-w-0">
                       <span
                         className="w-2 h-2 rounded-full shrink-0"
                         style={{ backgroundColor: cat.category_color }}
                       />
-                      <span className={`text-main ${wrapOnPhone}`}>{cat.category_name}</span>
+                      <span className="text-main break-words">{cat.category_name}</span>
                     </div>
                     <div className="shrink-0 flex items-baseline gap-2">
                       <Money value={cat.amount} cents={false} className="text-sub" />
-                      <span className="w-9 text-right text-xs tabular-nums text-muted">
+                      <span className="w-11 text-right text-sm tabular-nums text-sub">
                         {cat.percentage}%
                       </span>
                     </div>
                   </div>
-                  <div className="mt-2 h-1 rounded-full bg-surface-subtle overflow-hidden">
+                  <div className="mt-2 h-1.5 rounded-full bg-surface-subtle overflow-hidden">
                     <div
                       className="h-full rounded-full"
                       style={{
                         width: `${Math.min(cat.percentage, 100)}%`,
-                        backgroundColor: "var(--text-muted)",
+                        backgroundColor: "var(--text-secondary)",
                       }}
                     />
                   </div>
                 </div>
               ))
             ) : (
-              <div className="h-full flex items-center justify-center text-sm text-muted">
+              <div className={`h-full py-8 flex items-center justify-center text-center ${loneText}`}>
                 No spending this month
               </div>
             )}
@@ -337,25 +391,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       {/* Accounts */}
-      <section className={`${card} overflow-hidden`}>
-        <div className="flex items-center justify-between px-5 sm:px-6 h-14 border-b border-subtle">
-          <h2 className="text-base font-medium text-main">Accounts</h2>
+      <section className={section}>
+        <div className={`flex items-baseline justify-between ${sectionHeader}`}>
+          <h2 className={sectionTitle}>Accounts</h2>
           <button
             type="button"
             onClick={() => onNavigate("accounts")}
-            className="min-h-11 md:min-h-0 px-2 -mr-2 text-sm text-accent-subtle hover:underline underline-offset-4 cursor-pointer"
+            className="min-h-11 md:min-h-0 px-2 -mr-2 text-base md:text-sm font-semibold text-accent-subtle hover:underline underline-offset-4 cursor-pointer"
           >
             View all
           </button>
         </div>
-        <ul className="divide-y divide-[var(--border-subtle)] md:max-h-96 md:overflow-y-auto">
+        <ul className={`border-y border-subtle divide-y divide-[var(--border-subtle)] md:max-h-96 md:overflow-y-auto ${scrollList}`}>
           {accounts.map((acc) => {
             const isLiability = !isAssetAccount(acc.type);
             const isHidden = hidden.has(acc.id);
             return (
               <li
                 key={acc.id}
-                className={`flex items-center justify-between gap-4 px-5 sm:px-6 min-h-14 py-2.5 transition-opacity ${
+                className={`flex items-center justify-between gap-4 min-h-16 py-3 transition-opacity ${
                   isHidden ? "opacity-50" : ""
                 }`}
                 title={isHidden ? "Not counted on the dashboard" : undefined}
@@ -363,15 +417,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <div className="flex items-center gap-3 min-w-0">
                   <AccountIcon type={acc.type} icon={acc.icon} color={acc.color} size="md" />
                   <div className="min-w-0">
-                    <div className={`text-sm text-main ${wrapOnPhone}`}>{acc.name}</div>
+                    <div className={`text-base text-main ${wrapOnPhone}`}>{acc.name}</div>
                     {(acc.institution || acc.account_number_mask) && (
-                      <div className={`text-xs text-muted ${wrapOnPhone}`}>
+                      <div className={`text-sm text-sub ${wrapOnPhone}`}>
                         {acc.institution}
                         {acc.account_number_mask ? ` ··${acc.account_number_mask}` : ""}
                       </div>
                     )}
                     {(acc.interest_rate || acc.credit_limit) ? (
-                      <div className="text-xs text-muted flex flex-wrap items-center gap-x-1.5">
+                      <div className="text-sm text-sub flex flex-wrap items-center gap-x-1.5">
                         {acc.interest_rate ? <span>{acc.interest_rate}% APR</span> : null}
                         {acc.interest_rate && acc.credit_limit ? <span aria-hidden="true">·</span> : null}
                         {acc.credit_limit ? (
@@ -383,7 +437,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
                 <Money
                   value={isLiability ? -acc.current_balance : acc.current_balance}
-                  className={`text-sm shrink-0 ${isLiability ? "text-sub" : "text-main"}`}
+                  className={`text-base shrink-0 ${isLiability ? "text-sub" : "text-main"}`}
                 />
               </li>
             );

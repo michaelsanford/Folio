@@ -30,7 +30,7 @@ const usePrefersReducedMotion = () => {
 
 const TickerItem: React.FC<{ h: HoldingValuation; currency: string; flash: boolean }> = ({ h, currency, flash }) => {
   const change = h.day_change;
-  const tone = change == null || change === 0 ? "text-muted" : change > 0 ? "text-positive" : "text-negative";
+  const tone = change == null || change === 0 ? "text-sub" : change > 0 ? "text-positive" : "text-negative";
   const arrow = change == null || change === 0 ? "" : change > 0 ? "▲" : "▼";
   return (
     <li
@@ -44,10 +44,10 @@ const TickerItem: React.FC<{ h: HoldingValuation; currency: string; flash: boole
           <QuoteBadge source={h.price_source} session={h.price_session} quotedAt={h.price_quoted_at} />
         </span>
       ) : (
-        <span className="text-xs text-warning">No price</span>
+        <span className="text-sm text-warning">No price</span>
       )}
       {change != null && (
-        <span className={`text-xs tabular-nums ${tone}`}>
+        <span className={`text-sm tabular-nums ${tone}`}>
           <span aria-hidden="true">{arrow} </span>
           {formatMoney(change, { currency, signed: true })}
           {h.day_change_pct != null && ` (${formatPercent(h.day_change_pct, true)})`}
@@ -95,7 +95,7 @@ export const QuoteTicker: React.FC<QuoteTickerProps> = ({ holdings, currency }) 
 
   return (
     <div
-      className="ticker-viewport rounded-xl bg-surface border border-subtle"
+      className="ticker-viewport border-y border-subtle"
       data-static={isStatic ? "true" : undefined}
       style={{ ["--ticker-duration" as string]: `${holdings.length * SECONDS_PER_ITEM}s` }}
       tabIndex={isStatic ? undefined : 0}

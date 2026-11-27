@@ -6,7 +6,17 @@ import { useChartTheme } from "../../hooks/useChartTheme";
 import { formatMoney, formatMoneyCompact } from "../../utils/format";
 import type { Account, AmortizationScheduleResponse } from "../../types";
 import { api } from "../../services/api";
-import { card, chipTab } from "../common/ui";
+import {
+  chipTab,
+  labelText,
+  loneText,
+  pageStack,
+  section,
+  sectionHeader,
+  sectionSub,
+  sectionTitle,
+  segmentTrack,
+} from "../common/ui";
 
 interface LoanAmortizationViewProps {
   accounts: Account[];
@@ -43,9 +53,9 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
 
   if (loanAccounts.length === 0) {
     return (
-      <div className={`${card} p-6 py-12 text-center`}>
-        <h3 className="text-base font-medium text-main">No liability accounts yet</h3>
-        <p className="mt-1 text-sm text-sub max-w-sm mx-auto">
+      <div className="px-4 py-16 text-center">
+        <h3 className={sectionTitle}>No liability accounts yet</h3>
+        <p className={`mt-2 max-w-md mx-auto ${loneText}`}>
           Add a mortgage, vehicle loan, or other liability account under Accounts to see its amortization schedule
         </p>
       </div>
@@ -78,7 +88,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
       borderWidth: 1,
       padding: [8, 12],
       extraCssText: "border-radius: 8px; box-shadow: none;",
-      textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: chartTheme.fontFamily },
+      textStyle: { color: chartTheme.tooltipText, fontSize: chartTheme.labelFontSize, fontFamily: chartTheme.fontFamily },
       formatter: (params: any[]) => {
         let total = 0;
         let content = `<div style="color: ${chartTheme.subtleTextColor}; margin-bottom: 4px;">${params[0]?.name}</div>`;
@@ -102,7 +112,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
       icon: "circle",
       itemWidth: 8,
       itemHeight: 8,
-      textStyle: { color: chartTheme.textColor, fontSize: 11 },
+      textStyle: { color: chartTheme.textColor, fontSize: chartTheme.axisFontSize },
     },
     grid: {
       left: 8,
@@ -116,7 +126,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
       data: next12Months.map((m) => m.date),
       axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
       axisTick: { show: false },
-      axisLabel: { color: chartTheme.subtleTextColor, fontSize: 11, fontFamily: chartTheme.figureFontFamily },
+      axisLabel: { color: chartTheme.subtleTextColor, fontSize: chartTheme.axisFontSize, fontFamily: chartTheme.figureFontFamily },
     },
     yAxis: {
       type: "value",
@@ -124,7 +134,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
       splitLine: { lineStyle: { color: chartTheme.gridLineColor } },
       axisLabel: {
         color: chartTheme.subtleTextColor,
-        fontSize: 11,
+        fontSize: chartTheme.axisFontSize,
         fontFamily: chartTheme.figureFontFamily,
         formatter: (val: number) => formatMoneyCompact(val),
       },
@@ -159,16 +169,16 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
   };
 
   return (
-    <div className="max-w-7xl mx-auto flex flex-col gap-6">
+    <div className={`max-w-7xl mx-auto ${pageStack}`}>
       {/* Loan selector: wraps onto more lines, never scrolls sideways */}
-      <div className="flex flex-wrap items-center gap-1 pb-4 border-b border-subtle">
+      <div className={segmentTrack}>
         {loanAccounts.map((acc) => (
           <button
             key={acc.id}
             type="button"
             onClick={() => setSelectedLoanId(acc.id)}
             aria-pressed={selectedLoanId === acc.id}
-            className={`${chipTab(selectedLoanId === acc.id)} text-left break-words`}
+            className={`${chipTab(selectedLoanId === acc.id)} -mb-px text-left break-words`}
           >
             {acc.name}
           </button>
@@ -176,21 +186,21 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center h-48 text-sm text-muted">
+        <div role="status" className={`flex items-center justify-center h-48 px-4 text-center ${loneText}`}>
           <div className="animate-spin rounded-full h-5 w-5 border-2 border-subtle border-t-[var(--accent-primary)] mr-3"></div>
           Calculating amortization schedule…
         </div>
       ) : scheduleData ? (
         <>
-          {/* Key loan figures */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className={`${card} p-5`}>
-              <div className="text-sm text-sub">Current balance</div>
+          {/* Key loan figures, set straight on the page */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-8">
+            <div className="min-w-0">
+              <div className={labelText}>Current balance</div>
               <Money
                 value={scheduleData.current_balance ?? 0}
-                className="block mt-2 font-display text-2xl font-medium leading-none text-main"
+                className="block mt-2 font-display text-2xl md:text-3xl font-medium leading-none text-main"
               />
-              <div className="mt-2 text-xs text-muted">
+              <div className="mt-2 text-sm text-sub">
                 {isRevolving ? (
                   "Revolving, so it goes up and down as you draw and repay"
                 ) : (
@@ -202,12 +212,12 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
               </div>
             </div>
 
-            <div className={`${card} p-5`}>
-              <div className="text-sm text-sub">Interest rate (APR)</div>
-              <div className="mt-2 font-display text-2xl font-medium leading-none tabular-nums text-main">
+            <div className="min-w-0">
+              <div className={labelText}>Interest rate (APR)</div>
+              <div className="mt-2 font-display text-2xl md:text-3xl font-medium leading-none tabular-nums text-main">
                 {scheduleData.interest_rate ?? 0}%
               </div>
-              <div className="mt-2 text-xs text-muted">
+              <div className="mt-2 text-sm text-sub">
                 {isRevolving ? "Interest, next 12 months " : "Total interest "}
                 <span className="tabular-nums">
                   {formatMoney(scheduleData.total_interest ?? 0, { cents: false })}
@@ -215,13 +225,13 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
               </div>
             </div>
 
-            <div className={`${card} p-5`}>
-              <div className="text-sm text-sub">{isRevolving ? "Minimum payment" : "Monthly payment"}</div>
+            <div className="min-w-0">
+              <div className={labelText}>{isRevolving ? "Minimum payment" : "Monthly payment"}</div>
               <Money
                 value={scheduleData.monthly_payment ?? 0}
-                className="block mt-2 font-display text-2xl font-medium leading-none text-main"
+                className="block mt-2 font-display text-2xl md:text-3xl font-medium leading-none text-main"
               />
-              <div className="mt-2 text-xs text-muted">
+              <div className="mt-2 text-sm text-sub">
                 {isRevolving
                   ? minimumPct
                     ? `${minimumPct}% of the balance, at least the interest`
@@ -233,23 +243,23 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
             </div>
 
             {isRevolving ? (
-              <div className={`${card} p-5`}>
-                <div className="text-sm text-sub">Balance in 12 months</div>
+              <div className="min-w-0">
+                <div className={labelText}>Balance in 12 months</div>
                 <Money
                   value={projectedBalance ?? 0}
-                  className="block mt-2 font-display text-2xl font-medium leading-none text-main"
+                  className="block mt-2 font-display text-2xl md:text-3xl font-medium leading-none text-main"
                 />
-                <div className="mt-2 text-xs text-muted">
+                <div className="mt-2 text-sm text-sub">
                   No fixed maturity. Assumes minimum payments and no new draws
                 </div>
               </div>
             ) : (
-              <div className={`${card} p-5`}>
-                <div className="text-sm text-sub">Projected payoff</div>
-                <div className="mt-2 font-display text-2xl font-medium leading-none tabular-nums text-main">
+              <div className="min-w-0">
+                <div className={labelText}>Projected payoff</div>
+                <div className="mt-2 font-display text-2xl md:text-3xl font-medium leading-none tabular-nums text-main break-words">
                   {scheduleData.payoff_date || "—"}
                 </div>
-                <div className="mt-2 text-xs text-muted">
+                <div className="mt-2 text-sm text-sub">
                   {scheduleData.loan_term_months || scheduleData.schedule?.length || 0} total payments
                 </div>
               </div>
@@ -257,52 +267,54 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
           </div>
 
           {/* Payment breakdown chart */}
-          <section className={`${card} p-5 sm:p-6`}>
-            <h2 className="text-base font-medium text-main">Payment composition, next 12 months</h2>
-            <p className="mt-1 text-sm text-sub">
-              How each payment splits between principal, interest, and escrow
-            </p>
+          <section className={section}>
+            <div className={sectionHeader}>
+              <h2 className={sectionTitle}>Payment composition, next 12 months</h2>
+              <p className={sectionSub}>
+                How each payment splits between principal, interest, and escrow
+              </p>
+            </div>
 
-            <LazyChart option={barOptions} className="h-64 mt-4" />
+            <LazyChart option={barOptions} className="h-64" />
           </section>
 
           {/* Full schedule */}
-          <section className={`${card} overflow-hidden`}>
-            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-5 sm:px-6 py-4 border-b border-subtle">
-              <h2 className="text-base font-medium text-main">
+          <section className={section}>
+            <div className={`flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 ${sectionHeader}`}>
+              <h2 className={sectionTitle}>
                 {isRevolving ? "Minimum payment projection" : "Amortization schedule"}
               </h2>
-              <span className="text-xs text-muted">
+              <span className="text-sm text-sub">
                 <span className="tabular-nums">{scheduleData.schedule.length}</span> periods
               </span>
             </div>
 
             {/* Phone schedule feed (< md); the page scrolls, not an inner box */}
-            <div className="block md:hidden divide-y divide-subtle text-sm">
+            <div className="block md:hidden border-y border-subtle divide-y divide-subtle text-base">
               {scheduleData.schedule.map((row) => (
-                <div key={row.period} className="px-4 py-3 flex flex-col gap-2">
+                <div key={row.period} className="py-3 flex flex-col gap-2">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-muted tabular-nums">
+                    <span className="text-sm text-sub tabular-nums">
                       #{row.period} · {row.payment_date}
                     </span>
                     <Money value={row.total_payment} className="text-main" />
                   </div>
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div>
-                      <span className="block text-xs text-muted">Principal</span>
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div className="min-w-0">
+                      <span className="block text-sm text-sub">Principal</span>
                       <Money value={row.principal} className="text-sub" />
                     </div>
-                    <div>
-                      <span className="block text-xs text-muted">Interest</span>
+                    <div className="min-w-0">
+                      <span className="block text-sm text-sub">Interest</span>
                       <Money value={row.interest} className="text-sub" />
                     </div>
-                    <div>
-                      <span className="block text-xs text-muted">Balance</span>
+                    <div className="min-w-0">
+                      <span className="block text-sm text-sub">Balance</span>
                       <Money value={row.remaining_balance} className="text-main" />
                     </div>
                   </div>
                   {row.escrow > 0 && (
-                    <div className="text-xs text-muted">
+                    <div className="text-sm text-sub">
                       Includes <Money value={row.escrow} /> escrow
                     </div>
                   )}
@@ -312,31 +324,31 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
 
             {/* Tablet and desktop schedule table (>= md). Period and escrow fold
                 into the date and total cells below lg, so the table always fits. */}
-            <div className="hidden md:block max-h-96 overflow-y-auto">
-              <table className="w-full table-fixed text-xs xl:text-sm">
-                <thead className="bg-surface sticky top-0 border-b border-subtle">
-                  <tr className="text-xs text-muted">
-                    <th className="hidden lg:table-cell h-9 px-2.5 xl:px-4 w-16 text-left font-normal">Period</th>
-                    <th className="h-9 px-2.5 xl:px-4 w-24 text-left font-normal">Date</th>
-                    <th className="h-9 px-2.5 xl:px-4 text-right font-normal">Total payment</th>
-                    <th className="h-9 px-2.5 xl:px-4 text-right font-normal">Principal</th>
-                    <th className="h-9 px-2.5 xl:px-4 text-right font-normal">Interest</th>
-                    <th className="hidden lg:table-cell h-9 px-2.5 xl:px-4 text-right font-normal">Escrow</th>
-                    <th className="h-9 px-2.5 xl:px-4 text-right font-normal">Remaining balance</th>
+            <div className="hidden md:block max-h-96 overflow-y-auto border-b border-subtle">
+              <table className="w-full table-fixed text-sm">
+                <thead className="bg-[var(--bg-canvas)] sticky top-0 border-b border-subtle">
+                  <tr className="text-sm text-sub">
+                    <th className="hidden lg:table-cell h-10 px-2.5 xl:px-4 w-16 text-left font-normal">Period</th>
+                    <th className="h-10 px-2.5 xl:px-4 w-28 text-left font-normal">Date</th>
+                    <th className="h-10 px-2.5 xl:px-4 text-right font-normal">Total payment</th>
+                    <th className="h-10 px-2.5 xl:px-4 text-right font-normal">Principal</th>
+                    <th className="h-10 px-2.5 xl:px-4 text-right font-normal">Interest</th>
+                    <th className="hidden lg:table-cell h-10 px-2.5 xl:px-4 text-right font-normal">Escrow</th>
+                    <th className="h-10 px-2.5 xl:px-4 text-right font-normal">Remaining balance</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-subtle text-sub">
                   {scheduleData.schedule.map((row) => (
-                    <tr key={row.period} className="h-9 bg-surface-hover transition-colors">
-                      <td className="hidden lg:table-cell px-2.5 xl:px-4 tabular-nums text-muted">#{row.period}</td>
+                    <tr key={row.period} className="h-10 bg-surface-hover transition-colors">
+                      <td className="hidden lg:table-cell px-2.5 xl:px-4 tabular-nums">#{row.period}</td>
                       <td className="px-2.5 xl:px-4 py-1.5 tabular-nums whitespace-nowrap">
-                        <span className="lg:hidden text-muted">#{row.period} · </span>
+                        <span className="lg:hidden">#{row.period} · </span>
                         {row.payment_date}
                       </td>
                       <td className="px-2.5 xl:px-4 py-1.5 text-right whitespace-nowrap">
                         <Money value={row.total_payment} className="text-main" />
                         {row.escrow > 0 && (
-                          <div className="lg:hidden text-muted">
+                          <div className="lg:hidden">
                             incl. <Money value={row.escrow} /> escrow
                           </div>
                         )}
@@ -348,7 +360,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
                         <Money value={row.interest} />
                       </td>
                       <td className="hidden lg:table-cell px-2.5 xl:px-4 text-right whitespace-nowrap">
-                        <Money value={row.escrow} className="text-muted" />
+                        <Money value={row.escrow} />
                       </td>
                       <td className="px-2.5 xl:px-4 text-right whitespace-nowrap">
                         <Money value={row.remaining_balance} className="text-main" />

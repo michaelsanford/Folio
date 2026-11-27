@@ -7,7 +7,19 @@ import { useChartTheme } from "../../hooks/useChartTheme";
 import { formatMoney, formatMoneyCompact } from "../../utils/format";
 import type { CashFlowForecastResponse } from "../../types";
 import { api } from "../../services/api";
-import { card, inputClass as baseInput, segmentButton } from "../common/ui";
+import {
+  fieldLabel,
+  inputClass as baseInput,
+  labelText,
+  loneText,
+  pageStack,
+  section,
+  sectionHeader,
+  sectionSub,
+  sectionTitle,
+  segmentButton,
+  segmentTrack,
+} from "../common/ui";
 
 const inputClass = `${baseInput} disabled:opacity-50`;
 
@@ -79,7 +91,7 @@ export const CashFlowForecastView: React.FC = () => {
         borderWidth: 1,
         padding: [8, 12],
         extraCssText: "border-radius: 8px; box-shadow: none;",
-        textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: chartTheme.fontFamily },
+        textStyle: { color: chartTheme.tooltipText, fontSize: chartTheme.labelFontSize, fontFamily: chartTheme.fontFamily },
         axisPointer: { type: "line", lineStyle: { color: chartTheme.axisLineColor } },
         formatter: (params: any[]) => {
           if (!params || params.length === 0) return "";
@@ -117,7 +129,7 @@ export const CashFlowForecastView: React.FC = () => {
         axisTick: { show: false },
         axisLabel: {
           color: chartTheme.subtleTextColor,
-          fontSize: 11,
+          fontSize: chartTheme.axisFontSize,
           fontFamily: chartTheme.figureFontFamily,
           margin: 12,
           formatter: (val: string) => {
@@ -132,7 +144,7 @@ export const CashFlowForecastView: React.FC = () => {
         splitLine: { lineStyle: { color: chartTheme.gridLineColor } },
         axisLabel: {
           color: chartTheme.subtleTextColor,
-          fontSize: 11,
+          fontSize: chartTheme.axisFontSize,
           fontFamily: chartTheme.figureFontFamily,
           formatter: (v: number) => formatMoneyCompact(v),
         },
@@ -158,7 +170,7 @@ export const CashFlowForecastView: React.FC = () => {
                 label: {
                   formatter: "Zero balance",
                   color: chartTheme.negativeColor,
-                  fontSize: 11,
+                  fontSize: chartTheme.axisFontSize,
                   fontFamily: chartTheme.fontFamily,
                 },
               },
@@ -170,20 +182,20 @@ export const CashFlowForecastView: React.FC = () => {
   }, [forecast, chartTheme]);
 
   return (
-    <div className="space-y-6">
-      {/* Parameter controls panel */}
-      <div className={`${card} p-5 space-y-4`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-subtle pb-4">
-          <div>
-            <h2 className="text-base font-medium text-main">Cash flow forecast</h2>
-            <p className="text-sm text-sub mt-1">
+    <div className={pageStack}>
+      {/* Parameters */}
+      <section className={section}>
+        <div className={`flex flex-col sm:flex-row sm:items-end justify-between gap-4 ${sectionHeader}`}>
+          <div className="min-w-0">
+            <h2 className={sectionTitle}>Cash flow forecast</h2>
+            <p className={sectionSub}>
               Projected cash from your pay schedule and scheduled loan payments
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm md:text-xs text-muted">Forecast window</span>
-            <div className="flex rounded-lg bg-surface-subtle p-0.5 border border-default">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className={labelText}>Forecast window</span>
+            <div className={segmentTrack}>
               {[30, 60, 90].map((d) => (
                 <button
                   key={d}
@@ -198,9 +210,9 @@ export const CashFlowForecastView: React.FC = () => {
         </div>
 
         {/* Inputs grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-xs text-sub mb-2">Pay schedule</label>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-5">
+          <div className="min-w-0">
+            <label className={fieldLabel}>Pay schedule</label>
             <select
               value={paySchedule}
               onChange={(e) =>
@@ -217,8 +229,8 @@ export const CashFlowForecastView: React.FC = () => {
             </select>
           </div>
 
-          <div>
-            <label className="block text-xs text-sub mb-2">Expected net paycheck</label>
+          <div className="min-w-0">
+            <label className={fieldLabel}>Expected net paycheck</label>
             <NumberField
               step="50"
               min="0"
@@ -229,8 +241,8 @@ export const CashFlowForecastView: React.FC = () => {
             />
           </div>
 
-          <div>
-            <label className="block text-xs text-sub mb-2">Next paycheck date</label>
+          <div className="min-w-0">
+            <label className={fieldLabel}>Next paycheck date</label>
             <input
               type="date"
               value={nextPayDate}
@@ -240,29 +252,29 @@ export const CashFlowForecastView: React.FC = () => {
             />
           </div>
         </div>
-      </div>
+      </section>
 
       {error && (
-        <div className="p-4 rounded-xl bg-negative-subtle text-sm text-negative">{error}</div>
+        <div className="p-4 rounded-lg bg-negative-subtle text-base text-negative break-words">{error}</div>
       )}
 
-      {/* KPI cards */}
+      {/* Key figures, set straight on the page */}
       {forecast && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className={`${card} p-5`}>
-            <div className="text-sm text-sub">Starting cash</div>
-            <div className="mt-2 font-display text-2xl font-medium leading-none">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-8">
+          <div className="min-w-0">
+            <div className={labelText}>Starting cash</div>
+            <div className="mt-2 font-display text-2xl md:text-3xl font-medium leading-none">
               <Money value={forecast.starting_cash} className="text-main" />
             </div>
-            <div className="mt-2 text-xs text-muted">Chequing and savings today</div>
+            <div className="mt-2 text-sm text-sub">Chequing and savings today</div>
           </div>
 
-          <div className={`${card} p-5`}>
-            <div className="text-sm text-sub">Ending cash after {days} days</div>
-            <div className="mt-2 font-display text-2xl font-medium leading-none">
+          <div className="min-w-0">
+            <div className={labelText}>Ending cash after {days} days</div>
+            <div className="mt-2 font-display text-2xl md:text-3xl font-medium leading-none">
               <Money value={forecast.ending_cash} className="text-main" />
             </div>
-            <div className="mt-2 text-xs text-muted">
+            <div className="mt-2 text-sm text-sub">
               <Money
                 value={forecast.ending_cash - forecast.starting_cash}
                 signed
@@ -274,16 +286,16 @@ export const CashFlowForecastView: React.FC = () => {
             </div>
           </div>
 
-          <div className={`${card} p-5`}>
-            <div className="text-sm text-sub">Lowest projected balance</div>
-            <div className="mt-2 font-display text-2xl font-medium leading-none">
+          <div className="min-w-0">
+            <div className={labelText}>Lowest projected balance</div>
+            <div className="mt-2 font-display text-2xl md:text-3xl font-medium leading-none">
               <Money
                 value={forecast.lowest_cash_point}
                 className={forecast.lowest_cash_point >= 0 ? "text-main" : "text-negative"}
               />
             </div>
-            <div className="mt-2 text-xs text-muted">
-              On <span className="tabular-nums text-sub">{forecast.lowest_cash_date}</span>
+            <div className="mt-2 text-sm text-sub">
+              On <span className="tabular-nums">{forecast.lowest_cash_date}</span>
             </div>
           </div>
         </div>
@@ -291,10 +303,10 @@ export const CashFlowForecastView: React.FC = () => {
 
       {/* Warning if cash dips below zero */}
       {forecast && forecast.lowest_cash_point < 0 && (
-        <div className="p-4 rounded-xl bg-negative-subtle text-sm text-negative flex items-start gap-3">
-          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" strokeWidth={1.5} />
-          <div>
-            <div className="font-medium">Cash shortfall ahead</div>
+        <div className="p-4 rounded-lg bg-negative-subtle text-base text-negative flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" strokeWidth={1.5} />
+          <div className="min-w-0">
+            <div className="font-semibold">Cash shortfall ahead</div>
             <p className="mt-1">
               Your projected cash drops to{" "}
               <Money value={forecast.lowest_cash_point} /> on{" "}
@@ -307,54 +319,54 @@ export const CashFlowForecastView: React.FC = () => {
       )}
 
       {/* Daily cash curve chart */}
-      <div className={`${card} p-5 sm:p-6`}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-medium text-main">Projected cash, {days} days</h3>
+      <section className={section}>
+        <div className={`flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 ${sectionHeader}`}>
+          <h3 className={sectionTitle}>Projected cash, {days} days</h3>
           {isLoading && (
-            <div className="flex items-center gap-2 text-xs text-muted">
+            <div className="flex items-center gap-2 text-sm text-sub">
               <RefreshCw className="w-4 h-4 animate-spin" strokeWidth={1.5} />
               <span>Calculating…</span>
             </div>
           )}
         </div>
 
-        <div className="h-72 w-full mt-4">
+        <div className="h-72 w-full">
           {forecast && forecast.daily_curve.length > 0 ? (
             <LazyChart option={chartOptions} className="h-full" />
           ) : (
-            <div className="flex items-center justify-center h-full text-muted text-sm">
+            <div className={`flex items-center justify-center h-full px-4 text-center ${loneText}`}>
               No cash data to forecast yet
             </div>
           )}
         </div>
-      </div>
+      </section>
 
       {/* Scheduled amortization and payroll events */}
       {forecast && forecast.scheduled_events.length > 0 && (
-        <div className={`${card} overflow-hidden`}>
-          <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 px-5 pt-5 pb-4">
-            <h3 className="text-base font-medium text-main">
+        <section className={section}>
+          <div className={sectionHeader}>
+            <h3 className={sectionTitle}>
               Upcoming scheduled events{" "}
-              <span className="tabular-nums text-sm text-muted">{forecast.scheduled_events.length}</span>
+              <span className="tabular-nums text-base font-normal text-sub">{forecast.scheduled_events.length}</span>
             </h3>
-            <span className="text-xs text-muted">Loan payments and paydays</span>
+            <p className={sectionSub}>Loan payments and paydays</p>
           </div>
 
-          {/* Mobile cards (< md) */}
-          <div className="block md:hidden divide-y divide-subtle border-t border-subtle">
+          {/* Mobile list (< md) */}
+          <div className="block md:hidden divide-y divide-subtle border-y border-subtle">
             {forecast.scheduled_events.map((ev, idx) => {
               const isIncome = ev.event_type === "INCOME";
               return (
-                <div key={idx} className="p-4 flex items-start justify-between gap-3">
+                <div key={idx} className="py-3 flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-1">
-                    <div className="text-sm text-main break-words">
+                    <div className="text-base text-main break-words">
                       {ev.description}
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-sub">
                       <span className="tabular-nums">{ev.date}</span>
                       <span>·</span>
                       <span
-                        className={`rounded-md px-1.5 py-0.5 text-xs ${
+                        className={`rounded-md px-1.5 py-0.5 text-sm ${
                           isIncome ? "bg-positive-subtle text-positive" : "bg-surface-subtle text-sub"
                         }`}
                       >
@@ -371,7 +383,7 @@ export const CashFlowForecastView: React.FC = () => {
                   <Money
                     value={isIncome ? ev.amount : -ev.amount}
                     signed
-                    className={`text-sm shrink-0 ${isIncome ? "text-positive" : "text-main"}`}
+                    className={`text-base shrink-0 ${isIncome ? "text-positive" : "text-main"}`}
                   />
                 </div>
               );
@@ -379,15 +391,15 @@ export const CashFlowForecastView: React.FC = () => {
           </div>
 
           {/* Desktop table (>= md) */}
-          <div className="hidden md:block border-t border-subtle">
+          <div className="hidden md:block border-b border-subtle">
             <table className="w-full table-fixed text-left text-sm border-collapse">
               <thead>
-                <tr className="border-b border-subtle text-xs text-muted">
-                  <th className="h-10 px-4 w-24 font-normal">Date</th>
-                  <th className="h-10 px-3 w-24 font-normal">Type</th>
+                <tr className="border-y border-subtle text-sm text-sub">
+                  <th className="h-10 pr-3 w-28 font-normal">Date</th>
+                  <th className="h-10 px-3 w-28 font-normal">Type</th>
                   <th className="h-10 px-3 font-normal">Description</th>
                   <th className="hidden lg:table-cell h-10 px-3 w-[22%] font-normal">Account</th>
-                  <th className="h-10 px-4 w-28 font-normal text-right">Cash impact</th>
+                  <th className="h-10 pl-3 w-32 font-normal text-right">Cash impact</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-subtle">
@@ -395,10 +407,10 @@ export const CashFlowForecastView: React.FC = () => {
                   const isIncome = ev.event_type === "INCOME";
                   return (
                     <tr key={idx} className="bg-surface-hover transition-colors">
-                      <td className="px-4 py-3 tabular-nums text-sub whitespace-nowrap">{ev.date}</td>
+                      <td className="pr-3 py-3 tabular-nums text-sub whitespace-nowrap">{ev.date}</td>
                       <td className="px-3">
                         <span
-                          className={`rounded-md px-1.5 py-0.5 text-xs whitespace-nowrap ${
+                          className={`rounded-md px-1.5 py-0.5 text-sm whitespace-nowrap ${
                             isIncome ? "bg-positive-subtle text-positive" : "bg-surface-subtle text-sub"
                           }`}
                         >
@@ -410,17 +422,17 @@ export const CashFlowForecastView: React.FC = () => {
                           {ev.description}
                         </div>
                         {ev.account_name && (
-                          <div className="lg:hidden text-xs text-muted break-words">
+                          <div className="lg:hidden text-sm text-sub break-words">
                             {ev.account_name}
                           </div>
                         )}
                       </td>
-                      <td className="hidden lg:table-cell px-3 text-muted">
+                      <td className="hidden lg:table-cell px-3 text-sub">
                         <div className="break-words">
                           {ev.account_name || "—"}
                         </div>
                       </td>
-                      <td className="px-4 text-right whitespace-nowrap">
+                      <td className="pl-3 text-right whitespace-nowrap">
                         <Money
                           value={isIncome ? ev.amount : -ev.amount}
                           signed
@@ -433,7 +445,7 @@ export const CashFlowForecastView: React.FC = () => {
               </tbody>
             </table>
           </div>
-        </div>
+        </section>
       )}
     </div>
   );

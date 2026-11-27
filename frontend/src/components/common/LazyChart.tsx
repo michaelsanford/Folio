@@ -26,7 +26,7 @@ const ChartSkeleton: React.FC<{ className?: string; style?: React.CSSProperties 
     role="status"
     aria-label="Chart loading"
   >
-    <span className="text-xs text-muted">Loading chart…</span>
+    <span className="text-base text-sub">Loading chart…</span>
   </div>
 );
 

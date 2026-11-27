@@ -24,14 +24,25 @@ import type { Budget, BudgetItem, Category, Transaction } from "../../types";
 import { api } from "../../services/api";
 import { useCanEdit } from "../../hooks/useSession";
 import { useIsPhone } from "../../hooks/useMediaQuery";
+import { budgetLineState } from "./budgetLine";
 import { ActionSheet, DetailList } from "../common/ActionSheet";
 import {
-  card,
+  chipTab,
+  hairline,
   iconButton,
+  labelText,
+  loneText,
+  pageStack,
+  section,
+  sectionHeader,
+  sectionSub,
+  sectionTitle,
   primaryButton,
   secondaryButton,
   inputClass,
+  fieldLabel,
   segmentTrack,
+
   segmentButton,
   modalOverlay,
   wrapOnPhone,
@@ -48,7 +59,7 @@ type SortDirection = "ASC" | "DESC";
 
 /** Sectioned modal panel: a bottom sheet on phones, a dialog from md up. */
 const sectionedPanel =
-  "w-full flex flex-col max-h-[92dvh] md:max-h-[85vh] overflow-hidden rounded-t-2xl md:rounded-xl bg-surface border border-default shadow-xl pb-[env(safe-area-inset-bottom)] md:pb-0 animate-in sheet-enter";
+  "w-full flex flex-col max-h-[92dvh] md:max-h-[85vh] overflow-hidden rounded-t-2xl md:rounded-2xl bg-surface elevation-3 pb-[env(safe-area-inset-bottom)] md:pb-0 animate-in sheet-enter";
 
 /** Reads a CSS custom property so ECharts can use theme tokens it has no slot for. */
 const readCssVar = (name: string, fallback: string): string => {
@@ -293,31 +304,15 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
     let list = budget.items.map((item) => {
       const cat = categories.find((c) => c.id === item.category_id);
-      const isOver = item.actual_amount > item.planned_amount && item.planned_amount > 0;
-      const percentUsed =
-        item.planned_amount > 0
-          ? Math.round((item.actual_amount / item.planned_amount) * 100)
-          : item.actual_amount > 0
-          ? 100
-          : 0;
-
-      let status: FilterStatus = "ON_TRACK";
-      if (item.actual_amount === 0 && item.planned_amount === 0) {
-        status = "UNSPENT";
-      } else if (isOver) {
-        status = "OVER";
-      } else if (percentUsed >= 80) {
-        status = "WARNING";
-      } else if (item.actual_amount === 0) {
-        status = "UNSPENT";
-      }
+      const { status, isOver, percentUsed, usedLabel } = budgetLineState(item.planned_amount, item.actual_amount);
 
       return {
         ...item,
         category: cat,
         percentUsed,
+        usedLabel,
         isOver,
-        status,
+        status: status as FilterStatus,
       };
     });
 
@@ -369,7 +364,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
     borderWidth: 1,
     padding: [8, 12],
     extraCssText: "border-radius: 8px; box-shadow: none;",
-    textStyle: { color: chartTheme.tooltipText, fontSize: 12, fontFamily: chartTheme.fontFamily },
+    textStyle: { color: chartTheme.tooltipText, fontSize: chartTheme.labelFontSize, fontFamily: chartTheme.fontFamily },
   };
 
   // Overall donut gauge chart options
@@ -458,19 +453,21 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
         },
       },
       legend: {
-        data: ["Target", "Spent"],
-        textStyle: { color: chartTheme.subtleTextColor, fontSize: 11 },
+        // "Spent" is coloured per bar, so give its swatch the usual colour.
+        data: ["Target", { name: "Spent", itemStyle: { color: chartTheme.accentColor } }],
+        textStyle: { color: chartTheme.subtleTextColor, fontSize: chartTheme.axisFontSize },
         itemWidth: 10,
         itemHeight: 10,
         top: 0,
         right: 0,
       },
-      grid: { left: 8, right: 16, bottom: 8, top: 32, containLabel: true },
+      // Category names may take up to 40% of the width (ECharts caps them at 25%).
+      grid: { left: 8, right: 16, bottom: 8, top: 32, containLabel: true, outerBoundsClampWidth: "40%" },
       xAxis: {
         type: "value",
         axisLabel: {
           color: chartTheme.subtleTextColor,
-          fontSize: 11,
+          fontSize: chartTheme.axisFontSize,
           fontFamily: chartTheme.figureFontFamily,
           formatter: (v: number) => formatMoneyCompact(v),
         },
@@ -482,9 +479,12 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
         axisTick: { show: false },
         axisLabel: {
           color: chartTheme.textColor,
-          fontSize: 11,
-          formatter: (value: string) =>
-            value.length > 18 ? `${value.substring(0, 18)}…` : value,
+          fontSize: chartTheme.labelFontSize,
+          fontFamily: chartTheme.fontFamily,
+          // A fixed width, so long names end in an ellipsis only when they
+          // really don't fit; the tooltip shows them in full.
+          width: isPhone ? 120 : 260,
+          overflow: "truncate",
         },
         axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
       },
@@ -508,7 +508,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             color: (params: any) => {
               const idx = displayItems.length - 1 - params.dataIndex;
               const it = displayItems[idx];
-              if (it && it.actual > it.planned && it.planned > 0) {
+              if (it && budgetLineState(it.planned, it.actual).isOver) {
                 return chartTheme.negativeColor;
               }
               return chartTheme.accentColor;
@@ -519,7 +519,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
         },
       ],
     };
-  }, [budget?.items, categories, chartMode, chartTheme]);
+  }, [budget?.items, categories, chartMode, chartTheme, isPhone]);
 
   // Unbudgeted expense categories available to add
   const unbudgetedCategories = useMemo(() => {
@@ -541,10 +541,10 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
     let unspent = 0;
 
     list.forEach((it) => {
-      if (it.actual_amount === 0 && it.planned_amount === 0) unspent++;
-      else if (it.actual_amount > it.planned_amount && it.planned_amount > 0) over++;
-      else if (it.planned_amount > 0 && it.actual_amount / it.planned_amount >= 0.8) warning++;
-      else if (it.actual_amount === 0) unspent++;
+      const { status } = budgetLineState(it.planned_amount, it.actual_amount);
+      if (status === "OVER") over++;
+      else if (status === "WARNING") warning++;
+      else if (status === "UNSPENT") unspent++;
       else onTrack++;
     });
 
@@ -598,7 +598,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
     >
       <div className={`flex items-center gap-1 ${align === "right" ? "justify-end" : ""}`}>
         <span>{label}</span>
-        <ArrowUpDown className="w-4 h-4 text-muted" strokeWidth={1.5} />
+        <ArrowUpDown className="w-4 h-4 text-sub" strokeWidth={1.5} />
       </div>
     </th>
   );
@@ -611,15 +611,11 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
   ) => (
     <button
       onClick={() => setStatusFilter(status)}
-      className={`h-11 md:h-8 px-3 inline-flex items-center gap-2 rounded-lg text-sm md:text-xs transition-colors cursor-pointer ${
-        statusFilter === status
-          ? "bg-surface text-main border border-default"
-          : "text-sub border border-transparent hover:text-main"
-      }`}
+      className={chipTab(statusFilter === status)}
     >
       {dot && <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />}
       <span>{label}</span>
-      <span className="tabular-nums text-muted">{count}</span>
+      <span className="tabular-nums text-sub font-normal">{count}</span>
     </button>
   );
 
@@ -627,9 +623,9 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
     overallPercentSpent > 100 ? "negative" : overallPercentSpent > monthElapsedPercent ? "warning" : "positive";
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className={`max-w-7xl mx-auto pb-12 ${pageStack}`}>
       {/* View switcher: monthly envelopes vs cash flow forecast */}
-      <div className={`${segmentTrack} w-fit`}>
+      <div className={segmentTrack}>
         <button
           onClick={() => setBudgetSubTab("ledger")}
           className={segmentButton(budgetSubTab === "ledger")}
@@ -651,7 +647,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       {/* Header and month navigator */}
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-medium text-main">Monthly budget</h1>
+          <h1 className="text-2xl md:text-3xl font-semibold text-main">Monthly budget</h1>
           <p className="text-sm text-sub mt-1">
             Spending ceilings, burn pace and live category actuals
           </p>
@@ -674,11 +670,11 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
           )}
 
           {/* Month switcher */}
-          <div className="flex items-center h-11 md:h-9 px-0.5 rounded-lg border border-default bg-surface">
+          <div className="flex items-center gap-1">
             <button onClick={handlePrevMonth} className={iconButton} title="Previous month">
               <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
             </button>
-            <span className="text-sm text-main px-2 min-w-[132px] text-center">{monthName}</span>
+            <span className="text-base font-semibold text-main px-2 min-w-[148px] text-center">{monthName}</span>
             <button onClick={handleNextMonth} className={iconButton} title="Next month">
               <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
             </button>
@@ -687,13 +683,13 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       </header>
 
       {/* Burn rate overview and category chart */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Burn rate and radial gauge card */}
-        <div className={`${card} lg:col-span-4 p-6 flex flex-col justify-between`}>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16">
+        {/* Burn rate and radial gauge */}
+        <section className={`${section} lg:col-span-4 flex flex-col justify-between`}>
           <div>
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-medium text-main">Overall budget health</h2>
-              <span className={`rounded-md px-1.5 py-0.5 text-xs ${chipClass[overallTone]}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className={sectionTitle}>Overall budget health</h2>
+              <span className={`rounded-md px-2 py-0.5 text-sm ${chipClass[overallTone]}`}>
                 {overallPercentSpent > 100
                   ? "Over budget"
                   : overallPercentSpent > monthElapsedPercent
@@ -706,34 +702,34 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             <div className="relative h-44 my-2 flex items-center justify-center">
               <LazyChart option={overallGaugeOptions} className="h-full" />
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="font-display text-2xl font-medium tabular-nums text-main">
+                <span className="font-display text-3xl font-medium tabular-nums text-main">
                   {overallPercentSpent}%
                 </span>
-                <span className="text-xs text-muted">used</span>
+                <span className="text-sm text-sub">used</span>
               </div>
             </div>
           </div>
 
-          <div className="space-y-2 pt-4 border-t border-subtle text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-muted">Month timeline</span>
+          <div className={`space-y-2 pt-4 ${hairline} text-sm`}>
+            <div className="flex flex-wrap items-center justify-between gap-x-3">
+              <span className="text-sub">Month timeline</span>
               <span className="text-main tabular-nums">
                 Day {currentDay} of {daysInMonth} · {monthElapsedPercent}%
               </span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted">Daily allowance</span>
+            <div className="flex flex-wrap items-center justify-between gap-x-3">
+              <span className="text-sub">Daily allowance</span>
               <span className="text-main">
-                <Money value={dailySafeSpend} /> <span className="text-muted">per day</span>
+                <Money value={dailySafeSpend} /> <span className="text-sub">per day</span>
               </span>
             </div>
           </div>
-        </div>
+        </section>
 
         {/* Category breakdown bar chart */}
-        <div className={`${card} lg:col-span-8 p-6 flex flex-col`}>
-          <div className="flex items-center justify-between pb-2">
-            <h2 className="text-base font-medium text-main">Spending vs target</h2>
+        <section className={`${section} lg:col-span-8 flex flex-col`}>
+          <div className={`flex flex-wrap items-end justify-between gap-x-4 gap-y-2 ${sectionHeader}`}>
+            <h2 className={sectionTitle}>Spending vs target</h2>
             <div className={segmentTrack}>
               <button onClick={() => setChartMode("top8")} className={segmentButton(chartMode === "top8")}>
                 Top spenders
@@ -748,54 +744,54 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             {budget?.items && budget.items.length > 0 ? (
               <LazyChart option={categoryBarChartOptions} className="h-full" />
             ) : (
-              <div className="flex items-center justify-center h-full text-muted text-sm">
+              <div className={`flex items-center justify-center h-full px-4 text-center ${loneText}`}>
                 No budget targets or spending this month
               </div>
             )}
           </div>
-        </div>
+        </section>
       </div>
 
-      {/* KPI stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className={`${card} p-5`}>
-          <div className="text-sm text-sub">Planned</div>
-          <div className="mt-2 font-display text-2xl font-medium leading-none">
+      {/* Key figures, set straight on the page */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-8">
+        <div className="min-w-0">
+          <div className={labelText}>Planned</div>
+          <div className="mt-2 font-display text-2xl md:text-3xl font-medium leading-none">
             <Money value={totalPlannedExpenses} className="text-main" />
           </div>
-          <div className="mt-2 text-xs text-muted">Sum of all category targets</div>
+          <div className="mt-2 text-sm text-sub">Sum of all category targets</div>
         </div>
 
-        <div className={`${card} p-5`}>
-          <div className="text-sm text-sub">Spent so far</div>
-          <div className="mt-2 font-display text-2xl font-medium leading-none">
+        <div className="min-w-0">
+          <div className={labelText}>Spent so far</div>
+          <div className="mt-2 font-display text-2xl md:text-3xl font-medium leading-none">
             <Money value={totalActualExpenses} className="text-main" />
           </div>
-          <div className="mt-2 text-xs text-muted">
+          <div className="mt-2 text-sm text-sub">
             {totalPlannedExpenses > 0
               ? `${overallPercentSpent}% of planned`
               : "No target set"}
           </div>
         </div>
 
-        <div className={`${card} p-5`}>
-          <div className="text-sm text-sub">Remaining</div>
-          <div className="mt-2 font-display text-2xl font-medium leading-none">
+        <div className="min-w-0">
+          <div className={labelText}>Remaining</div>
+          <div className="mt-2 font-display text-2xl md:text-3xl font-medium leading-none">
             <Money
               value={remainingBudget}
               className={remainingBudget >= 0 ? "text-main" : "text-negative"}
             />
           </div>
-          <div className="mt-2 text-xs text-muted">
+          <div className="mt-2 text-sm text-sub">
             {remainingBudget >= 0 ? "Within budget" : "Over the planned total"}
           </div>
         </div>
       </div>
 
       {/* Main budget ledger section */}
-      <div className={`${card} overflow-hidden`}>
+      <section className={section}>
         {/* Controls toolbar: filters, search, view mode */}
-        <div className="p-4 border-b border-subtle flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
           {/* Status filters */}
           <div className="flex items-center flex-wrap gap-1">
             {filterButton("ALL", "All", statusCounts.total)}
@@ -810,7 +806,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
           <div className="flex items-center gap-2">
             <div className="relative flex-1 md:flex-none">
               <Search
-                className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2"
+                className="w-4 h-4 text-sub absolute left-3 top-1/2 -translate-y-1/2"
                 strokeWidth={1.5}
               />
               <input
@@ -823,7 +819,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-0 top-1/2 -translate-y-1/2 size-11 md:size-8 inline-flex items-center justify-center text-muted hover:text-main cursor-pointer"
+                  className="absolute right-0 top-1/2 -translate-y-1/2 size-11 md:size-8 inline-flex items-center justify-center text-sub hover:text-main cursor-pointer"
                   aria-label="Clear search"
                 >
                   <X className="w-4 h-4" strokeWidth={1.5} />
@@ -832,21 +828,19 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             </div>
 
             {!isPhone && (
-            <div className={segmentTrack}>
+            <div className="flex items-center gap-1">
               <button
                 onClick={() => setViewMode("table")}
-                className={`h-7 w-8 flex items-center justify-center rounded-md transition-colors cursor-pointer ${
-                  viewMode === "table" ? "bg-surface text-main" : "text-muted hover:text-main"
-                }`}
+                aria-pressed={viewMode === "table"}
+                className={`${iconButton} ${viewMode === "table" ? "bg-accent-subtle text-accent-subtle" : ""}`}
                 title="Table"
               >
                 <LayoutList className="w-4 h-4" strokeWidth={1.5} />
               </button>
               <button
                 onClick={() => setViewMode("cards")}
-                className={`h-7 w-8 flex items-center justify-center rounded-md transition-colors cursor-pointer ${
-                  viewMode === "cards" ? "bg-surface text-main" : "text-muted hover:text-main"
-                }`}
+                aria-pressed={viewMode === "cards"}
+                className={`${iconButton} ${viewMode === "cards" ? "bg-accent-subtle text-accent-subtle" : ""}`}
                 title="Cards"
               >
                 <LayoutGrid className="w-4 h-4" strokeWidth={1.5} />
@@ -858,14 +852,14 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
         {/* Content area */}
         {isLoading ? (
-          <div className="py-20 flex items-center justify-center text-sm text-muted">
+          <div role="status" className={`py-20 flex items-center justify-center ${loneText}`}>
             <div className="animate-spin rounded-full h-5 w-5 border-2 border-subtle border-t-[var(--accent-primary)] mr-3"></div>
             Loading budget…
           </div>
         ) : filteredAndSortedItems.length === 0 ? (
           <div className="py-16 text-center px-4">
-            <div className="text-sm font-medium text-main">No matching budget categories</div>
-            <p className="text-sm text-sub mt-1 max-w-sm mx-auto">
+            <div className="text-lg font-semibold text-main">No matching budget categories</div>
+            <p className={`mt-1 max-w-md mx-auto ${loneText}`}>
               Add a budget target, or clear the search and filters
             </p>
             <button onClick={() => setIsAddModalOpen(true)} className={`${primaryButton} mt-4`}>
@@ -875,7 +869,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
           </div>
         ) : isPhone ? (
           /* Phone: one read-only envelope per row; tap for details and actions */
-          <ul className="divide-y divide-subtle" data-testid="budget-phone-list">
+          <ul className="border-y border-subtle divide-y divide-subtle" data-testid="budget-phone-list">
             {filteredAndSortedItems.map((item) => {
               const cat = item.category;
               if (!cat) return null;
@@ -886,7 +880,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setSheetCategoryId(item.category_id)}
-                    className="w-full text-left p-4 flex flex-col gap-3 cursor-pointer active:bg-[var(--bg-surface-hover)] transition-colors"
+                    className="w-full text-left py-4 flex flex-col gap-3 cursor-pointer active:bg-[var(--bg-surface-hover)] transition-colors"
                   >
                     <div className="flex items-start gap-3 w-full">
                       <span
@@ -895,7 +889,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       ></span>
                       <div className="flex-1 min-w-0">
                         <div className="text-base font-medium text-main break-words">{cat.name}</div>
-                        {parentCat && <div className="text-sm text-muted break-words">{parentCat.name}</div>}
+                        {parentCat && <div className="text-sm text-sub break-words">{parentCat.name}</div>}
                         <span className="sr-only">, details and actions</span>
                       </div>
                       <span className={`shrink-0 rounded-md px-2 py-0.5 text-sm ${chipClass[tone]}`}>
@@ -904,20 +898,20 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                     </div>
                     <dl className="grid grid-cols-3 gap-2 text-sm w-full">
                       <div>
-                        <dt className="text-muted">Target</dt>
+                        <dt className="text-sub">Target</dt>
                         <dd className="text-main">
                           <Money value={item.planned_amount} />
                         </dd>
                       </div>
                       <div>
-                        <dt className="text-muted">Spent</dt>
+                        <dt className="text-sub">Spent</dt>
                         <dd className="text-main">
                           <Money value={item.actual_amount} />{" "}
-                          <span className="text-muted tabular-nums">{item.percentUsed}%</span>
+                          <span className="text-sub tabular-nums">{item.usedLabel}</span>
                         </dd>
                       </div>
                       <div className="text-right">
-                        <dt className="text-muted">Remaining</dt>
+                        <dt className="text-sub">Remaining</dt>
                         <dd>
                           <Money
                             value={item.remaining_amount}
@@ -928,7 +922,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                     </dl>
                     {((item.rollover_amount !== undefined && item.rollover_amount !== 0) ||
                       (item.available_amount !== undefined && item.available_amount !== item.planned_amount)) && (
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-sub">
                         {item.rollover_amount !== undefined && item.rollover_amount !== 0 && (
                           <span>
                             <Money
@@ -959,10 +953,10 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
           </ul>
         ) : viewMode === "table" ? (
           /* Tabular ledger for tablet and desktop */
-          <div>
+          <div className="border-b border-subtle">
             <table className="w-full table-fixed text-left text-sm border-collapse">
               <thead>
-                <tr className="border-b border-subtle text-xs text-muted">
+                <tr className="border-y border-subtle text-sm text-sub">
                   {sortHeader("NAME", "Category", "ASC")}
                   <th className="hidden md:table-cell h-10 px-2 sm:px-3 w-24 font-normal">Status</th>
                   {sortHeader("PLANNED", "Target", "DESC", "right", "w-24 sm:w-28")}
@@ -998,7 +992,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                               </span>
                               {cat.is_rollover && (
                                 <span
-                                  className="rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-sub shrink-0"
+                                  className="rounded-md px-1.5 py-0.5 text-sm bg-surface-subtle text-sub shrink-0"
                                   title="Envelope rollover enabled"
                                 >
                                   Rollover
@@ -1006,7 +1000,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                               )}
                             </div>
                             {parentCat && (
-                              <div className="text-xs text-muted truncate">{parentCat.name}</div>
+                              <div className="text-sm text-sub truncate">{parentCat.name}</div>
                             )}
                           </div>
                         </div>
@@ -1015,9 +1009,9 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       {/* Status chip */}
                       <td className="hidden md:table-cell py-3 px-2 sm:px-3">
                         <span
-                          className={`rounded-md px-1.5 py-0.5 text-xs whitespace-nowrap ${
+                          className={`rounded-md px-1.5 py-0.5 text-sm whitespace-nowrap ${
                             !item.isOver && item.percentUsed < 80 && item.actual_amount === 0
-                              ? "bg-surface-subtle text-muted"
+                              ? "bg-surface-subtle text-sub"
                               : chipClass[tone]
                           }`}
                         >
@@ -1035,7 +1029,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       <td className="py-3 px-2 sm:px-3 text-right">
                         {isEditing ? (
                           <div className="flex items-center justify-end gap-1">
-                            <span className="text-muted tabular-nums">$</span>
+                            <span className="text-sub tabular-nums">$</span>
                             <NumberField
                               step="0.01"
                               value={targetInput}
@@ -1073,13 +1067,13 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                               title="Click to edit target"
                             >
                               <Edit2
-                                className="w-4 h-4 text-muted opacity-0 group-hover/edit:opacity-100 pointer-coarse:opacity-100 transition-opacity shrink-0"
+                                className="w-4 h-4 text-sub opacity-0 group-hover/edit:opacity-100 pointer-coarse:opacity-100 transition-opacity shrink-0"
                                 strokeWidth={1.5}
                               />
                               <Money value={item.planned_amount} className="text-main" />
                             </div>
                             {item.rollover_amount !== undefined && item.rollover_amount !== 0 && (
-                              <div className="text-xs text-muted mt-0.5 truncate">
+                              <div className="text-sm text-sub mt-0.5 truncate">
                                 <Money
                                   value={item.rollover_amount}
                                   signed
@@ -1089,7 +1083,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                               </div>
                             )}
                             {item.available_amount !== undefined && item.available_amount !== item.planned_amount && (
-                              <div className="text-xs text-muted mt-0.5 truncate">
+                              <div className="text-sm text-sub mt-0.5 truncate">
                                 Available <Money value={item.available_amount} />
                               </div>
                             )}
@@ -1100,7 +1094,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       {/* Spent */}
                       <td className="py-3 px-2 sm:px-3 text-right whitespace-nowrap">
                         <Money value={item.actual_amount} className="text-main" />
-                        <div className="text-xs text-muted tabular-nums">{item.percentUsed}%</div>
+                        <div className="text-sm text-sub tabular-nums">{item.usedLabel}</div>
                       </td>
 
                       {/* Remaining */}
@@ -1160,7 +1154,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
           </div>
         ) : (
           /* Card / envelope view (tablet and desktop, by choice) */
-          <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-10">
             {filteredAndSortedItems.map((item) => {
               const cat = item.category;
               if (!cat) return null;
@@ -1170,18 +1164,18 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
               return (
                 <div
                   key={item.category_id}
-                  className="p-4 rounded-xl border border-subtle space-y-3 flex flex-col justify-between"
+                  className={`min-w-0 pt-4 ${hairline} space-y-3 flex flex-col justify-between`}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-start gap-2">
+                    <div className="flex items-start gap-2 min-w-0">
                       <span
-                        className="w-2 h-2 rounded-full shrink-0 mt-1.5"
+                        className="w-2.5 h-2.5 rounded-full shrink-0 mt-2"
                         style={{ backgroundColor: cat.color || chartTheme.accentColor }}
                       ></span>
-                      <div>
-                        <div className="text-sm font-medium text-main">{cat.name}</div>
+                      <div className="min-w-0">
+                        <div className="text-base font-semibold text-main break-words">{cat.name}</div>
                         <span
-                          className={`mt-1 inline-block rounded-md px-1.5 py-0.5 text-xs ${chipClass[tone]}`}
+                          className={`mt-1 inline-block rounded-md px-1.5 py-0.5 text-sm ${chipClass[tone]}`}
                         >
                           {item.isOver ? "Over budget" : `${item.percentUsed}% spent`}
                         </span>
@@ -1207,17 +1201,17 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   </div>
 
                   {/* Figures */}
-                  <div className="space-y-2 text-xs">
+                  <div className="space-y-2 text-sm">
                     <div className="flex items-center justify-between">
-                      <span className="text-muted">Spent</span>
+                      <span className="text-sub">Spent</span>
                       <Money value={item.actual_amount} className="text-main" />
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <span className="text-muted">Target</span>
+                      <span className="text-sub">Target</span>
                       {isEditing ? (
                         <div className="flex items-center gap-1">
-                          <span className="text-muted tabular-nums">$</span>
+                          <span className="text-sub tabular-nums">$</span>
                           <NumberField
                             step="0.01"
                             value={targetInput}
@@ -1241,14 +1235,14 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                           className="text-main hover:text-accent-subtle flex items-center gap-1 cursor-pointer transition-colors"
                         >
                           <Money value={item.planned_amount} />
-                          <Edit2 className="w-4 h-4 text-muted" strokeWidth={1.5} />
+                          <Edit2 className="w-4 h-4 text-sub" strokeWidth={1.5} />
                         </button>
                       )}
                     </div>
 
                     {item.rollover_amount !== undefined && item.rollover_amount !== 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-muted">Rollover balance</span>
+                        <span className="text-sub">Rollover balance</span>
                         <Money
                           value={item.rollover_amount}
                           signed
@@ -1258,12 +1252,12 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                     )}
                     {item.available_amount !== undefined && item.available_amount !== item.planned_amount && (
                       <div className="flex items-center justify-between">
-                        <span className="text-muted">Available</span>
+                        <span className="text-sub">Available</span>
                         <Money value={item.available_amount} className="text-main" />
                       </div>
                     )}
-                    <div className="flex items-center justify-between pt-2 border-t border-subtle">
-                      <span className="text-muted">Remaining</span>
+                    <div className="flex items-center justify-between pt-2">
+                      <span className="text-sub font-semibold">Remaining</span>
                       <Money
                         value={item.remaining_amount}
                         className={item.remaining_amount >= 0 ? "text-main" : "text-negative"}
@@ -1283,9 +1277,10 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             })}
           </div>
         )}
-      </div>
+      </section>
 
         </>
+
       )}
 
       {/* Phone: details and actions for one budget line */}
@@ -1368,7 +1363,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   "Spent",
                   <>
                     <Money value={sheetItem.actual_amount} />{" "}
-                    <span className="text-muted tabular-nums">{sheetItem.percentUsed}%</span>
+                    <span className="text-sub tabular-nums">{sheetItem.usedLabel}</span>
                   </>,
                 ],
                 [
@@ -1407,8 +1402,8 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             {/* Modal header */}
             <div className="p-5 border-b border-subtle flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-base font-medium text-main">Add category to budget</h3>
-                <p className="text-sm text-sub mt-1">
+                <h3 className={sectionTitle}>Add category to budget</h3>
+                <p className={sectionSub}>
                   Set a monthly spending envelope for {monthName}
                 </p>
               </div>
@@ -1429,7 +1424,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   className={`flex-1 ${segmentButton(addModalTab === "existing")}`}
                 >
                   Existing category{" "}
-                  <span className="tabular-nums text-muted">{unbudgetedCategories.length}</span>
+                  <span className="tabular-nums text-sub font-normal">{unbudgetedCategories.length}</span>
                 </button>
                 <button
                   onClick={() => setAddModalTab("new")}
@@ -1446,14 +1441,14 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                 /* Tab 1: pick an existing category */
                 <div className="space-y-4">
                   {unbudgetedCategories.length === 0 ? (
-                    <div className="text-center py-6 text-muted text-sm">
+                    <div className={`text-center py-6 ${loneText}`}>
                       All expense categories are already in your budget. Switch to “New category” to
                       add one.
                     </div>
                   ) : (
                     <>
                       <div>
-                        <label className="block text-sm md:text-xs text-sub mb-2">Category</label>
+                        <label className={fieldLabel}>Category</label>
                         <select
                           value={selectedExistingCatId}
                           onChange={(e) => setSelectedExistingCatId(e.target.value)}
@@ -1468,9 +1463,9 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       </div>
 
                       <div>
-                        <label className="block text-sm md:text-xs text-sub mb-2">Monthly target</label>
+                        <label className={fieldLabel}>Monthly target</label>
                         <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm tabular-nums">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sub text-base md:text-sm tabular-nums">
                             $
                           </span>
                           <NumberField
@@ -1489,7 +1484,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                 /* Tab 2: create a new category */
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm md:text-xs text-sub mb-2">Category name</label>
+                    <label className={fieldLabel}>Category name</label>
                     <input
                       type="text"
                       placeholder="Pet care"
@@ -1500,7 +1495,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-sm md:text-xs text-sub mb-2">Parent group (optional)</label>
+                    <label className={fieldLabel}>Parent group (optional)</label>
                     <select
                       value={newCatParentId}
                       onChange={(e) => setNewCatParentId(e.target.value)}
@@ -1516,7 +1511,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-sm md:text-xs text-sub mb-2">Category color</label>
+                    <label className={fieldLabel}>Category color</label>
                     <div className="flex items-center flex-wrap gap-2">
                       {PRESET_COLORS.map((color) => (
                         <button
@@ -1536,7 +1531,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3 p-4 rounded-lg bg-surface-subtle">
+                  <div className="flex items-start gap-3 py-2">
                     <input
                       type="checkbox"
                       id="newCatIsRollover"
@@ -1544,18 +1539,18 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       onChange={(e) => setNewCatIsRollover(e.target.checked)}
                       className="mt-0.5 size-5 md:size-4 rounded-md border-default text-accent-main focus:ring-accent-main cursor-pointer"
                     />
-                    <label htmlFor="newCatIsRollover" className="text-sm cursor-pointer">
+                    <label htmlFor="newCatIsRollover" className="text-base md:text-sm cursor-pointer">
                       <span className="text-main block">Roll over unspent budget</span>
-                      <span className="text-muted block text-xs mt-1">
+                      <span className="text-sub block text-sm mt-1">
                         Surplus adds to next month's envelope; overspending reduces it
                       </span>
                     </label>
                   </div>
 
                   <div>
-                    <label className="block text-sm md:text-xs text-sub mb-2">Monthly target</label>
+                    <label className={fieldLabel}>Monthly target</label>
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm tabular-nums">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sub text-base md:text-sm tabular-nums">
                         $
                       </span>
                       <NumberField
@@ -1615,10 +1610,10 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   style={{ backgroundColor: drilldownCategory.color || chartTheme.accentColor }}
                 ></span>
                 <div>
-                  <h3 className="text-base font-medium text-main">
+                  <h3 className={`${sectionTitle} break-words`}>
                     {drilldownCategory.name} transactions
                   </h3>
-                  <p className="text-sm text-sub mt-1">Charges in {monthName}</p>
+                  <p className={sectionSub}>Charges in {monthName}</p>
                 </div>
               </div>
               <button
@@ -1633,17 +1628,17 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             {/* Transaction list */}
             <div className="p-5 flex-1 overflow-y-auto">
               {isLoadingTransactions ? (
-                <div className="py-12 flex items-center justify-center text-muted text-sm">
+                <div role="status" className={`py-12 flex items-center justify-center ${loneText}`}>
                   <div className="animate-spin rounded-full h-5 w-5 border-2 border-subtle border-t-[var(--accent-primary)] mr-3"></div>
                   Loading transactions…
                 </div>
               ) : drilldownTransactions.length === 0 ? (
-                <div className="py-12 text-center text-muted text-sm">
+                <div className={`py-12 px-4 text-center break-words ${loneText}`}>
                   No {drilldownCategory.name} transactions in {monthName}
                 </div>
               ) : (
                 <div>
-                  <div className="text-xs text-muted mb-2">
+                  <div className="text-sm text-sub mb-2">
                     <span className="tabular-nums">{drilldownTransactions.length}</span>{" "}
                     {drilldownTransactions.length === 1 ? "transaction" : "transactions"}
                   </div>
@@ -1651,14 +1646,14 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                     {drilldownTransactions.map((t) => (
                       <li key={t.id} className="min-h-14 py-2 flex items-center justify-between gap-4">
                         <div className="min-w-0">
-                          <div className={`text-sm text-main ${wrapOnPhone}`}>
+                          <div className={`text-base md:text-sm text-main ${wrapOnPhone}`}>
                             {t.normalized_payee || t.raw_payee}
                           </div>
-                          <div className={`text-xs text-muted tabular-nums ${wrapOnPhone}`}>
+                          <div className={`text-sm text-sub tabular-nums ${wrapOnPhone}`}>
                             {t.transaction_date} · {t.raw_payee}
                           </div>
                         </div>
-                        <Money value={Math.abs(t.amount)} className="text-sm text-main shrink-0" />
+                        <Money value={Math.abs(t.amount)} className="text-base md:text-sm text-main shrink-0" />
                       </li>
                     ))}
                   </ul>

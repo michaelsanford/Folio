@@ -1,4 +1,5 @@
 import { useTheme, type ThemeId } from "../context/ThemeContext";
+import { useIsPhone } from "./useMediaQuery";
 
 export interface ChartThemeTokens {
   isDark: boolean;
@@ -22,16 +23,23 @@ export interface ChartThemeTokens {
   fontFamily: string;
   /** Font for numbers on axes and in tooltips. */
   figureFontFamily: string;
+  /** Axis labels and legends: as large as the app's smallest text. */
+  axisFontSize: number;
+  /** Tooltips and in-chart labels: one step up. */
+  labelFontSize: number;
 }
 
-type ColorTokens = Omit<ChartThemeTokens, "fontFamily" | "figureFontFamily">;
+type ColorTokens = Omit<ChartThemeTokens, "fontFamily" | "figureFontFamily" | "axisFontSize" | "labelFontSize">;
 
 export const useChartTheme = (): ChartThemeTokens => {
   const { theme, resolvedMode, activeTypeStyleDef } = useTheme();
+  const isPhone = useIsPhone();
   return {
     ...colorTokens(theme, resolvedMode === "dark"),
     fontFamily: activeTypeStyleDef.sans,
     figureFontFamily: activeTypeStyleDef.figures,
+    axisFontSize: isPhone ? 15 : 13,
+    labelFontSize: isPhone ? 16 : 14,
   };
 };
 
@@ -41,7 +49,7 @@ const colorTokens = (theme: ThemeId, isDark: boolean): ColorTokens => {
       return {
         isDark,
         textColor: isDark ? "#cbd5e1" : "#44403c",
-        subtleTextColor: isDark ? "#64748b" : "#78716c",
+        subtleTextColor: isDark ? "#9ca8b9" : "#534e4a",
         gridLineColor: isDark ? "rgba(71, 85, 105, 0.25)" : "rgba(216, 205, 178, 0.6)",
         axisLineColor: isDark ? "#334155" : "#d8cdb2",
         tooltipBg: isDark ? "#11131a" : "#ffffff",
@@ -64,7 +72,7 @@ const colorTokens = (theme: ThemeId, isDark: boolean): ColorTokens => {
       return {
         isDark,
         textColor: isDark ? "#e7e5e4" : "#111827",
-        subtleTextColor: isDark ? "#a8a29e" : "#6b7280",
+        subtleTextColor: isDark ? "#b3aeab" : "#464b55",
         gridLineColor: isDark ? "rgba(120, 113, 108, 0.25)" : "rgba(220, 194, 174, 0.6)",
         axisLineColor: isDark ? "#44403c" : "#dcc2ae",
         tooltipBg: isDark ? "#1c1917" : "#ffffff",
@@ -87,7 +95,7 @@ const colorTokens = (theme: ThemeId, isDark: boolean): ColorTokens => {
       return {
         isDark,
         textColor: isDark ? "#cdd6f4" : "#4c4f69",
-        subtleTextColor: isDark ? "#a6adc8" : "#6c6f85",
+        subtleTextColor: isDark ? "#a7aaba" : "#484a5a",
         gridLineColor: isDark ? "rgba(49, 50, 68, 0.7)" : "rgba(204, 208, 218, 0.7)",
         axisLineColor: isDark ? "#45475a" : "#bcc0cc",
         tooltipBg: isDark ? "#181825" : "#ffffff",
@@ -110,7 +118,7 @@ const colorTokens = (theme: ThemeId, isDark: boolean): ColorTokens => {
       return {
         isDark,
         textColor: isDark ? "#d8dee9" : "#2e3440",
-        subtleTextColor: isDark ? "#9da5b4" : "#4c566a",
+        subtleTextColor: isDark ? "#d6dae1" : "#414b5a",
         gridLineColor: isDark ? "rgba(76, 86, 106, 0.4)" : "rgba(216, 222, 233, 0.8)",
         axisLineColor: isDark ? "#4c566a" : "#c0c8d4",
         tooltipBg: isDark ? "#2e3440" : "#ffffff",
@@ -133,7 +141,7 @@ const colorTokens = (theme: ThemeId, isDark: boolean): ColorTokens => {
       return {
         isDark,
         textColor: isDark ? "#ebdbb2" : "#3c3836",
-        subtleTextColor: isDark ? "#a89984" : "#7c6f64",
+        subtleTextColor: isDark ? "#c7bdb3" : "#4c423b",
         gridLineColor: isDark ? "rgba(80, 73, 69, 0.6)" : "rgba(213, 196, 161, 0.8)",
         axisLineColor: isDark ? "#504945" : "#bdae93",
         tooltipBg: isDark ? "#282828" : "#fbf1c7",
@@ -156,7 +164,7 @@ const colorTokens = (theme: ThemeId, isDark: boolean): ColorTokens => {
       return {
         isDark,
         textColor: isDark ? "#c0caf5" : "#343b58",
-        subtleTextColor: isDark ? "#7a88cf" : "#565a6e",
+        subtleTextColor: isDark ? "#a8aecd" : "#3c3f4d",
         gridLineColor: isDark ? "rgba(41, 46, 66, 0.8)" : "rgba(207, 213, 226, 0.8)",
         axisLineColor: isDark ? "#414868" : "#cfd5e2",
         tooltipBg: isDark ? "#1f2335" : "#ffffff",
@@ -179,7 +187,7 @@ const colorTokens = (theme: ThemeId, isDark: boolean): ColorTokens => {
       return {
         isDark,
         textColor: isDark ? "#f8f8f2" : "#282a36",
-        subtleTextColor: isDark ? "#6272a4" : "#6272a4",
+        subtleTextColor: isDark ? "#bec9e7" : "#3e496d",
         gridLineColor: isDark ? "rgba(68, 71, 90, 0.6)" : "rgba(216, 216, 210, 0.7)",
         axisLineColor: isDark ? "#6272a4" : "#b8b8b0",
         tooltipBg: isDark ? "#282a36" : "#ffffff",
@@ -202,8 +210,8 @@ const colorTokens = (theme: ThemeId, isDark: boolean): ColorTokens => {
     default:
       return {
         isDark,
-        textColor: isDark ? "#b3aa9e" : "#5e554b",
-        subtleTextColor: isDark ? "#968c80" : "#6f6458",
+        textColor: isDark ? "#b5ada1" : "#554d44",
+        subtleTextColor: isDark ? "#b4ada4" : "#554d44",
         gridLineColor: isDark ? "rgba(236, 230, 221, 0.06)" : "rgba(42, 36, 31, 0.07)",
         axisLineColor: isDark ? "rgba(236, 230, 221, 0.12)" : "rgba(42, 36, 31, 0.14)",
         tooltipBg: isDark ? "#2d2824" : "#fffdf9",

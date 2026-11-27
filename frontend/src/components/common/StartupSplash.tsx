@@ -1,6 +1,7 @@
 import React from "react";
 import { FolioMark } from "./FolioMark";
 import { useDelayedFlag } from "../../hooks/useDelayedFlag";
+import { loneText, secondaryButton } from "./ui";
 
 /** Past this, the server is starting up after a quiet spell; say so. */
 export const WAKING_DELAY_MS = 1500;
@@ -19,14 +20,14 @@ export const StartupSplash: React.FC<StartupSplashProps> = ({ unreachable = fals
   if (unreachable) {
     return (
       <div className="min-h-screen bg-canvas flex flex-col items-center justify-center gap-4 px-4 text-center">
-        <FolioMark className="w-10 h-10" />
-        <p role="alert" className="text-sm text-main">
+        <FolioMark className="w-14 h-14" />
+        <p role="alert" className="text-lg md:text-xl text-main">
           Folio isn&rsquo;t responding.
         </p>
         <button
           type="button"
           onClick={onRetry}
-          className="h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer"
+          className={secondaryButton}
         >
           Try again
         </button>
@@ -38,10 +39,10 @@ export const StartupSplash: React.FC<StartupSplashProps> = ({ unreachable = fals
     // Same mark, same place as the placeholder in index.html, so the hand-over is seamless.
     <div className="min-h-screen bg-canvas flex items-center justify-center">
       <div className="relative">
-        <FolioMark className="w-10 h-10" label="Folio" />
+        <FolioMark className="w-14 h-14" label="Folio" />
         <p
           role="status"
-          className={`absolute top-full left-1/2 -translate-x-1/2 mt-4 whitespace-nowrap text-sm text-muted transition-opacity duration-500 ${
+          className={`absolute top-full left-1/2 -translate-x-1/2 mt-6 whitespace-nowrap text-lg md:text-xl text-sub transition-opacity duration-500 ${
             waking ? "opacity-100" : "opacity-0"
           }`}
         >
@@ -56,9 +57,9 @@ export const StartupSplash: React.FC<StartupSplashProps> = ({ unreachable = fals
 export const ShellLoading: React.FC = () => {
   const waking = useDelayedFlag(true, WAKING_DELAY_MS);
   return (
-    <div role="status" className="min-h-[60vh] py-16 flex items-center justify-center gap-3 text-sm text-muted">
+    <div role="status" className={`min-h-[60vh] py-16 px-4 flex items-center justify-center gap-4 text-center ${loneText}`}>
       <span
-        className="animate-spin rounded-full h-4 w-4 border-2 border-[var(--border-default)] border-t-[var(--accent-primary)]"
+        className="animate-spin rounded-full h-6 w-6 shrink-0 border-2 border-[var(--border-default)] border-t-[var(--accent-primary)]"
         aria-hidden="true"
       />
       {waking ? WAKING_MESSAGE : "Loading…"}
