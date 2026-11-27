@@ -134,3 +134,35 @@ describe("WelcomeDialog", () => {
     expect(onSkip).toHaveBeenCalled();
   });
 });
+
+describe("HouseholdModal on a phone", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    setSession(owner, []);
+    vi.spyOn(api.people, "list").mockResolvedValue({ people: [], can_manage_people: true });
+  });
+  afterEach(() => {
+    clearSession();
+    vi.unstubAllGlobals();
+  });
+
+  it("puts Invite, Edit and Delete in the member's sheet and shows notes in full", async () => {
+    const { mockViewport } = await import("../../test/viewport");
+    mockViewport("phone");
+    renderModal([{ ...kid, notes: "Gets an allowance every second Friday" }]);
+
+    expect(screen.queryByRole("button", { name: "Delete Emma" })).toBeNull();
+    expect(screen.getByText("Gets an allowance every second Friday")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Emma: actions" }));
+    const sheet = screen.getByRole("dialog", { name: "Emma" });
+    const labels = within(sheet)
+      .getAllByRole("button")
+      .map((b) => b.textContent)
+      .filter((t) => t && t !== "");
+    expect(labels).toEqual(["Invite to sign in", "Edit member", "Delete member"]);
+
+    fireEvent.click(within(sheet).getByRole("button", { name: "Edit member" }));
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Emma");
+  });
+});

@@ -56,8 +56,9 @@ interface AppLayoutProps {
   children: React.ReactNode;
 }
 
+// 44px on phones (the header), the usual 36px in the sidebar.
 const iconButton =
-  "h-9 w-9 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer";
+  "size-11 md:size-9 shrink-0 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer";
 
 const Wordmark: React.FC<{ compact?: boolean }> = ({ compact = false }) => (
   <div
@@ -404,7 +405,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 onClick={onApplyUpdate}
                 disabled={updating}
                 aria-busy={updating}
-                className={`${updateButton} h-9 w-9 flex items-center justify-center`}
+                className={`${updateButton} size-11 flex items-center justify-center`}
                 title={updateLabel(updating)}
                 aria-label={updateLabel(updating)}
               >
@@ -456,7 +457,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                     onTabChange(item.id);
                     setMobileMenuOpen(false);
                   }}
-                  className={`w-full h-10 flex items-center gap-3 px-3 rounded-lg text-sm transition-colors ${
+                  className={`w-full h-12 flex items-center gap-3 px-3 rounded-lg text-base transition-colors ${
                     isActive ? "bg-surface-subtle text-main font-medium" : "text-sub bg-surface-hover"
                   }`}
                 >
@@ -475,7 +476,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                   setMobileMenuOpen(false);
                   onSignOut();
                 }}
-                className="w-full h-10 mt-1 pt-1 border-t border-subtle flex items-center gap-3 px-3 rounded-lg text-sm text-sub bg-surface-hover transition-colors"
+                className="w-full h-12 mt-1 pt-1 border-t border-subtle flex items-center gap-3 px-3 rounded-lg text-base text-sub bg-surface-hover transition-colors"
               >
                 <LogOut className="w-[22px] h-[22px] text-muted" strokeWidth={1.75} />
                 Sign out
@@ -485,7 +486,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         )}
 
         {/* Main Body */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 pt-4 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 md:p-8 max-w-full">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pt-4 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 md:p-8 max-w-full">
           <React.Fragment key={formatKey}>{children}</React.Fragment>
         </main>
 
@@ -498,7 +499,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <button
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
-                className={`flex flex-col items-center gap-1 px-2 py-1 text-xs transition-colors ${
+                aria-current={isActive ? "page" : undefined}
+                className={`flex-1 min-w-0 min-h-12 flex flex-col items-center justify-center gap-1 px-1 py-1 text-xs transition-colors ${
                   isActive ? "text-main font-medium" : "text-muted"
                 }`}
               >
@@ -506,7 +508,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                   className={`w-[22px] h-[22px] ${isActive ? "text-accent-main" : "text-muted"}`}
                   strokeWidth={1.75}
                 />
-                <span>{item.label}</span>
+                <span className="max-w-full text-center leading-tight text-[0.75rem] tracking-tight whitespace-nowrap">{item.label}</span>
               </button>
             );
           })}

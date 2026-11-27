@@ -13,7 +13,7 @@ interface AccountFilterBarProps {
 }
 
 const pill =
-  "inline-flex items-center gap-1.5 h-8 px-3 rounded-full border text-sm transition-colors cursor-pointer";
+  "inline-flex items-center gap-1.5 h-11 md:h-8 px-3 rounded-full border text-sm transition-colors cursor-pointer";
 const pillOn = "border-[var(--accent-primary)] bg-accent-subtle text-main";
 const pillPartial = "border-dashed border-[var(--accent-primary)] text-main";
 const pillOff = "border-default text-sub bg-surface-hover";
@@ -189,7 +189,7 @@ export const AccountFilterBar: React.FC<AccountFilterBarProps> = ({
                     role="menuitemcheckbox"
                     aria-checked={shown}
                     onClick={() => toggleAccount(a.id)}
-                    className="w-full flex items-center gap-3 px-2 h-12 rounded-lg text-left bg-surface-hover transition-colors cursor-pointer"
+                    className="w-full flex items-center gap-3 px-2 min-h-12 py-1.5 rounded-lg text-left bg-surface-hover transition-colors cursor-pointer"
                   >
                     <span
                       className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center ${
@@ -200,8 +200,8 @@ export const AccountFilterBar: React.FC<AccountFilterBarProps> = ({
                     </span>
                     <AccountIcon type={a.type} icon={a.icon} color={a.color} size="sm" />
                     <span className="min-w-0">
-                      <span className={`block text-sm truncate ${shown ? "text-main" : "text-muted"}`}>{a.name}</span>
-                      {a.institution && <span className="block text-xs text-muted truncate">{a.institution}</span>}
+                      <span className={`block text-sm break-words md:truncate ${shown ? "text-main" : "text-muted"}`}>{a.name}</span>
+                      {a.institution && <span className="block text-xs text-muted break-words md:truncate">{a.institution}</span>}
                     </span>
                   </button>
                 );

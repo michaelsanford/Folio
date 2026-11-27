@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronDown, Plus, RefreshCw, Trash2, UploadCloud } from "lucide-react";
+import { AlertTriangle, ChevronDown, MoreHorizontal, Plus, RefreshCw, Trash2, UploadCloud } from "lucide-react";
 import { LazyChart } from "../common/LazyChart";
 import { Money } from "../common/Money";
 import { ProjectionPanel } from "./ProjectionPanel";
@@ -19,6 +19,8 @@ import type {
 } from "../../types";
 import { api } from "../../services/api";
 import { useCanEdit } from "../../hooks/useSession";
+import { ActionSheet, DetailList } from "../common/ActionSheet";
+import { card, dangerIconButton, iconButton, inputClass, modalOverlay, modalPanel, primaryButton, secondaryButton } from "../common/ui";
 
 interface InvestmentsViewProps {
   accounts: Account[];
@@ -121,6 +123,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
   onImportHoldings,
 }) => {
   const canEdit = useCanEdit();
+  const [sheetHolding, setSheetHolding] = useState<HoldingValuation | null>(null);
   const chartTheme = useChartTheme();
 
   const investmentAccounts = useMemo(
@@ -615,14 +618,10 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
     };
   }, [performance, currency, chartTheme]);
 
-  const card = "rounded-xl bg-surface border border-subtle";
-  const btnPrimary =
-    "inline-flex items-center justify-center gap-2 h-9 px-4 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] cursor-pointer";
-  const btnSecondary =
-    "inline-flex items-center justify-center gap-2 h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer";
-  const inputCls =
-    "w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]";
-  const labelCls = "block text-xs text-sub mb-1";
+  const btnPrimary = primaryButton;
+  const btnSecondary = secondaryButton;
+  const inputCls = inputClass;
+  const labelCls = "block text-sm md:text-xs text-sub mb-1";
 
   if (investmentAccounts.length === 0) {
     return (
@@ -806,8 +805,8 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           <h2 className="text-base font-medium text-main">Holdings</h2>
         </div>
 
-        {/* Mobile & tablet cards (< lg) */}
-        <div className="block lg:hidden divide-y divide-subtle">
+        {/* Phone cards (< md): read-only; details and Remove are in a sheet */}
+        <div className="block md:hidden divide-y divide-subtle" data-testid="holdings-phone-list">
           {isLoading ? (
             <div className="py-8 text-center text-sm text-muted">Loading positions…</div>
           ) : (performance?.holdings.length ?? 0) === 0 ? (
@@ -816,11 +815,17 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
             </div>
           ) : (
             sortedHoldings.map((h) => (
-              <div key={h.holding_id} className="p-4 space-y-2">
+              <div
+                key={h.holding_id}
+                className="p-4 space-y-2"
+                onClick={(e) => {
+                  if (!(e.target as HTMLElement).closest("button, a")) setSheetHolding(h);
+                }}
+              >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm text-main font-mono truncate">{h.symbol}</div>
-                    {h.name && <div className="text-xs text-muted truncate">{h.name}</div>}
+                    <div className="text-sm text-main font-mono break-all">{h.symbol}</div>
+                    {h.name && <div className="text-xs text-muted break-words">{h.name}</div>}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="text-right">
@@ -836,11 +841,12 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                       </div>
                     </div>
                     <button
-                      onClick={() => handleDelete(h)}
-                      title={`Remove ${h.symbol}`}
-                      className="p-1.5 rounded-lg text-muted hover:text-negative bg-surface-hover transition-colors cursor-pointer"
+                      type="button"
+                      onClick={() => setSheetHolding(h)}
+                      aria-label={`${h.symbol}: details and actions`}
+                      className={iconButton}
                     >
-                      <Trash2 className="w-4 h-4" strokeWidth={1.5} />
+                      <MoreHorizontal className="w-5 h-5" strokeWidth={1.75} />
                     </button>
                   </div>
                 </div>
@@ -869,17 +875,17 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
           )}
         </div>
 
-        {/* Desktop holdings table (>= lg) */}
-        <div className="hidden lg:block">
+        {/* Holdings table (tablet and desktop); cost basis and weight from lg */}
+        <div className="hidden md:block">
           <table className="w-full table-fixed text-sm">
             <thead>
               <tr className="text-xs text-muted border-b border-subtle">
                 <th className="text-left font-normal h-9 px-3 w-[20%]">Symbol</th>
                 <th className="text-right font-normal h-9 px-3 w-[12%]">Quantity</th>
                 <th className="text-right font-normal h-9 px-3 w-[14%]">Price</th>
-                <th className="text-right font-normal h-9 px-3 w-[13%]">Cost basis</th>
+                <th className="hidden lg:table-cell text-right font-normal h-9 px-3 w-[13%]">Cost basis</th>
                 <th className="text-right font-normal h-9 px-3 w-[14%]">Market value</th>
-                <th className="text-right font-normal h-9 px-3 w-[9%]">Weight</th>
+                <th className="hidden lg:table-cell text-right font-normal h-9 px-3 w-[9%]">Weight</th>
                 <th className="text-right font-normal h-9 px-3 w-[13%]">Unrealized</th>
                 <th className="h-9 px-2 w-11"></th>
               </tr>
@@ -905,11 +911,11 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                 sortedHoldings.map((h) => (
                   <tr key={h.holding_id} className="h-14 bg-surface-hover transition-colors">
                     <td className="px-3 min-w-0">
-                      <div className="text-main font-mono truncate" title={h.symbol}>
+                      <div className="text-main font-mono break-all">
                         {h.symbol}
                       </div>
                       {h.name && (
-                        <div className="text-xs text-muted truncate" title={h.name}>
+                        <div className="text-xs text-muted break-words">
                           {h.name}
                         </div>
                       )}
@@ -928,13 +934,13 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                         <span className="text-xs text-warning">No price</span>
                       )}
                     </td>
-                    <td className="px-3 text-right whitespace-nowrap">
+                    <td className="hidden lg:table-cell px-3 text-right whitespace-nowrap">
                       <Money value={h.cost_basis} currency={currency} className="text-sub" />
                     </td>
                     <td className="px-3 text-right whitespace-nowrap">
                       <Money value={h.market_value} currency={currency} className="text-main" />
                     </td>
-                    <td className="px-3 text-right text-sub tabular-nums whitespace-nowrap">{weight(h)}</td>
+                    <td className="hidden lg:table-cell px-3 text-right text-sub tabular-nums whitespace-nowrap">{weight(h)}</td>
                     <td className="px-3 text-right whitespace-nowrap">
                       <Money
                         value={h.unrealized_gain}
@@ -950,7 +956,8 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                       <button
                         onClick={() => handleDelete(h)}
                         title={`Remove ${h.symbol}`}
-                        className="p-1.5 rounded-lg text-muted hover:text-negative bg-surface-hover transition-colors cursor-pointer"
+                        aria-label={`Remove ${h.symbol}`}
+                        className={dangerIconButton}
                       >
                         <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                       </button>
@@ -991,7 +998,7 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
                   ] as const
                 ).map(([label, key]) => (
                   <tr key={key} className="h-10 border-b border-subtle last:border-0">
-                    <td className="pr-2 text-main truncate" title={label}>{label}</td>
+                    <td className="pr-2 text-main break-words">{label}</td>
                     {PERIOD_ORDER.map((p) => {
                       const value = performance.returns[p]?.[key] ?? null;
                       return (
@@ -1116,10 +1123,10 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
 
       {/* Add holding modal */}
       {isAddOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
+        <div className={modalOverlay}>
           <form
             onSubmit={handleAddHolding}
-            className="w-full max-w-md rounded-xl bg-surface border border-default p-5 flex flex-col gap-4 shadow-xl animate-in zoom-in-95"
+            className={`${modalPanel} md:max-w-md flex flex-col gap-4`}
           >
             <h3 className="text-base font-medium text-main">Add holding</h3>
 
@@ -1261,10 +1268,10 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
 
       {/* Price entry modal */}
       {isPriceOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
+        <div className={modalOverlay}>
           <form
             onSubmit={handleSavePrices}
-            className="w-full max-w-md rounded-xl bg-surface border border-default p-5 flex flex-col gap-4 shadow-xl animate-in zoom-in-95"
+            className={`${modalPanel} md:max-w-md flex flex-col gap-4`}
           >
             <div>
               <h3 className="text-base font-medium text-main">Update prices</h3>
@@ -1309,6 +1316,60 @@ export const InvestmentsView: React.FC<InvestmentsViewProps> = ({
             </div>
           </form>
         </div>
+      )}
+      {/* Phone: a holding's details and Remove */}
+      {sheetHolding && (
+        <ActionSheet
+          open
+          onClose={() => setSheetHolding(null)}
+          title={sheetHolding.symbol}
+          subtitle={sheetHolding.name}
+          actions={[
+            {
+              label: `Remove ${sheetHolding.symbol}`,
+              icon: Trash2,
+              destructive: true,
+              onSelect: () => handleDelete(sheetHolding),
+            },
+          ]}
+        >
+          <DetailList
+            items={[
+              ["Market value", <Money value={sheetHolding.market_value} currency={currency} />],
+              [
+                "Unrealized",
+                <>
+                  <Money
+                    value={sheetHolding.unrealized_gain}
+                    currency={currency}
+                    signed
+                    className={sheetHolding.unrealized_gain >= 0 ? "text-positive" : "text-negative"}
+                  />{" "}
+                  <span className="text-muted">({percent(sheetHolding.unrealized_gain_pct)})</span>
+                </>,
+              ],
+              ["Quantity", <span className="tabular-nums">{formatNumber(Number(sheetHolding.quantity), 8)}</span>],
+              [
+                "Price",
+                sheetHolding.is_priced ? (
+                  <>
+                    <Money value={sheetHolding.price ?? 0} currency={currency} />
+                    <QuoteBadge
+                      source={sheetHolding.price_source}
+                      session={sheetHolding.price_session}
+                      quotedAt={sheetHolding.price_quoted_at}
+                    />
+                    <div className="text-sm text-muted tabular-nums">{priceDetail(sheetHolding, currency)}</div>
+                  </>
+                ) : (
+                  <span className="text-warning">No price</span>
+                ),
+              ],
+              ["Cost basis", <Money value={sheetHolding.cost_basis} currency={currency} />],
+              ["Weight", <span className="tabular-nums">{weight(sheetHolding)}</span>],
+            ]}
+          />
+        </ActionSheet>
       )}
     </div>
   );

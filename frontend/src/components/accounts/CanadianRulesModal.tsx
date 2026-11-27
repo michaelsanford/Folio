@@ -4,6 +4,7 @@ import { ExternalLink, X } from "lucide-react";
 import type { AccountType } from "../../types";
 import { getAccountTypeMeta, CANADIAN_ACCOUNT_TYPES } from "../../constants/canadianAccountTypes";
 import { AccountIcon } from "../common/AccountIcon";
+import { iconButton } from "../common/ui";
 
 interface CanadianRulesModalProps {
   accountType: AccountType;
@@ -23,8 +24,8 @@ export const CanadianRulesModal: React.FC<CanadianRulesModalProps> = ({
   const meta = getAccountTypeMeta(accountType);
 
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
-      <div className="w-full max-w-xl rounded-xl bg-surface border border-default shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95">
+    <div className="fixed inset-0 z-[120] flex items-end md:items-center justify-center md:p-4 bg-black/60 animate-in fade-in">
+      <div className="w-full md:max-w-xl rounded-t-2xl md:rounded-xl bg-surface border border-default shadow-xl overflow-hidden flex flex-col max-h-[92dvh] md:max-h-[90vh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter">
         {/* Header */}
         <div className="px-5 py-4 border-b border-subtle flex items-start justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
@@ -43,7 +44,7 @@ export const CanadianRulesModal: React.FC<CanadianRulesModalProps> = ({
           <button
             onClick={onClose}
             aria-label="Close"
-            className="h-8 w-8 shrink-0 flex items-center justify-center text-muted hover:text-main bg-surface-hover transition-colors rounded-lg cursor-pointer"
+            className={iconButton}
           >
             <X className="w-4 h-4" strokeWidth={1.5} />
           </button>

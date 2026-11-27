@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { RotateCw, UserX, UserCheck, Trash2 } from "lucide-react";
 import type { HouseholdMember, Me, Person, PersonRole } from "../../types";
 import { api } from "../../services/api";
+import { iconButton } from "../common/ui";
 
 interface PeoplePanelProps {
   me: Me | null;
@@ -31,9 +32,7 @@ const STATUS_LABELS: Record<Person["status"], string> = {
 };
 
 const inputClass =
-  "h-9 px-3 rounded-lg border border-default bg-input text-sm text-main focus:outline-none focus:border-[var(--accent-primary)]";
-const iconButton =
-  "h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-default";
+  "h-11 md:h-9 px-3 rounded-lg border border-default bg-input text-base md:text-sm text-main focus:outline-none focus:border-[var(--accent-primary)]";
 
 const formatDate = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" }) : null;
@@ -123,7 +122,7 @@ export const PeoplePanel: React.FC<PeoplePanelProps> = ({ me, members, onChanged
       <div className="p-3 rounded-lg border border-default bg-surface flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium text-main">You</div>
-          <div className="text-xs text-muted truncate">
+          <div className="text-xs text-muted break-words">
             {me?.email || "Signed in with the vault passphrase"}
             {me ? ` · ${ROLE_LABELS[me.role]}` : ""}
           </div>
@@ -160,8 +159,8 @@ export const PeoplePanel: React.FC<PeoplePanelProps> = ({ me, members, onChanged
                   }`}
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-main truncate">{name}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium text-main break-words min-w-0">{name}</span>
                       <span
                         className={`text-[11px] px-1.5 py-0.5 rounded ${
                           p.status === "ACTIVE" ? "bg-surface-subtle text-sub" : "bg-warning-subtle text-warning"
@@ -170,7 +169,7 @@ export const PeoplePanel: React.FC<PeoplePanelProps> = ({ me, members, onChanged
                         {STATUS_LABELS[p.status]}
                       </span>
                     </div>
-                    <div className="text-xs text-muted truncate">
+                    <div className="text-xs text-muted break-words">
                       {p.display_name && p.email ? `${p.email} · ` : ""}
                       {p.status === "INVITED"
                         ? `Invited ${formatDate(p.created_at)}${p.invited_by_name ? ` by ${p.invited_by_name}` : ""}`

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { RulesManagerView } from "./RulesManagerView";
 import { api } from "../../services/api";
@@ -201,5 +201,23 @@ describe("RulesManagerView & Auto-Classification Engine", () => {
       ).toBeDefined();
       expect(onDataModified).toHaveBeenCalled();
     });
+  });
+
+  it("keeps phone rule rows read-only and deletes from the sheet after confirming", async () => {
+    const del = vi.spyOn(api, "deleteRule").mockResolvedValue(undefined as never);
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirm);
+    render(<RulesManagerView categories={mockCategories} accounts={mockAccounts} />);
+
+    const row = await screen.findByRole("button", { name: "Rule TIM HORTONS, details and actions" });
+    expect(row.querySelector("button")).toBeNull();
+
+    fireEvent.click(row);
+    const sheet = screen.getByRole("dialog", { name: "TIM HORTONS" });
+    expect(within(sheet).getByText("Tim Hortons")).toBeDefined();
+    fireEvent.click(within(sheet).getByRole("button", { name: "Delete rule" }));
+    expect(confirm).toHaveBeenCalled();
+    await waitFor(() => expect(del).toHaveBeenCalledWith("rule-1"));
+    vi.unstubAllGlobals();
   });
 });

@@ -6,10 +6,12 @@ import {
   type AccountCategoryGroup,
 } from "../../constants/canadianAccountTypes";
 
-export const compactSelectClass =
-  "h-8 px-2 rounded-lg border border-default bg-input text-xs text-main focus:outline-none focus:border-[var(--accent-primary)]";
+import { compactSelectClass } from "../common/ui";
+
+// Kept as exports for existing importers; 44px and 16px on phones (see ui.ts).
+export { compactSelectClass };
 export const compactInputClass =
-  "h-8 px-2.5 rounded-lg border border-default bg-input text-xs text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]";
+  "h-11 md:h-8 px-2.5 rounded-lg border border-default bg-input text-base md:text-xs text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]";
 
 const CATEGORY_ORDER: AccountCategoryGroup[] = ["CASH", "REGISTERED", "INVESTMENT", "DEBT", "ASSET"];
 
@@ -33,8 +35,8 @@ interface DestinationSelectProps {
 
 /** "Create new account" or one of `accounts`. */
 export const DestinationSelect: React.FC<DestinationSelectProps> = ({ id, draft, accounts, onChange }) => (
-  <div className="flex items-center gap-2 min-w-0 shrink-0">
-    <label htmlFor={id} className="text-xs text-sub shrink-0">
+  <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
+    <label htmlFor={id} className="text-sm md:text-xs text-sub shrink-0">
       Destination
     </label>
     <select
@@ -48,7 +50,7 @@ export const DestinationSelect: React.FC<DestinationSelectProps> = ({ id, draft,
             : { mode: "existing", existing_account_id: val }
         );
       }}
-      className={`max-w-full truncate ${compactSelectClass}`}
+      className={`min-w-0 max-w-full flex-1 md:flex-none ${compactSelectClass}`}
     >
       <option value="create">Create new account</option>
       {accounts.map((acc) => (
@@ -93,7 +95,7 @@ export const NewAccountFields: React.FC<NewAccountFieldsProps> = ({ draft, label
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pl-0 sm:pl-6">
       <div>
-        <label className="block text-[11px] text-muted mb-1">Name</label>
+        <label className="block text-sm md:text-[11px] text-muted mb-1">Name</label>
         <input
           type="text"
           value={draft.name}
@@ -105,7 +107,7 @@ export const NewAccountFields: React.FC<NewAccountFieldsProps> = ({ draft, label
       </div>
 
       <div>
-        <label className="block text-[11px] text-muted mb-1">Type</label>
+        <label className="block text-sm md:text-[11px] text-muted mb-1">Type</label>
         <select
           value={draft.type}
           aria-label={`Account type for ${label}`}
@@ -125,7 +127,7 @@ export const NewAccountFields: React.FC<NewAccountFieldsProps> = ({ draft, label
       </div>
 
       <div>
-        <label className="block text-[11px] text-muted mb-1">Institution</label>
+        <label className="block text-sm md:text-[11px] text-muted mb-1">Institution</label>
         <input
           type="text"
           value={draft.institution}
@@ -138,7 +140,7 @@ export const NewAccountFields: React.FC<NewAccountFieldsProps> = ({ draft, label
       </div>
 
       <div>
-        <label className="block text-[11px] text-muted mb-1">Currency</label>
+        <label className="block text-sm md:text-[11px] text-muted mb-1">Currency</label>
         <input
           type="text"
           value={draft.currency}

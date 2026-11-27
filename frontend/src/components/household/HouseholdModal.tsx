@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { X, Plus, Trash2, Edit2, Check, Shield, Mail } from "lucide-react";
+import { X, Plus, Trash2, Edit2, Check, Shield, Mail, MoreHorizontal } from "lucide-react";
 import type { HouseholdMember, Person, PersonRole, Relationship } from "../../types";
 import { api } from "../../services/api";
 import { useSession } from "../../hooks/useSession";
 import { PeoplePanel, ROLE_HINTS, ROLE_LABELS } from "./PeoplePanel";
+import { useIsPhone } from "../../hooks/useMediaQuery";
+import { ActionSheet, type SheetAction } from "../common/ActionSheet";
+import { dangerIconButton, iconButton, inputClass, modalOverlay, primaryButton, secondaryButton } from "../common/ui";
 
 interface HouseholdModalProps {
   isOpen: boolean;
@@ -52,6 +55,8 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
   const canEdit = me?.can_edit ?? true;
   // Owners of a household where people sign in add people in one step.
   const canInvite = !!me?.can_manage_people;
+  const isPhone = useIsPhone();
+  const [sheetMember, setSheetMember] = useState<HouseholdMember | null>(null);
   const [access, setAccess] = useState<Access>(defaultAccess("Partner"));
   const [email, setEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<PersonRole>("MEMBER");
@@ -212,8 +217,8 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
-      <div className="relative w-full max-w-2xl bg-surface border border-default rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95">
+    <div className={modalOverlay}>
+      <div className="relative w-full md:max-w-2xl bg-surface border border-default rounded-t-2xl md:rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[92dvh] md:max-h-[90vh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-subtle">
           <div>
@@ -224,7 +229,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="h-8 w-8 shrink-0 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer"
+            className={iconButton}
             aria-label="Close household settings"
           >
             <X className="w-4 h-4" strokeWidth={1.5} />
@@ -280,17 +285,27 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                         {m.name.substring(0, 1).toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <div className="font-medium text-sm text-main truncate">{m.name}</div>
-                        <div className="text-xs text-muted truncate">
+                        <div className="font-medium text-sm text-main break-words">{m.name}</div>
+                        <div className="text-xs text-muted break-words">
                           {m.role || "Member"}
                           {me?.shared_household
                             ? ` · ${signInFor(m.id) ? ACCESS_BADGE[signInFor(m.id)!.status] : "No sign-in"}`
                             : ""}
-                          {m.notes ? ` · ${m.notes}` : ""}
                         </div>
+                        {m.notes && <div className="text-xs text-muted break-words whitespace-pre-line">{m.notes}</div>}
                       </div>
                     </div>
-                    {canEdit && (
+                    {canEdit && isPhone && (
+                      <button
+                        type="button"
+                        onClick={() => setSheetMember(m)}
+                        aria-label={`${m.name}: actions`}
+                        className={iconButton}
+                      >
+                        <MoreHorizontal className="w-5 h-5" strokeWidth={1.75} />
+                      </button>
+                    )}
+                    {canEdit && !isPhone && (
                     <div className="flex items-center gap-1 shrink-0">
                       {canInvite && !signInFor(m.id) && (
                         <button
@@ -299,7 +314,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                             setMemberEmail("");
                             setMemberRole(m.role === "Dependent" ? "VIEWER" : "MEMBER");
                           }}
-                          className="h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer"
+                          className={iconButton}
                           title="Invite to sign in"
                           aria-label={`Invite ${m.name} to sign in`}
                         >
@@ -308,7 +323,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                       )}
                       <button
                         onClick={() => handleStartEdit(m)}
-                        className="h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer"
+                        className={iconButton}
                         title="Edit member"
                         aria-label={`Edit ${m.name}`}
                       >
@@ -316,7 +331,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                       </button>
                       <button
                         onClick={() => handleDelete(m.id, m.name)}
-                        className="h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-negative bg-surface-hover transition-colors cursor-pointer"
+                        className={dangerIconButton}
                         title="Delete member"
                         aria-label={`Delete ${m.name}`}
                       >
@@ -340,13 +355,13 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                           placeholder="name@example.com"
                           value={memberEmail}
                           onChange={(e) => setMemberEmail(e.target.value)}
-                          className="flex-1 h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]"
+                          className={`flex-1 ${inputClass}`}
                         />
                         <select
                           aria-label="What they can do"
                           value={memberRole}
                           onChange={(e) => setMemberRole(e.target.value as PersonRole)}
-                          className="h-9 px-3 rounded-lg border border-default bg-input text-sm text-main"
+                          className="h-11 md:h-9 px-3 rounded-lg border border-default bg-input text-base md:text-sm text-main"
                         >
                           {(Object.keys(ROLE_LABELS) as PersonRole[]).map((r) => (
                             <option key={r} value={r}>
@@ -356,7 +371,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                         </select>
                         <button
                           type="submit"
-                          className="h-9 px-3 rounded-lg bg-accent-main text-accent-contrast text-sm font-medium cursor-pointer"
+                          className={primaryButton}
                         >
                           Send invitation
                         </button>
@@ -397,7 +412,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Display name"
-                  className="w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]"
+                  className={inputClass}
                   required
                 />
               </div>
@@ -410,7 +425,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                   id="household-member-role"
                   value={role}
                   onChange={(e) => handleRelationship(e.target.value)}
-                  className="w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main focus:outline-none focus:border-[var(--accent-primary)]"
+                  className={inputClass}
                 >
                   <option value="Self">Self</option>
                   <option value="Partner">Partner or spouse</option>
@@ -429,7 +444,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                     key={c}
                     type="button"
                     onClick={() => setColor(c)}
-                    className={`w-6 h-6 rounded-full flex items-center justify-center cursor-pointer ${
+                    className={`size-10 md:size-6 rounded-full flex items-center justify-center cursor-pointer ${
                       color === c ? "ring-2 ring-offset-2 ring-offset-[var(--bg-surface-subtle)] ring-accent-main" : ""
                     }`}
                     style={{ backgroundColor: c }}
@@ -479,13 +494,13 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                       placeholder="name@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]"
+                      className={inputClass}
                     />
                     <select
                       aria-label="What they can do"
                       value={inviteRole}
                       onChange={(e) => setInviteRole(e.target.value as PersonRole)}
-                      className="h-9 px-3 rounded-lg border border-default bg-input text-sm text-main"
+                      className="h-11 md:h-9 px-3 rounded-lg border border-default bg-input text-base md:text-sm text-main"
                     >
                       {(Object.keys(ROLE_LABELS) as PersonRole[]).map((r) => (
                         <option key={r} value={r}>
@@ -509,7 +524,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Notes"
-                className="w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]"
+                className={inputClass}
               />
             </div>
 
@@ -517,7 +532,7 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="h-9 px-4 flex items-center gap-2 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium disabled:opacity-50 cursor-pointer transition-colors active:scale-[0.98]"
+                className={primaryButton}
               >
                 {editingMember ? (
                   <>
@@ -541,12 +556,42 @@ export const HouseholdModal: React.FC<HouseholdModalProps> = ({
         <div className="px-5 py-4 border-t border-subtle flex justify-end">
           <button
             onClick={onClose}
-            className="h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer"
+            className={secondaryButton}
           >
             Done
           </button>
         </div>
       </div>
+      {sheetMember && (
+        <ActionSheet
+          open
+          onClose={() => setSheetMember(null)}
+          title={sheetMember.name}
+          subtitle={sheetMember.role || "Member"}
+          actions={[
+            ...(canInvite && !signInFor(sheetMember.id)
+              ? ([
+                  {
+                    label: "Invite to sign in",
+                    icon: Mail,
+                    onSelect: () => {
+                      setInvitingMember(sheetMember.id);
+                      setMemberEmail("");
+                      setMemberRole(sheetMember.role === "Dependent" ? "VIEWER" : "MEMBER");
+                    },
+                  },
+                ] satisfies SheetAction[])
+              : []),
+            { label: "Edit member", icon: Edit2, onSelect: () => handleStartEdit(sheetMember) },
+            {
+              label: "Delete member",
+              icon: Trash2,
+              destructive: true,
+              onSelect: () => handleDelete(sheetMember.id, sheetMember.name),
+            },
+          ]}
+        />
+      )}
     </div>
   );
 };

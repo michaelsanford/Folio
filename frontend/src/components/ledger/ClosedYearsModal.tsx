@@ -3,6 +3,7 @@ import { Download, Lock, LockOpen, X } from "lucide-react";
 import type { PeriodsResponse, YearClosure } from "../../types";
 import { api } from "../../services/api";
 import { useSession } from "../../hooks/useSession";
+import { iconButton } from "../common/ui";
 
 interface ClosedYearsModalProps {
   onClose: () => void;
@@ -11,7 +12,7 @@ interface ClosedYearsModalProps {
 }
 
 const button =
-  "h-8 px-3 inline-flex items-center gap-1.5 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default";
+  "h-11 md:h-8 px-4 md:px-3 inline-flex items-center gap-1.5 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default";
 
 const formatBytes = (n?: number | null) =>
   n == null ? "" : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
@@ -98,12 +99,12 @@ export const ClosedYearsModal: React.FC<ClosedYearsModalProps> = ({ onClose, onC
   const reopened = data?.closures.filter((c) => !c.is_active) ?? [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center md:p-4 bg-black/60 animate-in fade-in" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="closed-years-title"
-        className="relative w-full max-w-lg bg-surface border border-default rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95"
+        className="relative w-full md:max-w-lg bg-surface border border-default rounded-t-2xl md:rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[92dvh] md:max-h-[90vh] animate-in sheet-enter"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 p-5 border-b border-subtle">
@@ -119,14 +120,14 @@ export const ClosedYearsModal: React.FC<ClosedYearsModalProps> = ({ onClose, onC
           </div>
           <button
             onClick={onClose}
-            className="h-8 w-8 shrink-0 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer"
+            className={iconButton}
             aria-label="Close"
           >
             <X className="w-4 h-4" strokeWidth={1.5} />
           </button>
         </div>
 
-        <div className="p-5 overflow-y-auto space-y-5">
+        <div className="p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:pb-5 overflow-y-auto space-y-5">
           {error && (
             <div role="alert" className="p-3 rounded-lg bg-negative-subtle text-xs text-negative">
               {error}

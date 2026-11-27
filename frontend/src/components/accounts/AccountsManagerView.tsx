@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Plus, Edit2, Trash2, Info, Users, X, Lock, EyeOff } from "lucide-react";
+import { Plus, Edit2, Trash2, Info, Users, X, Lock, EyeOff, MoreHorizontal, Palette } from "lucide-react";
 import type { Account, AccountType, AccountVisibility, HouseholdMember } from "../../types";
 import { api } from "../../services/api";
 import {
@@ -20,17 +20,20 @@ import { NumberField } from "../common/NumberField";
 import { CreditUsage } from "./CreditUsage";
 import { formatMoney } from "../../utils/format";
 import { useCanEdit, useSession } from "../../hooks/useSession";
+import { useIsPhone } from "../../hooks/useMediaQuery";
+import { ActionSheet, type SheetAction } from "../common/ActionSheet";
+import {
+  card,
+  chipTab,
+  dangerIconButton,
+  iconButton,
+  inputClass,
+  modalOverlay,
+  primaryButton,
+  secondaryButton,
+} from "../common/ui";
 
-const card = "rounded-xl bg-surface border border-subtle";
 const fieldLabel = "block text-sm text-sub mb-2";
-const inputClass =
-  "w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] transition-colors";
-const primaryButton =
-  "h-9 px-4 inline-flex items-center justify-center gap-2 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] cursor-pointer";
-const secondaryButton =
-  "h-9 px-4 inline-flex items-center justify-center gap-2 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer";
-const iconButton =
-  "h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer";
 
 /** Number fields are `null` while blank, so a cleared field stays cleared. */
 interface AccountForm {
@@ -139,6 +142,8 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
   >("ALL");
 
   const [directCustomizingAccount, setDirectCustomizingAccount] = useState<Account | null>(null);
+  const isPhone = useIsPhone();
+  const [sheetAccount, setSheetAccount] = useState<Account | null>(null);
 
   const [formData, setFormData] = useState<AccountForm>(() => emptyForm("CHECKING"));
   const estimatedMinimum = estimateMinimumPayment(formData);
@@ -397,7 +402,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
       </div>
 
       {/* Filter Category Tabs */}
-      <div className="flex items-center gap-1 overflow-x-auto pb-2 no-scrollbar border-b border-subtle">
+      <div className="flex flex-wrap items-center gap-1 pb-2 border-b border-subtle">
         {filterTabs.map((tab) => {
           const isActive = activeFilterCategory === tab.id;
           return (
@@ -405,11 +410,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
               key={tab.id}
               onClick={() => setActiveFilterCategory(tab.id)}
               aria-pressed={isActive}
-              className={`h-8 px-3 flex items-center gap-2 rounded-lg text-sm whitespace-nowrap transition-colors cursor-pointer ${
-                isActive
-                  ? "bg-surface-subtle text-main font-medium"
-                  : "text-sub hover:text-main bg-surface-hover"
-              }`}
+              className={chipTab(isActive)}
             >
               <span>{tab.label}</span>
               <span className="text-xs tabular-nums font-normal text-muted">{tab.count}</span>
@@ -433,8 +434,8 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                       <Lock className="w-4 h-4 text-muted" strokeWidth={1.5} aria-hidden="true" />
                     </span>
                     <div className="min-w-0">
-                      <h3 className="text-base font-medium text-main truncate">{acc.name}</h3>
-                      <p className="text-xs text-muted truncate mt-0.5">
+                      <h3 className="text-base font-medium text-main break-words">{acc.name}</h3>
+                      <p className="text-xs text-muted break-words mt-0.5">
                         {meta.shortName} · shared as totals only
                       </p>
                     </div>
@@ -454,6 +455,14 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
               <div
                 key={acc.id}
                 className={`${card} p-5 flex flex-col justify-between`}
+                onClick={
+                  isPhone
+                    ? (e) => {
+                        // Tapping the card opens its sheet; its own controls still work.
+                        if (!(e.target as HTMLElement).closest("button, a, input, select")) setSheetAccount(acc);
+                      }
+                    : undefined
+                }
               >
                 <div>
                   <div className="flex items-start justify-between gap-2">
@@ -463,21 +472,31 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                         icon={acc.icon}
                         color={acc.color}
                         size="lg"
-                        editable={true}
-                        onClick={() => setDirectCustomizingAccount(acc)}
-                        title="Change icon and colour"
+                        editable={!isPhone}
+                        onClick={isPhone ? undefined : () => setDirectCustomizingAccount(acc)}
+                        title={isPhone ? undefined : "Change icon and colour"}
                       />
                       <div className="min-w-0">
-                        <h3 className="text-base font-medium text-main truncate">
+                        <h3 className="text-base font-medium text-main break-words">
                           {acc.name}
                         </h3>
-                        <p className="text-xs text-muted truncate mt-0.5">
+                        <p className="text-xs text-muted break-words mt-0.5">
                           {acc.institution || meta.shortName}
                           {acc.account_number_mask ? ` ··${acc.account_number_mask}` : ""}
                         </p>
                       </div>
                     </div>
 
+                    {isPhone ? (
+                      <button
+                        type="button"
+                        aria-label={`${acc.name}: details and actions`}
+                        onClick={() => setSheetAccount(acc)}
+                        className={iconButton}
+                      >
+                        <MoreHorizontal className="w-5 h-5" strokeWidth={1.75} />
+                      </button>
+                    ) : (
                     <div className="flex items-center shrink-0">
                       <button
                         type="button"
@@ -503,17 +522,18 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
                         title="Delete account"
                         aria-label="Delete account"
                         onClick={() => handleDelete(acc.id)}
-                        className="h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-negative bg-surface-hover transition-colors cursor-pointer"
+                        className={dangerIconButton}
                       >
                         <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                       </button>
                       </>)}
                     </div>
+                    )}
                   </div>
 
                   {/* Badge */}
                   <div className="mt-4 flex items-center gap-x-3 gap-y-1 flex-wrap text-xs">
-                    <span className="rounded-md px-1.5 py-0.5 font-mono bg-surface-subtle text-sub truncate max-w-full">
+                    <span className="rounded-md px-1.5 py-0.5 font-mono bg-surface-subtle text-sub break-words max-w-full">
                       {meta.badge}
                     </span>
                     <span className="text-muted">
@@ -599,12 +619,12 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
 
       {/* Create / Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+        <div className={modalOverlay}>
           <form
             onSubmit={handleSubmit}
-            className="w-full max-w-xl rounded-xl bg-surface border border-default shadow-xl max-h-[92vh] overflow-y-auto animate-in zoom-in-95"
+            className="w-full md:max-w-xl rounded-t-2xl md:rounded-xl bg-surface border border-default shadow-xl max-h-[92dvh] overflow-y-auto pb-[env(safe-area-inset-bottom)] animate-in sheet-enter"
           >
-            <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-subtle">
+            <div className="flex items-start justify-between gap-4 px-4 md:px-6 py-4 border-b border-subtle">
               <div>
                 <h3 className="text-base font-medium text-main">
                   {editingAccount ? "Edit account" : "Add account"}
@@ -624,7 +644,7 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
               </button>
             </div>
 
-            <div className="p-6 space-y-5 text-sm">
+            <div className="p-4 md:p-6 space-y-5 text-sm">
               {/* Account Type Picker */}
               <div>
                 <label className={fieldLabel}>Account type</label>
@@ -974,6 +994,31 @@ export const AccountsManagerView: React.FC<AccountsManagerViewProps> = ({
           currentIcon={directCustomizingAccount.icon}
           currentColor={directCustomizingAccount.color}
           onSave={handleDirectGlyphSave}
+        />
+      )}
+
+      {/* Phone: a card's details and actions */}
+      {sheetAccount && (
+        <ActionSheet
+          open
+          onClose={() => setSheetAccount(null)}
+          title={sheetAccount.name}
+          subtitle={[
+            sheetAccount.institution || getAccountTypeMeta(sheetAccount.type).shortName,
+            sheetAccount.account_number_mask ? `··${sheetAccount.account_number_mask}` : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          actions={[
+            { label: "Canadian rules", icon: Info, onSelect: () => setRuleModalType(sheetAccount.type) },
+            ...(canEdit
+              ? ([
+                  { label: "Change icon and colour", icon: Palette, onSelect: () => setDirectCustomizingAccount(sheetAccount) },
+                  { label: "Edit account", icon: Edit2, onSelect: () => handleOpenEdit(sheetAccount) },
+                  { label: "Delete account", icon: Trash2, destructive: true, onSelect: () => handleDelete(sheetAccount.id) },
+                ] satisfies SheetAction[])
+              : []),
+          ]}
         />
       )}
 

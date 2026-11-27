@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -23,6 +23,19 @@ import { CashFlowForecastView } from "./CashFlowForecastView";
 import type { Budget, BudgetItem, Category, Transaction } from "../../types";
 import { api } from "../../services/api";
 import { useCanEdit } from "../../hooks/useSession";
+import { useIsPhone } from "../../hooks/useMediaQuery";
+import { ActionSheet, DetailList } from "../common/ActionSheet";
+import {
+  card,
+  iconButton,
+  primaryButton,
+  secondaryButton,
+  inputClass,
+  segmentTrack,
+  segmentButton,
+  modalOverlay,
+  wrapOnPhone,
+} from "../common/ui";
 
 interface BudgetingViewProps {
   categories: Category[];
@@ -33,20 +46,9 @@ type FilterStatus = "ALL" | "OVER" | "WARNING" | "ON_TRACK" | "UNSPENT";
 type SortField = "NAME" | "PLANNED" | "ACTUAL" | "REMAINING" | "PERCENT";
 type SortDirection = "ASC" | "DESC";
 
-const card = "rounded-xl bg-surface border border-subtle";
-const iconButton =
-  "h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer";
-const primaryButton =
-  "h-9 px-4 inline-flex items-center justify-center gap-2 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] cursor-pointer disabled:opacity-50";
-const secondaryButton =
-  "h-9 px-4 inline-flex items-center justify-center rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer";
-const inputClass =
-  "w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]";
-const segmentTrack = "flex items-center gap-0.5 p-0.5 rounded-lg bg-surface-subtle border border-default";
-const segmentButton = (active: boolean) =>
-  `h-7 px-3 rounded-md text-xs transition-colors cursor-pointer ${
-    active ? "bg-surface text-main" : "text-muted hover:text-main"
-  }`;
+/** Sectioned modal panel: a bottom sheet on phones, a dialog from md up. */
+const sectionedPanel =
+  "w-full flex flex-col max-h-[92dvh] md:max-h-[85vh] overflow-hidden rounded-t-2xl md:rounded-xl bg-surface border border-default shadow-xl pb-[env(safe-area-inset-bottom)] md:pb-0 animate-in sheet-enter";
 
 /** Reads a CSS custom property so ECharts can use theme tokens it has no slot for. */
 const readCssVar = (name: string, fallback: string): string => {
@@ -75,6 +77,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 }) => {
   const canEdit = useCanEdit();
   const chartTheme = useChartTheme();
+  const isPhone = useIsPhone();
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [budget, setBudget] = useState<Budget | null>(null);
@@ -93,6 +96,13 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
   // Inline Editing
   const [editingTargetId, setEditingTargetId] = useState<string | null>(null);
   const [targetInput, setTargetInput] = useState<number | null>(null);
+
+  // Phone: the budget line whose details and actions are open in a sheet
+  const [sheetCategoryId, setSheetCategoryId] = useState<string | null>(null);
+  const closeSheet = useCallback(() => {
+    setSheetCategoryId(null);
+    setEditingTargetId(null);
+  }, []);
 
   // Add / Create Category Modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -554,6 +564,18 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
     warning: "bg-warning",
     positive: "bg-positive",
   } as const;
+  const statusLabel = (item: { isOver: boolean; percentUsed: number; actual_amount: number }) =>
+    item.isOver
+      ? "Over limit"
+      : item.percentUsed >= 80
+      ? "Near limit"
+      : item.actual_amount === 0
+      ? "Unspent"
+      : "On track";
+
+  const sheetItem = sheetCategoryId
+    ? filteredAndSortedItems.find((it) => it.category_id === sheetCategoryId) ?? null
+    : null;
 
   const sortHeader = (
     field: SortField,
@@ -589,7 +611,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
   ) => (
     <button
       onClick={() => setStatusFilter(status)}
-      className={`h-8 px-3 inline-flex items-center gap-2 rounded-lg text-xs transition-colors cursor-pointer ${
+      className={`h-11 md:h-8 px-3 inline-flex items-center gap-2 rounded-lg text-sm md:text-xs transition-colors cursor-pointer ${
         statusFilter === status
           ? "bg-surface text-main border border-default"
           : "text-sub border border-transparent hover:text-main"
@@ -652,7 +674,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
           )}
 
           {/* Month switcher */}
-          <div className="flex items-center h-9 px-0.5 rounded-lg border border-default bg-surface">
+          <div className="flex items-center h-11 md:h-9 px-0.5 rounded-lg border border-default bg-surface">
             <button onClick={handlePrevMonth} className={iconButton} title="Previous month">
               <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
             </button>
@@ -786,7 +808,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
 
           {/* Search and layout switcher */}
           <div className="flex items-center gap-2">
-            <div className="relative">
+            <div className="relative flex-1 md:flex-none">
               <Search
                 className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2"
                 strokeWidth={1.5}
@@ -796,12 +818,12 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                 placeholder="Filter categories"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className={`${inputClass} pl-9 pr-8 w-48 sm:w-56`}
+                className={`${inputClass} pl-9 pr-10 md:w-56`}
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-main cursor-pointer"
+                  className="absolute right-0 top-1/2 -translate-y-1/2 size-11 md:size-8 inline-flex items-center justify-center text-muted hover:text-main cursor-pointer"
                   aria-label="Clear search"
                 >
                   <X className="w-4 h-4" strokeWidth={1.5} />
@@ -809,6 +831,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
               )}
             </div>
 
+            {!isPhone && (
             <div className={segmentTrack}>
               <button
                 onClick={() => setViewMode("table")}
@@ -829,6 +852,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                 <LayoutGrid className="w-4 h-4" strokeWidth={1.5} />
               </button>
             </div>
+            )}
           </div>
         </div>
 
@@ -849,8 +873,92 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
               Add category target
             </button>
           </div>
+        ) : isPhone ? (
+          /* Phone: one read-only envelope per row; tap for details and actions */
+          <ul className="divide-y divide-subtle" data-testid="budget-phone-list">
+            {filteredAndSortedItems.map((item) => {
+              const cat = item.category;
+              if (!cat) return null;
+              const parentCat = categories.find((c) => c.id === cat.parent_id);
+              const tone = statusTone(item.isOver, item.percentUsed);
+              return (
+                <li key={item.category_id}>
+                  <button
+                    type="button"
+                    onClick={() => setSheetCategoryId(item.category_id)}
+                    className="w-full text-left p-4 flex flex-col gap-3 cursor-pointer active:bg-[var(--bg-surface-hover)] transition-colors"
+                  >
+                    <div className="flex items-start gap-3 w-full">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0 mt-2"
+                        style={{ backgroundColor: cat.color || chartTheme.accentColor }}
+                      ></span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-base font-medium text-main break-words">{cat.name}</div>
+                        {parentCat && <div className="text-sm text-muted break-words">{parentCat.name}</div>}
+                        <span className="sr-only">, details and actions</span>
+                      </div>
+                      <span className={`shrink-0 rounded-md px-2 py-0.5 text-sm ${chipClass[tone]}`}>
+                        {statusLabel(item)}
+                      </span>
+                    </div>
+                    <dl className="grid grid-cols-3 gap-2 text-sm w-full">
+                      <div>
+                        <dt className="text-muted">Target</dt>
+                        <dd className="text-main">
+                          <Money value={item.planned_amount} />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted">Spent</dt>
+                        <dd className="text-main">
+                          <Money value={item.actual_amount} />{" "}
+                          <span className="text-muted tabular-nums">{item.percentUsed}%</span>
+                        </dd>
+                      </div>
+                      <div className="text-right">
+                        <dt className="text-muted">Remaining</dt>
+                        <dd>
+                          <Money
+                            value={item.remaining_amount}
+                            className={item.remaining_amount >= 0 ? "text-main" : "text-negative"}
+                          />
+                        </dd>
+                      </div>
+                    </dl>
+                    {((item.rollover_amount !== undefined && item.rollover_amount !== 0) ||
+                      (item.available_amount !== undefined && item.available_amount !== item.planned_amount)) && (
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
+                        {item.rollover_amount !== undefined && item.rollover_amount !== 0 && (
+                          <span>
+                            <Money
+                              value={item.rollover_amount}
+                              signed
+                              className={item.rollover_amount > 0 ? "text-positive" : "text-negative"}
+                            />{" "}
+                            rolled over
+                          </span>
+                        )}
+                        {item.available_amount !== undefined && item.available_amount !== item.planned_amount && (
+                          <span>
+                            Available <Money value={item.available_amount} className="text-main" />
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div className="w-full h-1.5 rounded-full bg-surface-subtle overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-[width] duration-300 ${meterClass[tone]}`}
+                        style={{ width: `${Math.min(100, item.percentUsed)}%` }}
+                      ></div>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         ) : viewMode === "table" ? (
-          /* Tabular ledger for desktop */
+          /* Tabular ledger for tablet and desktop */
           <div>
             <table className="w-full table-fixed text-left text-sm border-collapse">
               <thead>
@@ -861,7 +969,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   {sortHeader("ACTUAL", "Spent", "DESC", "right", "w-20 sm:w-24")}
                   {sortHeader("REMAINING", "Remaining", "ASC", "right", "hidden sm:table-cell w-24")}
                   {sortHeader("PERCENT", "Used", "DESC", "left", "hidden xl:table-cell w-32")}
-                  <th className="h-10 px-2 sm:px-3 w-[120px] font-normal">
+                  <th className="h-10 px-2 sm:px-3 w-[120px] pointer-coarse:w-[152px] font-normal">
                     <span className="sr-only">Actions</span>
                   </th>
                 </tr>
@@ -965,7 +1073,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                               title="Click to edit target"
                             >
                               <Edit2
-                                className="w-4 h-4 text-muted opacity-0 group-hover/edit:opacity-100 transition-opacity shrink-0"
+                                className="w-4 h-4 text-muted opacity-0 group-hover/edit:opacity-100 pointer-coarse:opacity-100 transition-opacity shrink-0"
                                 strokeWidth={1.5}
                               />
                               <Money value={item.planned_amount} className="text-main" />
@@ -1051,7 +1159,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             </table>
           </div>
         ) : (
-          /* Card / envelope view for mobile and tablet */
+          /* Card / envelope view (tablet and desktop, by choice) */
           <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredAndSortedItems.map((item) => {
               const cat = item.category;
@@ -1114,11 +1222,11 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                             step="0.01"
                             value={targetInput}
                             onValueChange={setTargetInput}
-                            className="w-20 h-7 px-2 rounded-lg border border-[var(--accent-primary)] bg-input text-xs text-main tabular-nums text-right focus:outline-none"
+                            className="w-24 h-9 pointer-coarse:h-10 px-2 rounded-lg border border-[var(--accent-primary)] bg-input text-sm text-main tabular-nums text-right focus:outline-none"
                           />
                           <button
                             onClick={() => handleSavePlannedAmount(item.category_id, targetInput)}
-                            className="h-7 w-7 flex items-center justify-center rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast transition-colors cursor-pointer"
+                            className="size-9 pointer-coarse:size-10 flex items-center justify-center rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast transition-colors cursor-pointer"
                             title="Save target"
                           >
                             <Save className="w-4 h-4" strokeWidth={1.5} />
@@ -1180,12 +1288,122 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
         </>
       )}
 
+      {/* Phone: details and actions for one budget line */}
+      {sheetItem?.category && (
+        <ActionSheet
+          open
+          onClose={closeSheet}
+          title={sheetItem.category.name}
+          subtitle={`${statusLabel(sheetItem)} · ${monthName}`}
+          actions={[
+            ...(canEdit
+              ? [
+                  {
+                    label: "Edit target",
+                    icon: Edit2,
+                    keepOpen: true,
+                    onSelect: () => {
+                      setEditingTargetId(sheetItem.category_id);
+                      setTargetInput(sheetItem.planned_amount);
+                    },
+                  },
+                  {
+                    label: "Roll over unspent budget",
+                    icon: RefreshCw,
+                    keepOpen: true,
+                    detail: sheetItem.category.is_rollover ? "On" : "Off",
+                    onSelect: () => handleToggleCategoryRollover(sheetItem.category!),
+                  },
+                ]
+              : []),
+            {
+              label: "View transactions",
+              icon: ExternalLink,
+              onSelect: () => handleOpenDrilldown(sheetItem.category!),
+            },
+            ...(canEdit
+              ? [
+                  {
+                    label: "Remove from budget",
+                    icon: Trash2,
+                    destructive: true,
+                    onSelect: () => handleRemoveCategoryFromBudget(sheetItem.category_id),
+                  },
+                ]
+              : []),
+          ]}
+        >
+          {editingTargetId === sheetItem.category_id ? (
+            <form
+              className="flex items-end gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSavePlannedAmount(sheetItem.category_id, targetInput);
+              }}
+            >
+              <label className="flex-1 min-w-0">
+                <span className="block text-sm text-sub mb-1">Monthly target</span>
+                <NumberField
+                  min="0"
+                  step="0.01"
+                  value={targetInput}
+                  onValueChange={setTargetInput}
+                  autoFocus
+                  className={`${inputClass} tabular-nums text-right`}
+                />
+              </label>
+              <button type="submit" className={primaryButton}>
+                <Save className="w-4 h-4" strokeWidth={1.5} />
+                Save
+              </button>
+              <button type="button" onClick={() => setEditingTargetId(null)} className={iconButton} aria-label="Cancel">
+                <X className="w-5 h-5" strokeWidth={1.5} />
+              </button>
+            </form>
+          ) : (
+            <DetailList
+              items={[
+                ["Target", <Money value={sheetItem.planned_amount} />],
+                [
+                  "Spent",
+                  <>
+                    <Money value={sheetItem.actual_amount} />{" "}
+                    <span className="text-muted tabular-nums">{sheetItem.percentUsed}%</span>
+                  </>,
+                ],
+                [
+                  "Remaining",
+                  <Money
+                    value={sheetItem.remaining_amount}
+                    className={sheetItem.remaining_amount >= 0 ? "text-main" : "text-negative"}
+                  />,
+                ],
+                sheetItem.rollover_amount !== undefined &&
+                  sheetItem.rollover_amount !== 0 && [
+                    "Rolled over",
+                    <Money
+                      value={sheetItem.rollover_amount}
+                      signed
+                      className={sheetItem.rollover_amount > 0 ? "text-positive" : "text-negative"}
+                    />,
+                  ],
+                sheetItem.available_amount !== undefined &&
+                  sheetItem.available_amount !== sheetItem.planned_amount && [
+                    "Available",
+                    <Money value={sheetItem.available_amount} />,
+                  ],
+              ]}
+            />
+          )}
+        </ActionSheet>
+      )}
+
       {/* ------------------------------------------------------------- */}
       {/* ADD / CREATE CATEGORY MODAL                                   */}
       {/* ------------------------------------------------------------- */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
-          <div className="bg-surface border border-default rounded-xl w-full max-w-lg shadow-xl overflow-hidden animate-in zoom-in-95">
+        <div className={modalOverlay}>
+          <div className={`${sectionedPanel} md:max-w-lg`}>
             {/* Modal header */}
             <div className="p-5 border-b border-subtle flex items-start justify-between gap-4">
               <div>
@@ -1223,7 +1441,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
             </div>
 
             {/* Modal body */}
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 flex-1 overflow-y-auto">
               {addModalTab === "existing" ? (
                 /* Tab 1: pick an existing category */
                 <div className="space-y-4">
@@ -1235,7 +1453,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   ) : (
                     <>
                       <div>
-                        <label className="block text-xs text-sub mb-2">Category</label>
+                        <label className="block text-sm md:text-xs text-sub mb-2">Category</label>
                         <select
                           value={selectedExistingCatId}
                           onChange={(e) => setSelectedExistingCatId(e.target.value)}
@@ -1250,7 +1468,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       </div>
 
                       <div>
-                        <label className="block text-xs text-sub mb-2">Monthly target</label>
+                        <label className="block text-sm md:text-xs text-sub mb-2">Monthly target</label>
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm tabular-nums">
                             $
@@ -1271,7 +1489,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                 /* Tab 2: create a new category */
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-xs text-sub mb-2">Category name</label>
+                    <label className="block text-sm md:text-xs text-sub mb-2">Category name</label>
                     <input
                       type="text"
                       placeholder="Pet care"
@@ -1282,7 +1500,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs text-sub mb-2">Parent group (optional)</label>
+                    <label className="block text-sm md:text-xs text-sub mb-2">Parent group (optional)</label>
                     <select
                       value={newCatParentId}
                       onChange={(e) => setNewCatParentId(e.target.value)}
@@ -1298,7 +1516,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs text-sub mb-2">Category color</label>
+                    <label className="block text-sm md:text-xs text-sub mb-2">Category color</label>
                     <div className="flex items-center flex-wrap gap-2">
                       {PRESET_COLORS.map((color) => (
                         <button
@@ -1307,7 +1525,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                           onClick={() => setNewCatColor(color)}
                           aria-label={`Color ${color}`}
                           aria-pressed={newCatColor === color}
-                          className={`w-6 h-6 rounded-full transition-opacity cursor-pointer ${
+                          className={`size-10 md:size-6 rounded-full transition-opacity cursor-pointer ${
                             newCatColor === color
                               ? "ring-2 ring-accent-main ring-offset-2 ring-offset-surface"
                               : "opacity-70 hover:opacity-100"
@@ -1324,7 +1542,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                       id="newCatIsRollover"
                       checked={newCatIsRollover}
                       onChange={(e) => setNewCatIsRollover(e.target.checked)}
-                      className="mt-0.5 rounded-md border-default text-accent-main focus:ring-accent-main cursor-pointer"
+                      className="mt-0.5 size-5 md:size-4 rounded-md border-default text-accent-main focus:ring-accent-main cursor-pointer"
                     />
                     <label htmlFor="newCatIsRollover" className="text-sm cursor-pointer">
                       <span className="text-main block">Roll over unspent budget</span>
@@ -1335,7 +1553,7 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs text-sub mb-2">Monthly target</label>
+                    <label className="block text-sm md:text-xs text-sub mb-2">Monthly target</label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm tabular-nums">
                         $
@@ -1387,8 +1605,8 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
       {/* TRANSACTION DRILLDOWN MODAL                                   */}
       {/* ------------------------------------------------------------- */}
       {drilldownCategory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
-          <div className="bg-surface border border-default rounded-xl w-full max-w-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95">
+        <div className={modalOverlay}>
+          <div className={`${sectionedPanel} md:max-w-2xl`}>
             {/* Header */}
             <div className="p-5 border-b border-subtle flex items-start justify-between gap-4">
               <div className="flex items-start gap-3">
@@ -1431,12 +1649,12 @@ export const BudgetingView: React.FC<BudgetingViewProps> = ({
                   </div>
                   <ul className="divide-y divide-subtle">
                     {drilldownTransactions.map((t) => (
-                      <li key={t.id} className="h-14 flex items-center justify-between gap-4">
+                      <li key={t.id} className="min-h-14 py-2 flex items-center justify-between gap-4">
                         <div className="min-w-0">
-                          <div className="text-sm text-main truncate">
+                          <div className={`text-sm text-main ${wrapOnPhone}`}>
                             {t.normalized_payee || t.raw_payee}
                           </div>
-                          <div className="text-xs text-muted tabular-nums truncate">
+                          <div className={`text-xs text-muted tabular-nums ${wrapOnPhone}`}>
                             {t.transaction_date} · {t.raw_payee}
                           </div>
                         </div>

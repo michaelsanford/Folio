@@ -7,10 +7,9 @@ import { useChartTheme } from "../../hooks/useChartTheme";
 import { formatMoney, formatMoneyCompact } from "../../utils/format";
 import type { CashFlowForecastResponse } from "../../types";
 import { api } from "../../services/api";
+import { card, inputClass as baseInput, segmentButton } from "../common/ui";
 
-const card = "rounded-xl bg-surface border border-subtle";
-const inputClass =
-  "w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] disabled:opacity-50";
+const inputClass = `${baseInput} disabled:opacity-50`;
 
 const EVENT_LABELS: Record<string, string> = {
   INCOME: "Income",
@@ -182,16 +181,14 @@ export const CashFlowForecastView: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted">Forecast window</span>
-            <div className="flex rounded-lg bg-surface-subtle p-0.5 border border-default text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm md:text-xs text-muted">Forecast window</span>
+            <div className="flex rounded-lg bg-surface-subtle p-0.5 border border-default">
               {[30, 60, 90].map((d) => (
                 <button
                   key={d}
                   onClick={() => setDays(d)}
-                  className={`h-7 px-3 rounded-md transition-colors cursor-pointer ${
-                    days === d ? "bg-surface text-main" : "text-muted hover:text-main"
-                  }`}
+                  className={segmentButton(days === d)}
                 >
                   {d} days
                 </button>
@@ -350,7 +347,7 @@ export const CashFlowForecastView: React.FC = () => {
               return (
                 <div key={idx} className="p-4 flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-1">
-                    <div className="text-sm text-main truncate" title={ev.description}>
+                    <div className="text-sm text-main break-words">
                       {ev.description}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
@@ -366,7 +363,7 @@ export const CashFlowForecastView: React.FC = () => {
                       {ev.account_name && (
                         <>
                           <span>·</span>
-                          <span className="truncate">{ev.account_name}</span>
+                          <span className="break-words">{ev.account_name}</span>
                         </>
                       )}
                     </div>
@@ -397,8 +394,8 @@ export const CashFlowForecastView: React.FC = () => {
                 {forecast.scheduled_events.map((ev, idx) => {
                   const isIncome = ev.event_type === "INCOME";
                   return (
-                    <tr key={idx} className="h-12 bg-surface-hover transition-colors">
-                      <td className="px-4 tabular-nums text-sub whitespace-nowrap">{ev.date}</td>
+                    <tr key={idx} className="bg-surface-hover transition-colors">
+                      <td className="px-4 py-3 tabular-nums text-sub whitespace-nowrap">{ev.date}</td>
                       <td className="px-3">
                         <span
                           className={`rounded-md px-1.5 py-0.5 text-xs whitespace-nowrap ${
@@ -408,18 +405,18 @@ export const CashFlowForecastView: React.FC = () => {
                           {EVENT_LABELS[ev.event_type] ?? ev.event_type}
                         </span>
                       </td>
-                      <td className="px-3 text-main min-w-0">
-                        <div className="truncate" title={ev.description}>
+                      <td className="px-3 py-3 text-main min-w-0">
+                        <div className="break-words">
                           {ev.description}
                         </div>
                         {ev.account_name && (
-                          <div className="lg:hidden text-xs text-muted truncate">
+                          <div className="lg:hidden text-xs text-muted break-words">
                             {ev.account_name}
                           </div>
                         )}
                       </td>
                       <td className="hidden lg:table-cell px-3 text-muted">
-                        <div className="truncate" title={ev.account_name || undefined}>
+                        <div className="break-words">
                           {ev.account_name || "—"}
                         </div>
                       </td>

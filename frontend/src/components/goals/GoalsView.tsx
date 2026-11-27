@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ArrowRight,
   X,
+  MoreHorizontal,
 } from "lucide-react";
 import type {
   Goal,
@@ -26,6 +27,9 @@ import { NumberField } from "../common/NumberField";
 import { formatMoney, getDateLocale } from "../../utils/format";
 import { useCanEdit } from "../../hooks/useSession";
 import { getSession } from "../../utils/session";
+import { useIsPhone } from "../../hooks/useMediaQuery";
+import { ActionSheet } from "../common/ActionSheet";
+import { card, iconButton, dangerIconButton, inputClass, modalOverlay, primaryButton, secondaryButton } from "../common/ui";
 
 interface GoalsViewProps {
   accounts: Account[];
@@ -67,16 +71,12 @@ const GOAL_TYPE_META: Record<GoalType, { label: string; color: string; descripti
   },
 };
 
-const card = "rounded-xl bg-surface border border-subtle";
-const btnPrimary =
-  "inline-flex items-center justify-center gap-2 h-9 px-4 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] cursor-pointer";
-const btnSecondary =
-  "inline-flex items-center justify-center gap-2 h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer";
-const inputCls =
-  "w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]";
-const labelCls = "block text-xs text-sub mb-1";
+const btnPrimary = primaryButton;
+const btnSecondary = secondaryButton;
+const inputCls = inputClass;
+const labelCls = "block text-sm md:text-xs text-sub mb-1";
 const segment = (active: boolean) =>
-  `h-8 px-3 rounded-lg text-sm whitespace-nowrap border transition-colors cursor-pointer ${
+  `h-11 md:h-8 px-3 rounded-lg text-base md:text-sm border transition-colors cursor-pointer ${
     active
       ? "bg-surface-subtle border-default text-main font-medium"
       : "border-transparent text-sub hover:text-main bg-surface-hover"
@@ -176,6 +176,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
   const [selectedMemberId, setSelectedMemberId] = useState<string>("ALL");
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
   const [isLoading, setIsLoading] = useState(false);
+  const isPhone = useIsPhone();
+  const [sheetGoal, setSheetGoal] = useState<Goal | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // CRA Statutory Room
@@ -471,7 +473,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
       )}
 
       {/* Goal type filter */}
-      <div className="flex items-center gap-1 overflow-x-auto">
+      <div className="flex flex-wrap items-center gap-1">
         <button onClick={() => setTypeFilter("ALL")} className={segment(typeFilter === "ALL")}>
           All goals <span className="tabular-nums text-muted">{goals.length}</span>
         </button>
@@ -529,11 +531,11 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                           className="w-2 h-2 rounded-full shrink-0"
                           style={{ backgroundColor: meta.color }}
                         />
-                        <h3 className="text-base font-medium text-main truncate" title={g.name}>
+                        <h3 className="text-base font-medium text-main break-words min-w-0">
                           {g.name}
                         </h3>
                       </div>
-                      <div className="flex items-center gap-2 mt-1 text-xs text-muted">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-xs text-muted">
                         <span>{meta.label}</span>
                         {owner && (
                           <span className="inline-flex items-center gap-1.5 text-sub">
@@ -547,22 +549,35 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                       </div>
                     </div>
 
+                    {isPhone ? (
+                      <button
+                        type="button"
+                        onClick={() => setSheetGoal(g)}
+                        aria-label={`${g.name}: actions`}
+                        className={iconButton}
+                      >
+                        <MoreHorizontal className="w-5 h-5" strokeWidth={1.75} />
+                      </button>
+                    ) : (
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => handleOpenEditGoal(g)}
-                        className="p-1.5 rounded-lg text-muted hover:text-main bg-surface-hover transition-colors"
+                        className={iconButton}
                         title="Edit goal"
+                        aria-label="Edit goal"
                       >
                         <Edit2 className="w-4 h-4" strokeWidth={1.5} />
                       </button>
                       <button
                         onClick={() => handleDeleteGoal(g.id, g.name)}
-                        className="p-1.5 rounded-lg text-muted hover:text-negative bg-surface-hover transition-colors"
+                        className={dangerIconButton}
                         title="Delete goal"
+                        aria-label="Delete goal"
                       >
                         <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                       </button>
                     </div>
+                    )}
                   </div>
 
                   {/* Amounts */}
@@ -604,9 +619,9 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                   {/* Linked account and notes */}
                   <div className="mt-4 flex flex-col gap-1 text-xs text-muted">
                     {g.linked_account ? (
-                      <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
                         <span className="text-sub">Linked account</span>
-                        <span className="truncate">{g.linked_account.name}</span>
+                        <span className="break-words min-w-0">{g.linked_account.name}</span>
                         <Money value={g.linked_account.current_balance ?? 0} className="text-sub" />
                       </div>
                     ) : (
@@ -620,7 +635,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                       </div>
                     )}
 
-                    {g.notes && <div className="line-clamp-2">{g.notes}</div>}
+                    {g.notes && <div className="break-words whitespace-pre-line">{g.notes}</div>}
                   </div>
                 </div>
               </div>
@@ -631,8 +646,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
       {/* Emergency fund calculator modal */}
       {showCalcModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
-          <div className="relative w-full max-w-3xl bg-surface border border-default rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95">
+        <div className={modalOverlay}>
+          <div className="relative w-full md:max-w-3xl bg-surface border border-default rounded-t-2xl md:rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[92dvh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter">
             <div className="flex items-start justify-between gap-4 p-5 border-b border-subtle">
               <div>
                 <h2 className="text-base font-medium text-main">Emergency fund calculator</h2>
@@ -643,7 +658,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
               <button
                 onClick={() => setShowCalcModal(false)}
                 aria-label="Close"
-                className="p-1.5 rounded-lg text-muted hover:text-main bg-surface-hover transition-colors"
+                className={iconButton}
               >
                 <X className="w-4 h-4" strokeWidth={1.5} />
               </button>
@@ -728,6 +743,32 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                   </span>
                 </div>
 
+                {isPhone ? (
+                  <ul className="border border-subtle rounded-xl overflow-hidden bg-surface divide-y divide-subtle">
+                    {(calcData?.category_breakdown || calcData?.categories || []).map((row) => {
+                      const isIncluded = !excludedCatIds.includes(row.category_id);
+                      return (
+                        <li key={row.category_id} className={!isIncluded ? "opacity-60" : undefined}>
+                          <label className="min-h-14 px-4 py-3 flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={isIncluded}
+                              onChange={() => handleToggleCategoryExclusion(row.category_id)}
+                              className="size-5 shrink-0 rounded-md border-default text-accent-main focus:ring-accent-main"
+                            />
+                            <span className="flex-1 min-w-0">
+                              <span className="block text-main break-words">{row.category_name}</span>
+                              <span className="block text-sm text-muted">
+                                {isIncluded ? "Included" : "Excluded (discretionary)"}
+                              </span>
+                            </span>
+                            <Money value={row.monthly_average} className="text-main shrink-0" />
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
                 <div className="border border-subtle rounded-xl overflow-hidden bg-surface">
                   <table className="w-full table-fixed text-left text-sm border-collapse">
                     <thead>
@@ -744,7 +785,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                         return (
                           <tr
                             key={row.category_id}
-                            className={`h-10 bg-surface-hover transition-colors cursor-pointer ${
+                            className={`min-h-10 bg-surface-hover transition-colors cursor-pointer ${
                               !isIncluded ? "opacity-60" : ""
                             }`}
                             onClick={() => handleToggleCategoryExclusion(row.category_id)}
@@ -757,7 +798,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                                 className="rounded-md border-default text-accent-main focus:ring-accent-main cursor-pointer"
                               />
                             </td>
-                            <td className="px-2 sm:px-3 text-main truncate" title={row.category_name}>
+                            <td className="px-2 sm:px-3 text-main break-words">
                               {row.category_name}
                             </td>
                             <td className="px-2 sm:px-3 text-right whitespace-nowrap">
@@ -765,13 +806,13 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                             </td>
                             <td className="px-2 sm:px-3">
                               {isIncluded ? (
-                                <span className="inline-flex max-w-full truncate rounded-md px-1.5 py-0.5 text-xs bg-positive-subtle text-positive">
+                                <span className="inline-flex max-w-full rounded-md px-1.5 py-0.5 text-xs bg-positive-subtle text-positive">
                                   Included
                                 </span>
                               ) : (
                                 <span
                                   title="Excluded (discretionary)"
-                                  className="inline-flex max-w-full truncate rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-muted"
+                                  className="inline-flex max-w-full rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-muted"
                                 >
                                   Excluded (discretionary)
                                 </span>
@@ -783,6 +824,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                     </tbody>
                   </table>
                 </div>
+                )}
               </div>
             </div>
 
@@ -797,8 +839,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
       {/* Goal create / edit modal */}
       {isGoalModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
-          <div className="relative w-full max-w-lg bg-surface border border-default rounded-xl shadow-xl overflow-hidden flex flex-col animate-in zoom-in-95">
+        <div className={modalOverlay}>
+          <div className="relative w-full md:max-w-lg bg-surface border border-default rounded-t-2xl md:rounded-xl shadow-xl overflow-y-auto flex flex-col max-h-[92dvh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter">
             <div className="flex items-center justify-between p-5 border-b border-subtle">
               <h2 className="text-base font-medium text-main">
                 {editingGoal ? "Edit goal" : "New goal"}
@@ -806,7 +848,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
               <button
                 onClick={() => setIsGoalModalOpen(false)}
                 aria-label="Close"
-                className="p-1.5 rounded-lg text-muted hover:text-main bg-surface-hover transition-colors"
+                className={iconButton}
               >
                 <X className="w-4 h-4" strokeWidth={1.5} />
               </button>
@@ -927,7 +969,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                   onChange={(e) => setGoalForm({ ...goalForm, notes: e.target.value })}
                   rows={2}
                   placeholder="Notes"
-                  className="w-full px-3 py-2 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]"
+                  className="w-full px-3 py-2 rounded-lg border border-default bg-input text-base md:text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]"
                 />
               </div>
 
@@ -942,6 +984,24 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
             </form>
           </div>
         </div>
+      )}
+      {/* Phone: a goal's actions */}
+      {sheetGoal && (
+        <ActionSheet
+          open
+          onClose={() => setSheetGoal(null)}
+          title={sheetGoal.name}
+          subtitle={(GOAL_TYPE_META[sheetGoal.type] || GOAL_TYPE_META.SAVINGS).label}
+          actions={[
+            { label: "Edit goal", icon: Edit2, onSelect: () => handleOpenEditGoal(sheetGoal) },
+            {
+              label: "Delete goal",
+              icon: Trash2,
+              destructive: true,
+              onSelect: () => handleDeleteGoal(sheetGoal.id, sheetGoal.name),
+            },
+          ]}
+        />
       )}
     </div>
   );

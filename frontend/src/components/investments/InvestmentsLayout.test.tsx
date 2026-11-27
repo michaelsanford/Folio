@@ -225,3 +225,28 @@ describe("quote markers and ticker", () => {
     expect(create.mock.calls[0][0].symbol).toBe("XEQT.TO");
   });
 });
+
+describe("InvestmentsView holdings on a phone", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    sessionStorage.setItem("folio.quotes.autoRefreshed", "1");
+    vi.spyOn(api, "getPerformance").mockResolvedValue(performance);
+    vi.spyOn(api, "getFxRate").mockResolvedValue({ pair: "USDCAD", rate: null });
+    vi.spyOn(api, "fetchAutomatedQuotes").mockResolvedValue({} as never);
+  });
+
+  it("keeps phone cards read-only and offers Remove in the holding's sheet", async () => {
+    const remove = vi.spyOn(api, "deleteHolding").mockResolvedValue(undefined as never);
+    renderView();
+    const more = await screen.findByRole("button", { name: "BIG: details and actions" });
+    // The phone list has no inline Remove; the table (tablet and desktop) keeps it.
+    const phoneList = screen.getByTestId("holdings-phone-list");
+    expect(within(phoneList).queryByRole("button", { name: /Remove/ })).toBeNull();
+
+    fireEvent.click(more);
+    const sheet = screen.getByRole("dialog", { name: "BIG" });
+    expect(within(sheet).getByText("Market value")).toBeDefined();
+    fireEvent.click(within(sheet).getByRole("button", { name: "Remove BIG" }));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith("BIG"));
+  });
+});

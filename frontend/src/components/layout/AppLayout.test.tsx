@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import React from "react";
 import { AppLayout } from "./AppLayout";
 import { ThemeProvider } from "../../context/ThemeContext";
 import type { Account, HouseholdMember } from "../../types";
+import { mockViewport } from "../../test/viewport";
 
 const mockAccounts: Account[] = [
   {
@@ -34,6 +35,9 @@ const mockMembers: HouseholdMember[] = [
 describe("AppLayout Collapsible Sidebar", () => {
   beforeEach(() => {
     localStorage.clear();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   const renderLayout = (props?: {
@@ -157,5 +161,38 @@ describe("AppLayout Collapsible Sidebar", () => {
     const signOutBtn = within(sidebar).getByRole("button", { name: "Sign out" });
     fireEvent.click(signOutBtn);
     expect(onSignOut).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Sidebar on a tablet", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => vi.unstubAllGlobals());
+
+  const renderTablet = () =>
+    render(
+      <ThemeProvider>
+        <AppLayout activeTab="dashboard" onTabChange={vi.fn()} accounts={mockAccounts}>
+          <div>Main View</div>
+        </AppLayout>
+      </ThemeProvider>
+    );
+
+  it("starts as the narrow rail when nothing is stored", () => {
+    mockViewport("tablet");
+    renderTablet();
+    expect(screen.getByTestId("desktop-sidebar").getAttribute("data-collapsed")).toBe("true");
+  });
+
+  it("keeps a stored choice to show the full sidebar", () => {
+    mockViewport("tablet");
+    localStorage.setItem("folio-sidebar-collapsed", "false");
+    renderTablet();
+    expect(screen.getByTestId("desktop-sidebar").getAttribute("data-collapsed")).toBe("false");
+  });
+
+  it("starts expanded on a desktop", () => {
+    mockViewport("desktop");
+    renderTablet();
+    expect(screen.getByTestId("desktop-sidebar").getAttribute("data-collapsed")).toBe("false");
   });
 });

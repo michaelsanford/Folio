@@ -13,9 +13,9 @@ import { api } from "../../services/api";
 import { formatMoney, formatNumber } from "../../utils/format";
 import { isInvestmentAccount } from "../../constants/canadianAccountTypes";
 import { type AccountResolutionDraft, DestinationSelect, NewAccountFields } from "./AccountDraftFields";
+import { checkboxClass, primaryButton, secondaryButton } from "../common/ui";
 
 const chip = "inline-flex items-center rounded-md px-1.5 py-0.5 text-xs";
-const checkboxClass = "rounded border-default bg-input text-accent-main focus:ring-accent-main";
 
 interface HoldingsImportReviewProps {
   holdings: HoldingsImportPreview;
@@ -204,7 +204,7 @@ export const HoldingsImportReview: React.FC<HoldingsImportReviewProps> = ({
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2 min-w-0">
             <FileText className="w-4 h-4 text-muted shrink-0" strokeWidth={1.5} />
-            <span className="text-sm font-medium text-main truncate max-w-[160px] sm:max-w-xs">{filename}</span>
+            <span className="text-sm font-medium text-main break-all md:break-words min-w-0">{filename}</span>
             <span className={`${chip} bg-surface-subtle text-sub`}>Holdings</span>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted">
@@ -219,7 +219,7 @@ export const HoldingsImportReview: React.FC<HoldingsImportReviewProps> = ({
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 sm:flex-none h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer"
+            className={`flex-1 sm:flex-none ${secondaryButton}`}
           >
             Cancel
           </button>
@@ -227,7 +227,7 @@ export const HoldingsImportReview: React.FC<HoldingsImportReviewProps> = ({
             type="button"
             onClick={handleCommit}
             disabled={isCommitting || isComparing}
-            className="flex-1 sm:flex-none h-9 px-4 inline-flex items-center justify-center gap-2 rounded-lg bg-accent-main hover:bg-accent-main disabled:opacity-50 text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] cursor-pointer"
+            className={`flex-1 sm:flex-none ${primaryButton}`}
           >
             {isCommitting ? (
               <>
@@ -244,7 +244,7 @@ export const HoldingsImportReview: React.FC<HoldingsImportReviewProps> = ({
 
       {/* Destination */}
       <section className="p-4 rounded-xl bg-surface border border-subtle space-y-3">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2 min-w-0">
             <Building2 className="w-4 h-4 text-muted shrink-0" strokeWidth={1.5} />
             <span className="text-sm font-medium text-main whitespace-normal break-words">{accountLabel}</span>
@@ -309,24 +309,30 @@ export const HoldingsImportReview: React.FC<HoldingsImportReviewProps> = ({
         </ul>
 
         {/* Desktop table */}
-        <table className="hidden md:table w-full text-sm" data-testid="holdings-review-table">
+        {/* Quantity and book cost fold under the name below lg */}
+        <table className="hidden md:table w-full table-fixed text-sm" data-testid="holdings-review-table">
           <thead>
             <tr className="text-left text-xs text-muted border-b border-subtle">
-              <th className="px-4 py-2 font-normal">Symbol</th>
+              <th className="px-4 py-2 w-[96px] font-normal">Symbol</th>
               <th className="px-4 py-2 font-normal">Name</th>
-              <th className="px-4 py-2 font-normal text-right">Quantity</th>
-              <th className="px-4 py-2 font-normal text-right">Book cost</th>
-              <th className="px-4 py-2 font-normal text-right">Market value</th>
-              <th className="px-4 py-2 font-normal">Status</th>
+              <th className="hidden lg:table-cell px-4 py-2 w-[104px] font-normal text-right">Quantity</th>
+              <th className="hidden lg:table-cell px-4 py-2 w-[128px] font-normal text-right">Book cost</th>
+              <th className="px-4 py-2 w-[128px] font-normal text-right">Market value</th>
+              <th className="px-4 py-2 w-[136px] lg:w-[168px] font-normal">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-subtle">
             {comparison.positions.map((p) => (
               <tr key={p.symbol}>
-                <td className="px-4 py-2 font-mono text-main">{p.symbol}</td>
-                <td className="px-4 py-2 text-sub">{p.name}</td>
-                <td className="px-4 py-2 text-right tabular-nums text-main">{quantityText(p.quantity)}</td>
-                <td className="px-4 py-2 text-right tabular-nums text-sub">{money(p.book_cost)}</td>
+                <td className="px-4 py-2 font-mono text-main break-words">{p.symbol}</td>
+                <td className="px-4 py-2 text-sub break-words">
+                  {p.name}
+                  <div className="lg:hidden text-xs text-muted tabular-nums">
+                    {quantityText(p.quantity)} units · cost {money(p.book_cost)}
+                  </div>
+                </td>
+                <td className="hidden lg:table-cell px-4 py-2 text-right tabular-nums text-main">{quantityText(p.quantity)}</td>
+                <td className="hidden lg:table-cell px-4 py-2 text-right tabular-nums text-sub">{money(p.book_cost)}</td>
                 <td className="px-4 py-2 text-right tabular-nums text-main">{money(p.market_value)}</td>
                 <td className="px-4 py-2">
                   <StatusChip position={p} />
@@ -385,8 +391,8 @@ export const HoldingsImportReview: React.FC<HoldingsImportReviewProps> = ({
           </div>
           <ul className="divide-y divide-subtle border border-subtle rounded-lg overflow-hidden">
             {comparison.missing.map((m) => (
-              <li key={m.holding_id} className="p-3 flex items-center justify-between gap-3">
-                <label className="flex items-center gap-2 min-w-0 cursor-pointer">
+              <li key={m.holding_id} className="p-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <label className="flex flex-wrap items-center gap-2 min-w-0 min-h-11 md:min-h-0 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={removeIds.has(m.holding_id)}
@@ -395,7 +401,7 @@ export const HoldingsImportReview: React.FC<HoldingsImportReviewProps> = ({
                     className={checkboxClass}
                   />
                   <span className="font-mono text-sm text-main">{m.symbol}</span>
-                  {m.name && <span className="text-xs text-sub truncate">{m.name}</span>}
+                  {m.name && <span className="text-xs text-sub break-words min-w-0">{m.name}</span>}
                 </label>
                 <span className="text-xs text-muted tabular-nums shrink-0">
                   {quantityText(m.quantity)} units · {money(m.market_value)}

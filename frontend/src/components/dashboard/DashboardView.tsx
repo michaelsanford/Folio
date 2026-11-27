@@ -8,6 +8,7 @@ import { isAssetAccount } from "../../constants/canadianAccountTypes";
 import { useChartTheme } from "../../hooks/useChartTheme";
 import { formatMoney, formatMoneyCompact, getDateLocale } from "../../utils/format";
 import type { Account, DashboardAnalyticsResponse } from "../../types";
+import { card, primaryButton, wrapOnPhone } from "../common/ui";
 
 interface DashboardViewProps {
   analytics: DashboardAnalyticsResponse | null;
@@ -17,8 +18,6 @@ interface DashboardViewProps {
   hiddenAccountIds?: readonly string[];
   onHiddenAccountsChange?: (ids: string[]) => void;
 }
-
-const card = "rounded-xl bg-surface border border-subtle";
 
 const StatCard: React.FC<{ label: string; children: React.ReactNode; meta: React.ReactNode }> = ({
   label,
@@ -287,7 +286,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <p>No income or spending recorded this month</p>
               <button
                 onClick={() => onNavigate("ingestion")}
-                className="h-9 px-4 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98]"
+                className={primaryButton}
               >
                 Import statements
               </button>
@@ -298,7 +297,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <section className={`${card} p-5 sm:p-6 flex flex-col`}>
           <h2 className="text-base font-medium text-main">Top categories</h2>
           <p className="mt-1 text-sm text-sub">Spending this month</p>
-          <div className="flex-1 mt-4 flex flex-col gap-4 overflow-y-auto max-h-72 pr-1">
+          <div className="flex-1 mt-4 flex flex-col gap-4 md:overflow-y-auto md:max-h-72 md:pr-1">
             {category_spending.length > 0 ? (
               category_spending.map((cat) => (
                 <div key={cat.category_id}>
@@ -308,7 +307,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         className="w-2 h-2 rounded-full shrink-0"
                         style={{ backgroundColor: cat.category_color }}
                       />
-                      <span className="text-main truncate">{cat.category_name}</span>
+                      <span className={`text-main ${wrapOnPhone}`}>{cat.category_name}</span>
                     </div>
                     <div className="shrink-0 flex items-baseline gap-2">
                       <Money value={cat.amount} cents={false} className="text-sub" />
@@ -342,20 +341,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="flex items-center justify-between px-5 sm:px-6 h-14 border-b border-subtle">
           <h2 className="text-base font-medium text-main">Accounts</h2>
           <button
+            type="button"
             onClick={() => onNavigate("accounts")}
-            className="text-sm text-accent-subtle hover:underline underline-offset-4"
+            className="min-h-11 md:min-h-0 px-2 -mr-2 text-sm text-accent-subtle hover:underline underline-offset-4 cursor-pointer"
           >
             View all
           </button>
         </div>
-        <ul className="divide-y divide-[var(--border-subtle)] max-h-96 overflow-y-auto">
+        <ul className="divide-y divide-[var(--border-subtle)] md:max-h-96 md:overflow-y-auto">
           {accounts.map((acc) => {
             const isLiability = !isAssetAccount(acc.type);
             const isHidden = hidden.has(acc.id);
             return (
               <li
                 key={acc.id}
-                className={`flex items-center justify-between gap-4 px-5 sm:px-6 h-14 transition-opacity ${
+                className={`flex items-center justify-between gap-4 px-5 sm:px-6 min-h-14 py-2.5 transition-opacity ${
                   isHidden ? "opacity-50" : ""
                 }`}
                 title={isHidden ? "Not counted on the dashboard" : undefined}
@@ -363,23 +363,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <div className="flex items-center gap-3 min-w-0">
                   <AccountIcon type={acc.type} icon={acc.icon} color={acc.color} size="md" />
                   <div className="min-w-0">
-                    <div className="text-sm text-main truncate">{acc.name}</div>
-                    <div className="text-xs text-muted truncate">
-                      {acc.institution}
-                      {acc.account_number_mask ? ` ··${acc.account_number_mask}` : ""}
-                      {acc.interest_rate ? ` · ${acc.interest_rate}% APR` : ""}
-                      {acc.credit_limit ? (
-                        <>
-                          {" · "}
+                    <div className={`text-sm text-main ${wrapOnPhone}`}>{acc.name}</div>
+                    {(acc.institution || acc.account_number_mask) && (
+                      <div className={`text-xs text-muted ${wrapOnPhone}`}>
+                        {acc.institution}
+                        {acc.account_number_mask ? ` ··${acc.account_number_mask}` : ""}
+                      </div>
+                    )}
+                    {(acc.interest_rate || acc.credit_limit) ? (
+                      <div className="text-xs text-muted flex flex-wrap items-center gap-x-1.5">
+                        {acc.interest_rate ? <span>{acc.interest_rate}% APR</span> : null}
+                        {acc.interest_rate && acc.credit_limit ? <span aria-hidden="true">·</span> : null}
+                        {acc.credit_limit ? (
                           <CreditUsage compact balance={acc.current_balance} limit={acc.credit_limit} />
-                        </>
-                      ) : null}
-                    </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
                 <Money
                   value={isLiability ? -acc.current_balance : acc.current_balance}
-                  className={`text-sm ${isLiability ? "text-sub" : "text-main"}`}
+                  className={`text-sm shrink-0 ${isLiability ? "text-sub" : "text-main"}`}
                 />
               </li>
             );

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Trash2, RefreshCw, AlertCircle, X } from "lucide-react";
+import { Plus, Trash2, RefreshCw, AlertCircle, X, ChevronRight } from "lucide-react";
 import type {
   CategorizationRule,
   Category,
@@ -11,6 +11,16 @@ import type {
 } from "../../types";
 import { api } from "../../services/api";
 import { NumberField } from "../common/NumberField";
+import {
+  card,
+  dangerIconButton as deleteButton,
+  iconButton,
+  inputClass,
+  modalOverlay,
+  primaryButton,
+  secondaryButton,
+} from "../common/ui";
+import { ActionSheet, DetailList } from "../common/ActionSheet";
 
 const PATTERN_TYPE_LABELS: Record<RulePatternType, string> = {
   CONTAINS: "Contains",
@@ -19,16 +29,7 @@ const PATTERN_TYPE_LABELS: Record<RulePatternType, string> = {
   REGEX: "Regex",
 };
 
-const card = "rounded-xl bg-surface border border-subtle";
 const fieldLabel = "block text-sm text-sub mb-2";
-const inputClass =
-  "w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] transition-colors";
-const primaryButton =
-  "h-9 px-4 inline-flex items-center justify-center gap-2 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] cursor-pointer";
-const secondaryButton =
-  "h-9 px-4 inline-flex items-center justify-center gap-2 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer";
-const deleteButton =
-  "h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-negative bg-surface-hover transition-colors cursor-pointer";
 
 interface RulesManagerViewProps {
   categories: Category[];
@@ -48,6 +49,8 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
   const [rules, setRules] = useState<CategorizationRule[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // Phones: a rule row opens this sheet with its details and Delete.
+  const [sheetRuleId, setSheetRuleId] = useState<string | null>(null);
   const [newRule, setNewRule] = useState<{
     category_id: string;
     pattern: string;
@@ -289,7 +292,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
   ];
 
   const tabClass = (active: boolean) =>
-    `h-8 px-3 flex items-center gap-2 rounded-lg text-sm whitespace-nowrap transition-colors cursor-pointer ${
+    `h-11 md:h-8 px-3 flex items-center gap-2 rounded-lg text-sm transition-colors cursor-pointer ${
       active ? "bg-surface-subtle text-main font-medium" : "text-sub hover:text-main bg-surface-hover"
     }`;
 
@@ -357,7 +360,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                 aria-label="Statement text"
                 value={testPayee}
                 onChange={(e) => setTestPayee(e.target.value)}
-                className={`${inputClass} flex-1 sm:w-auto sm:min-w-[220px] font-mono`}
+                className={`${inputClass} min-w-0 sm:flex-1 sm:w-auto sm:min-w-[220px] font-mono`}
               />
               <div className="flex items-center gap-2">
                 <NumberField
@@ -366,7 +369,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                   aria-label="Amount"
                   value={testAmount}
                   onValueChange={setTestAmount}
-                  className="w-28 h-9 px-3 rounded-lg border border-default bg-input text-sm text-main tabular-nums placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
+                  className="w-28 h-11 md:h-9 px-3 rounded-lg border border-default bg-input text-base md:text-sm text-main tabular-nums placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
                 />
                 <button onClick={handleTestMatch} className={`${secondaryButton} flex-1 sm:flex-none`}>
                   Test match
@@ -402,8 +405,8 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
 
           {/* Rules Container */}
           <div className={`${card} overflow-hidden`}>
-            {/* Mobile & tablet Rules Feed (< lg) */}
-            <div className="block lg:hidden divide-y divide-[var(--border-subtle)]">
+            {/* Phone rules feed (< md): read-only; a tap opens the rule's sheet */}
+            <div className="block md:hidden divide-y divide-[var(--border-subtle)]">
               {isLoading ? (
                 <div className="p-8 text-center text-muted text-sm">Loading rules…</div>
               ) : rules.length === 0 ? (
@@ -412,47 +415,45 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                 rules.map((rule) => {
                   const cat = categories.find((c) => c.id === rule.category_id);
                   return (
-                    <div key={rule.id} className="p-4 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
+                    <button
+                      key={rule.id}
+                      type="button"
+                      onClick={() => setSheetRuleId(rule.id)}
+                      aria-label={`Rule ${rule.pattern}, details and actions`}
+                      className="w-full p-4 flex items-start gap-3 text-left bg-surface-hover transition-colors cursor-pointer"
+                    >
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="tabular-nums text-xs text-muted">#{rule.priority}</span>
                           <span className="rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-sub">
                             {PATTERN_TYPE_LABELS[rule.pattern_type] ?? rule.pattern_type}
                           </span>
                         </div>
-                        <button
-                          onClick={() => handleDeleteRule(rule.id)}
-                          aria-label="Delete rule"
-                          className={deleteButton}
-                        >
-                          <Trash2 className="w-4 h-4" strokeWidth={1.5} />
-                        </button>
-                      </div>
-
-                      <div className="font-mono text-sm text-main break-all">{rule.pattern}</div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="w-2 h-2 rounded-full"
-                            style={{ backgroundColor: cat?.color || "var(--text-muted)" }}
-                          ></span>
-                          <span className="text-sub">{cat?.name || "Unknown"}</span>
-                        </div>
-                        {rule.normalized_payee_override && (
-                          <span className="text-muted">
-                            → <span className="text-main">{rule.normalized_payee_override}</span>
+                        <div className="font-mono text-base text-main break-all">{rule.pattern}</div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                          <span className="flex items-center gap-2 min-w-0">
+                            <span
+                              className="w-2 h-2 rounded-full shrink-0"
+                              style={{ backgroundColor: cat?.color || "var(--text-muted)" }}
+                            ></span>
+                            <span className="text-sub break-words">{cat?.name || "Unknown"}</span>
                           </span>
-                        )}
+                          {rule.normalized_payee_override && (
+                            <span className="text-muted break-words min-w-0">
+                              → <span className="text-main">{rule.normalized_payee_override}</span>
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                      <ChevronRight className="w-5 h-5 mt-0.5 text-muted shrink-0" strokeWidth={1.5} aria-hidden="true" />
+                    </button>
                   );
                 })
               )}
             </div>
 
-            {/* Desktop Rules Table (>= lg) */}
-            <div className="hidden lg:block">
+            {/* Rules table (tablet and desktop, >= md) */}
+            <div className="hidden md:block">
               <table className="w-full table-fixed text-left text-sm">
                 <thead className="border-b border-subtle">
                   <tr className="h-10 text-xs text-muted">
@@ -461,7 +462,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                     <th className="px-3 font-normal">Pattern</th>
                     <th className="px-3 font-normal w-[22%]">Category</th>
                     <th className="hidden xl:table-cell px-3 font-normal w-[18%]">Payee override</th>
-                    <th className="px-3 font-normal w-14">
+                    <th className="px-3 font-normal w-14 pointer-coarse:w-16">
                       <span className="sr-only">Actions</span>
                     </th>
                   </tr>
@@ -483,7 +484,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                     rules.map((rule) => {
                       const cat = categories.find((c) => c.id === rule.category_id);
                       return (
-                        <tr key={rule.id} className="h-12 text-main bg-surface-hover transition-colors">
+                        <tr key={rule.id} className="h-12 text-main bg-surface-hover transition-colors align-middle">
                           <td className="px-3 tabular-nums text-xs text-muted">#{rule.priority}</td>
                           <td className="px-3">
                             <span className="rounded-md px-1.5 py-0.5 text-xs bg-surface-subtle text-sub whitespace-nowrap">
@@ -491,11 +492,11 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                             </span>
                           </td>
                           <td className="px-3 min-w-0">
-                            <div className="font-mono text-main truncate" title={rule.pattern}>
+                            <div className="font-mono text-main break-all">
                               {rule.pattern}
                             </div>
                             {rule.normalized_payee_override && (
-                              <div className="xl:hidden text-xs text-sub truncate">
+                              <div className="xl:hidden text-xs text-sub break-words">
                                 → {rule.normalized_payee_override}
                               </div>
                             )}
@@ -506,16 +507,13 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                                 className="w-2 h-2 rounded-full shrink-0"
                                 style={{ backgroundColor: cat?.color || "var(--text-muted)" }}
                               ></span>
-                              <span className="truncate" title={cat?.name || "Unknown"}>
+                              <span className="break-words min-w-0">
                                 {cat?.name || "Unknown"}
                               </span>
                             </div>
                           </td>
                           <td className="hidden xl:table-cell px-3 text-sub min-w-0">
-                            <div
-                              className="truncate"
-                              title={rule.normalized_payee_override || undefined}
-                            >
+                            <div className="break-words">
                               {rule.normalized_payee_override || <span className="text-muted">–</span>}
                             </div>
                           </td>
@@ -551,7 +549,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                 type="button"
                 onClick={loadEngineStatus}
                 disabled={isStatusLoading}
-                className="h-8 px-2 flex items-center gap-2 rounded-lg text-sm text-sub hover:text-main bg-surface-hover transition-colors cursor-pointer"
+                className="h-11 md:h-8 px-3 md:px-2 flex items-center gap-2 rounded-lg text-sm text-sub hover:text-main bg-surface-hover transition-colors cursor-pointer"
                 title="Refresh status"
               >
                 <RefreshCw
@@ -745,14 +743,14 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                 <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                   <div className="min-w-0">
                     <dt className="text-xs text-muted">Normalized payee</dt>
-                    <dd className="mt-1 text-main font-mono truncate">
+                    <dd className="mt-1 text-main font-mono break-all">
                       {classificationResult.normalized_payee || sandboxPayee}
                     </dd>
                   </div>
 
                   <div className="min-w-0">
                     <dt className="text-xs text-muted">Category ID</dt>
-                    <dd className="mt-1 text-main font-mono truncate">
+                    <dd className="mt-1 text-main font-mono break-all">
                       {classificationResult.category_id || "None"}
                     </dd>
                   </div>
@@ -858,12 +856,40 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
         </div>
       )}
 
+      {/* Phone: a rule's details and actions */}
+      {(() => {
+        const rule = sheetRuleId ? rules.find((r) => r.id === sheetRuleId) : undefined;
+        if (!rule) return null;
+        const cat = categories.find((c) => c.id === rule.category_id);
+        return (
+          <ActionSheet
+            open
+            onClose={() => setSheetRuleId(null)}
+            title={rule.pattern}
+            subtitle={`Rule #${rule.priority}`}
+            actions={[
+              { label: "Delete rule", icon: Trash2, destructive: true, onSelect: () => void handleDeleteRule(rule.id) },
+            ]}
+          >
+            <DetailList
+              items={[
+                ["Match type", PATTERN_TYPE_LABELS[rule.pattern_type] ?? rule.pattern_type],
+                ["Pattern", <span className="font-mono break-all">{rule.pattern}</span>],
+                ["Category", cat?.name || "Unknown"],
+                !!rule.normalized_payee_override && ["Payee becomes", rule.normalized_payee_override],
+                ["Priority", <span className="tabular-nums">{rule.priority}</span>],
+              ]}
+            />
+          </ActionSheet>
+        );
+      })()}
+
       {/* Create Rule Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+        <div className={modalOverlay}>
           <form
             onSubmit={handleCreateRule}
-            className="w-full max-w-md rounded-xl bg-surface border border-default shadow-xl animate-in zoom-in-95"
+            className="w-full md:max-w-md max-h-[92dvh] md:max-h-[90vh] overflow-y-auto rounded-t-2xl md:rounded-xl bg-surface border border-default shadow-xl pb-[env(safe-area-inset-bottom)] md:pb-0 animate-in sheet-enter"
           >
             <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-subtle">
               <h3 className="text-base font-medium text-main">New rule</h3>
@@ -871,7 +897,7 @@ export const RulesManagerView: React.FC<RulesManagerViewProps> = ({
                 type="button"
                 onClick={() => setIsModalOpen(false)}
                 aria-label="Close"
-                className="h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer"
+                className={iconButton}
               >
                 <X className="w-4 h-4" strokeWidth={1.5} />
               </button>

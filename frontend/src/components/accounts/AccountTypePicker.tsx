@@ -10,6 +10,7 @@ import {
 } from "../../constants/canadianAccountTypes";
 import { AccountIcon } from "../common/AccountIcon";
 import { CanadianRulesModal } from "./CanadianRulesModal";
+import { iconButton } from "../common/ui";
 
 interface AccountTypePickerProps {
   value: AccountType;
@@ -107,14 +108,14 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
       >
         <div className="flex items-center gap-3 min-w-0">
           <AccountIcon type={currentMeta.type} size="md" />
-          <div className="truncate flex-1">
-            <div className="text-sm font-medium text-main flex items-center gap-2 truncate">
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium text-main flex flex-wrap items-center gap-x-2 gap-y-1 break-words">
               <span>{currentMeta.name}</span>
               <span className="rounded-md px-1.5 py-0.5 text-xs font-mono font-normal bg-surface-subtle text-sub shrink-0">
                 {currentMeta.badge}
               </span>
             </div>
-            <div className="text-xs text-muted mt-0.5 truncate">
+            <div className="text-xs text-muted mt-0.5 break-words">
               {ACCOUNT_CATEGORY_LABELS[currentMeta.category]} · {currentMeta.description}
             </div>
           </div>
@@ -162,19 +163,19 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
                     placeholder="Search account types"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="w-full h-9 pl-9 pr-3 bg-input border border-default rounded-lg text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
+                    className="w-full h-11 md:h-9 pl-9 pr-3 bg-input border border-default rounded-lg text-base md:text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
                     autoFocus
                   />
                 </div>
 
                 {/* Category Tabs */}
-                <div className="flex gap-1 overflow-x-auto pb-0.5 no-scrollbar">
+                <div className="flex flex-wrap gap-1 pb-0.5">
                   {categories.map((c) => (
                     <button
                       key={c.id}
                       type="button"
                       onClick={() => setSelectedCategory(c.id)}
-                      className={`h-7 px-2 rounded-md text-xs whitespace-nowrap border transition-colors cursor-pointer ${
+                      className={`h-10 md:h-7 px-2.5 md:px-2 rounded-md text-sm md:text-xs border transition-colors cursor-pointer ${
                         selectedCategory === c.id
                           ? "bg-surface-subtle border-default text-main font-medium"
                           : "border-transparent text-sub hover:text-main bg-surface-hover"
@@ -209,7 +210,7 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
                           <div className="mt-0.5">
                             <AccountIcon type={item.type} size="md" />
                           </div>
-                          <div className="truncate flex-1">
+                          <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-sm font-medium text-main">
                                 {item.name}
@@ -218,7 +219,7 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
                                 {item.badge}
                               </span>
                             </div>
-                            <p className="text-xs text-muted line-clamp-2 mt-0.5 leading-relaxed">
+                            <p className="text-xs text-muted mt-0.5 leading-relaxed break-words">
                               {item.description}
                             </p>
                           </div>
@@ -233,7 +234,7 @@ export const AccountTypePicker: React.FC<AccountTypePickerProps> = ({
                               e.stopPropagation();
                               setInfoType(item.type);
                             }}
-                            className="h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-main transition-colors cursor-pointer"
+                            className={iconButton}
                           >
                             <Info className="w-4 h-4" strokeWidth={1.5} />
                           </button>

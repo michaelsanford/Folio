@@ -12,6 +12,7 @@ import {
   type SymbolPosition,
 } from "../../utils/format";
 import { useFormatPrefs } from "../../hooks/useFormatPrefs";
+import { selectClass } from "./ui";
 
 const GROUP_OPTIONS: { value: GroupSeparator; label: string }[] = [
   { value: ",", label: "Comma  1,234" },
@@ -21,8 +22,7 @@ const GROUP_OPTIONS: { value: GroupSeparator; label: string }[] = [
   { value: "", label: "None  1234" },
 ];
 
-const selectClass =
-  "w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main focus:outline-none focus:border-[var(--accent-primary)]";
+
 
 interface SegmentedProps<T extends string> {
   label: string;
@@ -45,7 +45,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: Segmen
               role="radio"
               aria-checked={selected}
               onClick={() => onChange(o.value)}
-              className={`flex-1 h-9 px-2 text-sm tabular-nums transition-colors cursor-pointer ${
+              className={`flex-1 h-11 md:h-9 px-2 text-sm tabular-nums transition-colors cursor-pointer ${
                 selected ? "bg-accent-subtle text-main font-medium" : "bg-surface text-sub bg-surface-hover"
               }`}
             >

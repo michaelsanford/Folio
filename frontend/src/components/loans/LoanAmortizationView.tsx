@@ -6,12 +6,12 @@ import { useChartTheme } from "../../hooks/useChartTheme";
 import { formatMoney, formatMoneyCompact } from "../../utils/format";
 import type { Account, AmortizationScheduleResponse } from "../../types";
 import { api } from "../../services/api";
+import { card, chipTab } from "../common/ui";
 
 interface LoanAmortizationViewProps {
   accounts: Account[];
 }
 
-const card = "rounded-xl bg-surface border border-subtle";
 
 export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ accounts }) => {
   const chartTheme = useChartTheme();
@@ -160,17 +160,15 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
 
   return (
     <div className="max-w-7xl mx-auto flex flex-col gap-6">
-      {/* Loan selector */}
-      <div className="flex items-center gap-1 overflow-x-auto pb-4 border-b border-subtle">
+      {/* Loan selector: wraps onto more lines, never scrolls sideways */}
+      <div className="flex flex-wrap items-center gap-1 pb-4 border-b border-subtle">
         {loanAccounts.map((acc) => (
           <button
             key={acc.id}
+            type="button"
             onClick={() => setSelectedLoanId(acc.id)}
-            className={`h-8 px-3 rounded-lg text-sm whitespace-nowrap border transition-colors cursor-pointer ${
-              selectedLoanId === acc.id
-                ? "bg-surface-subtle border-default text-main font-medium"
-                : "border-transparent text-sub hover:text-main bg-surface-hover"
-            }`}
+            aria-pressed={selectedLoanId === acc.id}
+            className={`${chipTab(selectedLoanId === acc.id)} text-left break-words`}
           >
             {acc.name}
           </button>
@@ -270,7 +268,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
 
           {/* Full schedule */}
           <section className={`${card} overflow-hidden`}>
-            <div className="flex items-center justify-between px-5 sm:px-6 h-14 border-b border-subtle">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-5 sm:px-6 py-4 border-b border-subtle">
               <h2 className="text-base font-medium text-main">
                 {isRevolving ? "Minimum payment projection" : "Amortization schedule"}
               </h2>
@@ -279,8 +277,8 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
               </span>
             </div>
 
-            {/* Mobile & tablet schedule feed (< lg) */}
-            <div className="block lg:hidden divide-y divide-subtle text-sm max-h-96 overflow-y-auto">
+            {/* Phone schedule feed (< md); the page scrolls, not an inner box */}
+            <div className="block md:hidden divide-y divide-subtle text-sm">
               {scheduleData.schedule.map((row) => (
                 <div key={row.period} className="px-4 py-3 flex flex-col gap-2">
                   <div className="flex items-center justify-between gap-3">
@@ -303,31 +301,45 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
                       <Money value={row.remaining_balance} className="text-main" />
                     </div>
                   </div>
+                  {row.escrow > 0 && (
+                    <div className="text-xs text-muted">
+                      Includes <Money value={row.escrow} /> escrow
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
 
-            {/* Desktop schedule table (>= lg) */}
-            <div className="hidden lg:block max-h-96 overflow-y-auto">
+            {/* Tablet and desktop schedule table (>= md). Period and escrow fold
+                into the date and total cells below lg, so the table always fits. */}
+            <div className="hidden md:block max-h-96 overflow-y-auto">
               <table className="w-full table-fixed text-xs xl:text-sm">
                 <thead className="bg-surface sticky top-0 border-b border-subtle">
                   <tr className="text-xs text-muted">
-                    <th className="h-9 px-2.5 xl:px-4 w-16 text-left font-normal">Period</th>
+                    <th className="hidden lg:table-cell h-9 px-2.5 xl:px-4 w-16 text-left font-normal">Period</th>
                     <th className="h-9 px-2.5 xl:px-4 w-24 text-left font-normal">Date</th>
                     <th className="h-9 px-2.5 xl:px-4 text-right font-normal">Total payment</th>
                     <th className="h-9 px-2.5 xl:px-4 text-right font-normal">Principal</th>
                     <th className="h-9 px-2.5 xl:px-4 text-right font-normal">Interest</th>
-                    <th className="h-9 px-2.5 xl:px-4 text-right font-normal">Escrow</th>
+                    <th className="hidden lg:table-cell h-9 px-2.5 xl:px-4 text-right font-normal">Escrow</th>
                     <th className="h-9 px-2.5 xl:px-4 text-right font-normal">Remaining balance</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-subtle text-sub">
                   {scheduleData.schedule.map((row) => (
                     <tr key={row.period} className="h-9 bg-surface-hover transition-colors">
-                      <td className="px-2.5 xl:px-4 tabular-nums text-muted">#{row.period}</td>
-                      <td className="px-2.5 xl:px-4 tabular-nums whitespace-nowrap">{row.payment_date}</td>
-                      <td className="px-2.5 xl:px-4 text-right whitespace-nowrap">
+                      <td className="hidden lg:table-cell px-2.5 xl:px-4 tabular-nums text-muted">#{row.period}</td>
+                      <td className="px-2.5 xl:px-4 py-1.5 tabular-nums whitespace-nowrap">
+                        <span className="lg:hidden text-muted">#{row.period} · </span>
+                        {row.payment_date}
+                      </td>
+                      <td className="px-2.5 xl:px-4 py-1.5 text-right whitespace-nowrap">
                         <Money value={row.total_payment} className="text-main" />
+                        {row.escrow > 0 && (
+                          <div className="lg:hidden text-muted">
+                            incl. <Money value={row.escrow} /> escrow
+                          </div>
+                        )}
                       </td>
                       <td className="px-2.5 xl:px-4 text-right whitespace-nowrap">
                         <Money value={row.principal} />
@@ -335,7 +347,7 @@ export const LoanAmortizationView: React.FC<LoanAmortizationViewProps> = ({ acco
                       <td className="px-2.5 xl:px-4 text-right whitespace-nowrap">
                         <Money value={row.interest} />
                       </td>
-                      <td className="px-2.5 xl:px-4 text-right whitespace-nowrap">
+                      <td className="hidden lg:table-cell px-2.5 xl:px-4 text-right whitespace-nowrap">
                         <Money value={row.escrow} className="text-muted" />
                       </td>
                       <td className="px-2.5 xl:px-4 text-right whitespace-nowrap">

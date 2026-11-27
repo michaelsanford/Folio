@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import type { Me, Relationship } from "../../types";
 import { api } from "../../services/api";
+import { inputClass, modalOverlay, modalPanel, primaryButton, secondaryButton } from "../common/ui";
 
 interface WelcomeDialogProps {
   me: Me;
@@ -18,8 +19,7 @@ const RELATIONSHIPS: ReadonlyArray<readonly [Relationship, string]> = [
   ["Other", "Other household member"],
 ];
 
-const inputClass =
-  "w-full h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]";
+
 
 /** A first guess at a name: the profile name, else the part of the email before the @. */
 const suggestedName = (me: Me): string => {
@@ -63,13 +63,13 @@ export const WelcomeDialog: React.FC<WelcomeDialogProps> = ({ me, onSaved, onSki
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+    <div className={modalOverlay}>
       <form
         role="dialog"
         aria-modal="true"
         aria-labelledby="welcome-title"
         onSubmit={handleSubmit}
-        className="w-full max-w-md bg-surface border border-default rounded-xl shadow-xl p-6 space-y-5 animate-in zoom-in-95"
+        className={`${modalPanel} md:max-w-md space-y-5`}
       >
         <div>
           <h2 id="welcome-title" className="text-base font-medium text-main">
@@ -123,14 +123,14 @@ export const WelcomeDialog: React.FC<WelcomeDialogProps> = ({ me, onSaved, onSki
           <button
             type="button"
             onClick={onSkip}
-            className="h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm transition-colors cursor-pointer"
+            className={secondaryButton}
           >
             Not now
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="h-9 px-4 rounded-lg bg-accent-main text-accent-contrast text-sm font-medium disabled:opacity-50 cursor-pointer transition-colors active:scale-[0.98]"
+            className={primaryButton}
           >
             {saving ? "Saving…" : "Continue"}
           </button>

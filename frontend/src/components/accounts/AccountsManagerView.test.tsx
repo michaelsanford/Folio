@@ -1,9 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { AccountsManagerView } from "./AccountsManagerView";
 import type { Account, HouseholdMember } from "../../types";
 import { api } from "../../services/api";
+import { mockViewport } from "../../test/viewport";
 
 vi.mock("../../services/api", () => ({
   api: {
@@ -219,5 +220,49 @@ describe("AccountsManagerView credit cards", () => {
     expect(screen.queryByRole("meter")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Add a credit limit to see credit left" }));
     expect(screen.getByText("Amount owed")).toBeDefined();
+  });
+});
+
+describe("AccountsManagerView on a phone", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("keeps cards read-only and puts Delete in the card's sheet behind the usual confirm", async () => {
+    mockViewport("phone");
+    const confirmSpy = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
+    vi.stubGlobal("confirm", confirmSpy);
+    const onAccountsModified = vi.fn();
+    render(
+      <AccountsManagerView accounts={mockAccounts} householdMembers={mockMembers} onAccountsModified={onAccountsModified} />
+    );
+
+    expect(screen.queryByRole("button", { name: "Delete account" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit account" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Joint Chequing: details and actions" }));
+    const sheet = screen.getByRole("dialog", { name: "Joint Chequing" });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Delete account" }));
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(api.deleteAccount).not.toHaveBeenCalledWith("acc-2");
+
+    fireEvent.click(screen.getByRole("button", { name: "Joint Chequing: details and actions" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete account" }));
+    await waitFor(() => expect(api.deleteAccount).toHaveBeenCalledWith("acc-2"));
+    expect(onAccountsModified).toHaveBeenCalled();
+  });
+
+  it("opens a card's sheet with a tap anywhere on the card", () => {
+    mockViewport("phone");
+    render(<AccountsManagerView accounts={mockAccounts} householdMembers={mockMembers} onAccountsModified={vi.fn()} />);
+    fireEvent.click(screen.getByText("Michael TFSA"));
+    expect(screen.getByRole("dialog", { name: "Michael TFSA" })).toBeDefined();
+  });
+
+  it("shows the inline actions on a tablet", () => {
+    mockViewport("tablet");
+    render(<AccountsManagerView accounts={mockAccounts} householdMembers={mockMembers} onAccountsModified={vi.fn()} />);
+    expect(screen.getAllByRole("button", { name: "Delete account" }).length).toBe(2);
   });
 });

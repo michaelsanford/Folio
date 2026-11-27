@@ -10,6 +10,7 @@ import {
 } from "../../constants/iconPalette";
 import { AccountIcon } from "../common/AccountIcon";
 import { Money } from "../common/Money";
+import { iconButton, primaryButton, secondaryButton } from "../common/ui";
 
 interface AccountIconPickerModalProps {
   isOpen: boolean;
@@ -26,7 +27,7 @@ interface AccountIconPickerModalProps {
 const sectionLabel = "block text-sm text-sub";
 const linkButton = "text-xs text-accent-subtle hover:underline underline-offset-4 cursor-pointer";
 const tabClass = (active: boolean) =>
-  `h-8 px-3 rounded-lg text-xs whitespace-nowrap border transition-colors cursor-pointer ${
+  `h-10 md:h-8 px-3 rounded-lg text-sm md:text-xs border transition-colors cursor-pointer ${
     active
       ? "bg-surface-subtle border-default text-main font-medium"
       : "border-transparent text-sub hover:text-main bg-surface-hover"
@@ -77,8 +78,8 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
-      <div className="w-full max-w-xl rounded-xl bg-surface border border-default shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95">
+    <div className="fixed inset-0 z-[120] flex items-end md:items-center justify-center md:p-4 bg-black/60 animate-in fade-in">
+      <div className="w-full md:max-w-xl rounded-t-2xl md:rounded-xl bg-surface border border-default shadow-xl overflow-hidden flex flex-col max-h-[92dvh] md:max-h-[90vh] pb-[env(safe-area-inset-bottom)] animate-in sheet-enter">
         {/* Header */}
         <div className="px-5 py-4 border-b border-subtle flex items-start justify-between gap-4">
           <div>
@@ -92,7 +93,7 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="h-8 w-8 shrink-0 flex items-center justify-center text-muted hover:text-main rounded-lg bg-surface-hover transition-colors cursor-pointer"
+            className={iconButton}
           >
             <X className="w-4 h-4" strokeWidth={1.5} />
           </button>
@@ -112,10 +113,10 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
                   size="lg"
                 />
                 <div className="min-w-0">
-                  <div className="text-sm font-medium text-main truncate">
+                  <div className="text-sm font-medium text-main break-words">
                     {accountName || meta.name}
                   </div>
-                  <div className="text-xs text-muted mt-0.5 truncate">
+                  <div className="text-xs text-muted mt-0.5 break-words">
                     {institution || "Institution"} · {meta.shortName}
                   </div>
                 </div>
@@ -153,7 +154,7 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
                     aria-label={swatch.name}
                     aria-pressed={isSelected}
                     onClick={() => setSelectedColor(swatch.hex)}
-                    className={`h-8 rounded-lg flex items-center justify-center cursor-pointer ${
+                    className={`h-11 md:h-8 rounded-lg flex items-center justify-center cursor-pointer ${
                       isSelected
                         ? "ring-2 ring-[var(--text-primary)] ring-offset-2 ring-offset-[var(--bg-surface)]"
                         : ""
@@ -181,7 +182,7 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
             </div>
 
             {/* Category Tabs */}
-            <div className="flex gap-1 overflow-x-auto pb-1 mb-2 no-scrollbar">
+            <div className="flex flex-wrap gap-1 pb-1 mb-2">
               {categories.map((c) => (
                 <button
                   key={c.id}
@@ -195,7 +196,7 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
             </div>
 
             {/* Icons Grid */}
-            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 max-h-52 overflow-y-auto p-1 pr-2">
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 md:max-h-52 md:overflow-y-auto p-1 md:pr-2">
               {filteredIcons.map((opt: IconOption) => {
                 const isSelected = selectedIcon === opt.id;
                 const IconComponent = opt.icon;
@@ -206,7 +207,7 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
                     title={opt.name}
                     aria-pressed={isSelected}
                     onClick={() => setSelectedIcon(opt.id)}
-                    className={`flex flex-col items-center justify-center gap-1 p-2 rounded-lg border transition-colors cursor-pointer ${
+                    className={`min-h-14 flex flex-col items-center justify-center gap-1 p-2 rounded-lg border transition-colors cursor-pointer ${
                       isSelected
                         ? "bg-accent-subtle border-accent-main/40 text-main"
                         : "border-subtle bg-surface-hover text-sub"
@@ -216,7 +217,7 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
                       className="w-4 h-4"
                       style={{ color: isSelected ? selectedColor : undefined, strokeWidth: 1.5 }}
                     />
-                    <span className="text-xs text-muted truncate w-full text-center">
+                    <span className="text-xs text-muted break-words w-full text-center">
                       {opt.name.split(" ")[0]}
                     </span>
                   </button>
@@ -231,14 +232,14 @@ export const AccountIconPickerModal: React.FC<AccountIconPickerModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer"
+            className={secondaryButton}
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handleApply}
-            className="h-9 px-4 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] cursor-pointer"
+            className={primaryButton}
           >
             Apply
           </button>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Search, Plus, Split, Trash2, Layers, Sparkles, Edit2, CheckCircle2, X, Lock } from "lucide-react";
+import { Search, Plus, Split, Trash2, Layers, Sparkles, Edit2, CheckCircle2, X, Lock, ListChecks, ChevronRight } from "lucide-react";
 import type {
   Account,
   Category,
@@ -10,7 +10,20 @@ import type {
 } from "../../types";
 import { api } from "../../services/api";
 import { onWriteConflict } from "../../services/notifications";
-import { DESKTOP_MEDIA_QUERY, useMediaQuery } from "../../hooks/useMediaQuery";
+import { useIsPhone } from "../../hooks/useMediaQuery";
+import {
+  checkboxClass,
+  compactSelectClass,
+  fieldLabel,
+  dangerIconButton,
+  iconButton,
+  inputClass,
+  modalOverlay,
+  modalPanel,
+  primaryButton,
+  secondaryButton,
+} from "../common/ui";
+import { ActionSheet, DetailList } from "../common/ActionSheet";
 import { Money } from "../common/Money";
 import { NumberField } from "../common/NumberField";
 import { formatMoney, formatNumber } from "../../utils/format";
@@ -18,20 +31,6 @@ import { useCanEdit, useSession } from "../../hooks/useSession";
 import { attributionLine, getSession, isClosedDate } from "../../utils/session";
 import { ClosedYearsModal } from "./ClosedYearsModal";
 
-const inputClass =
-  "h-9 px-3 rounded-lg border border-default bg-input text-sm text-main placeholder:text-muted focus:outline-none focus:border-[var(--accent-primary)]";
-const compactSelectClass =
-  "h-8 px-2 rounded-lg border border-default bg-input text-xs text-main focus:outline-none focus:border-[var(--accent-primary)]";
-const primaryButton =
-  "h-9 px-4 inline-flex items-center justify-center gap-2 rounded-lg bg-accent-main hover:bg-accent-main text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] disabled:opacity-50 cursor-pointer";
-const secondaryButton =
-  "h-9 px-4 inline-flex items-center justify-center gap-2 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer";
-const iconButton =
-  "w-8 h-8 inline-flex items-center justify-center rounded-lg text-muted hover:text-main bg-surface-hover transition-colors cursor-pointer";
-const checkboxClass = "rounded border-default bg-input text-accent-main focus:ring-accent-main";
-const modalOverlay = "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in";
-const modalPanel = "w-full rounded-xl bg-surface border border-default shadow-xl p-6 animate-in zoom-in-95";
-const fieldLabel = "block text-xs text-sub mb-1";
 
 /**
  * What a ledger change touched. "transactions" (the default) means balances and
@@ -71,8 +70,17 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
   const [totalCount, setTotalCount] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSeedingDemo, setIsSeedingDemo] = useState(false);
-  // Only one layout is mounted; the breakpoint matches the `lg:` classes.
-  const isDesktop = useMediaQuery(DESKTOP_MEDIA_QUERY);
+  // Only one layout is mounted: a read-only feed on phones (below `md`), the
+  // table on tablets and desktops.
+  const isPhone = useIsPhone();
+  // Phones: the row opens a sheet; checkboxes appear only in select mode.
+  const [sheetTxnId, setSheetTxnId] = useState<string | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  // Looked up by id so the sheet shows the row as reloaded after a change.
+  const sheetTxn = sheetTxnId ? transactions.find((t) => t.id === sheetTxnId) ?? null : null;
+  const sheetMember = sheetTxn
+    ? householdMembers?.find((m) => m.id === sheetTxn.assigned_member_id) || sheetTxn.assigned_member
+    : undefined;
 
   const handleSeedLedger = async () => {
     try {
@@ -471,7 +479,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       )}
 
       {/* Top filter bar */}
-      <div className="p-4 rounded-xl bg-surface border border-subtle flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="p-4 rounded-xl bg-surface border border-subtle flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         {/* Search & selectors */}
         <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 flex-1 w-full">
           <div className="relative w-full sm:flex-1 sm:min-w-[180px]">
@@ -492,7 +500,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
             />
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:flex-[2]">
             <select
               value={selectedAccountId}
               onChange={(e) => {
@@ -500,7 +508,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 setPage(1);
               }}
               aria-label="Account"
-              className={`flex-1 sm:flex-none ${inputClass}`}
+              className={`${inputClass} flex-1 basis-40 min-w-0 sm:w-auto`}
             >
               <option value="">All accounts</option>
               {accounts.map((a) => (
@@ -517,7 +525,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                 setPage(1);
               }}
               aria-label="Category"
-              className={`flex-1 sm:flex-none ${inputClass}`}
+              className={`${inputClass} flex-1 basis-40 min-w-0 sm:w-auto`}
             >
               <option value="">All categories</option>
               {categories.map((c) => (
@@ -535,7 +543,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                   setPage(1);
                 }}
                 aria-label="Household member"
-                className={`flex-1 sm:flex-none ${inputClass}`}
+                className={`${inputClass} flex-1 basis-40 min-w-0 sm:w-auto`}
               >
                 <option value="">All members</option>
                 {householdMembers.map((m) => (
@@ -550,7 +558,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center justify-end gap-2 shrink-0 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center justify-end gap-2 w-full xl:w-auto xl:shrink-0">
           <button
             type="button"
             onClick={() => setIsClosedYearsOpen(true)}
@@ -561,6 +569,20 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
             <span>Closed years</span>
           </button>
           {canEdit && (<>
+          {isPhone && (
+            <button
+              type="button"
+              onClick={() => {
+                if (selectMode) setSelectedTxnIds(new Set());
+                setSelectMode(!selectMode);
+              }}
+              aria-pressed={selectMode}
+              className={`w-full ${secondaryButton}`}
+            >
+              <ListChecks className="w-4 h-4 text-muted" strokeWidth={1.5} />
+              <span>{selectMode ? "Done selecting" : "Select"}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setAutoClassifyModalOpen(true)}
@@ -605,7 +627,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               placeholder="Payee override"
               value={batchPayee}
               onChange={(e) => setBatchPayee(e.target.value)}
-              className={`flex-1 sm:flex-none min-w-[120px] ${inputClass}`}
+              className={`flex-1 sm:flex-none min-w-0 sm:min-w-[120px] ${inputClass}`}
             />
 
             <label className="flex items-center gap-2 text-sm text-sub cursor-pointer">
@@ -639,8 +661,8 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
       {/* Transactions */}
       <div className="rounded-xl border border-subtle bg-surface overflow-hidden">
-        {/* Mobile & tablet feed (< lg) */}
-        {!isDesktop && (
+        {/* Phone feed (< md): read-only rows; a tap opens the details sheet */}
+        {isPhone && (
         <div className="divide-y divide-subtle">
           {isLoading ? (
             <div className="p-8 text-center text-sm text-muted">
@@ -671,107 +693,65 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               const isChecked = selectedTxnIds.has(txn.id);
               const isSplit = txn.splits && txn.splits.length > 1;
               const matchedAccount = accounts.find((a) => a.id === txn.account_id);
+              const payee = txn.normalized_payee || txn.raw_payee;
+              const categoryLabel = isSplit
+                ? `${txn.splits.length} splits`
+                : categories.find((c) => c.id === txn.splits?.[0]?.category_id)?.name || "Uncategorized";
+              const selecting = selectMode && canEditRow(txn);
 
               return (
-                <div
-                  key={txn.id}
-                  className={`p-4 flex items-start gap-3 transition-colors ${
-                    isChecked ? "bg-accent-subtle" : "bg-surface-hover"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={() => handleToggleSelectRow(txn.id)}
-                    aria-label="Select transaction"
-                    className={`mt-1 shrink-0 ${checkboxClass}`}
-                  />
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1 leading-snug">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm text-main whitespace-normal break-words">
-                            {txn.normalized_payee || txn.raw_payee}
-                          </span>
-                          {renderMemberTag(txn)}
-                        </div>
-                        {txn.normalized_payee && txn.normalized_payee !== txn.raw_payee && (
-                          <div className="text-xs text-muted font-mono whitespace-normal break-words">
-                            {txn.raw_payee}
-                          </div>
-                        )}
-                      </div>
-                      <Money
-                        value={txn.amount}
-                        signed
-                        className={`text-sm shrink-0 ${txn.amount >= 0 ? "text-positive" : "text-main"}`}
+                <div key={txn.id} className={`flex items-stretch ${isChecked ? "bg-accent-subtle" : ""}`}>
+                  {selecting && (
+                    <label className="flex items-center pl-4 pr-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => handleToggleSelectRow(txn.id)}
+                        aria-label="Select transaction"
+                        className={checkboxClass}
                       />
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
-                      <span className="text-muted tabular-nums">{txn.transaction_date?.split("T")[0]}</span>
-                      <span className="text-muted">·</span>
-                      <span className="text-sub whitespace-normal break-words">
-                        {matchedAccount?.name || "Account"}
-                      </span>
-
-                      {isSplit ? (
-                        <button
-                          onClick={() => handleOpenSplitModal(txn)}
-                          className="inline-flex items-center gap-1 h-7 px-2 rounded-lg border border-default text-xs text-sub bg-surface-hover transition-colors"
-                        >
-                          <Layers className="w-4 h-4 text-muted" strokeWidth={1.5} /> {txn.splits.length} splits
-                        </button>
-                      ) : (
-                        <div className="inline-flex items-center gap-2">
-                          <select
-                            value={txn.splits?.[0]?.category_id || ""}
-                            onChange={(e) => handleInlineCategoryChange(txn, e.target.value)}
-                            disabled={!canEditRow(txn)}
-                            aria-label="Category"
-                            className={`max-w-[120px] truncate ${compactSelectClass}`}
-                          >
-                            <option value="">Uncategorized</option>
-                            {categories.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name}
-                              </option>
-                            ))}
-                          </select>
-                          {renderConfidenceBadge(txn)}
+                    </label>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => (selecting ? handleToggleSelectRow(txn.id) : setSheetTxnId(txn.id))}
+                    aria-label={selecting ? undefined : `${payee}, details and actions`}
+                    tabIndex={selecting ? -1 : undefined}
+                    className="flex-1 min-w-0 px-4 py-3.5 flex items-start gap-3 text-left bg-surface-hover transition-colors cursor-pointer"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-base text-main break-words">{payee}</div>
+                          {txn.normalized_payee && txn.normalized_payee !== txn.raw_payee && (
+                            <div className="text-sm text-muted font-mono break-all">{txn.raw_payee}</div>
+                          )}
                         </div>
-                      )}
-
-                      <div className="ml-auto flex items-center gap-1">
+                        <Money
+                          value={txn.amount}
+                          signed
+                          className={`text-base shrink-0 whitespace-nowrap ${txn.amount >= 0 ? "text-positive" : "text-main"}`}
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5 text-sm">
+                        <span className="text-muted tabular-nums whitespace-nowrap">{txn.transaction_date?.split("T")[0]}</span>
+                        <span className="text-muted" aria-hidden="true">·</span>
+                        <span className="text-sub break-words">{matchedAccount?.name || "Account"}</span>
+                        <span className="text-muted" aria-hidden="true">·</span>
+                        <span className={`break-words ${categoryLabel === "Uncategorized" ? "text-warning" : "text-sub"}`}>
+                          {categoryLabel}
+                        </span>
+                        {renderConfidenceBadge(txn)}
+                        {renderMemberTag(txn)}
                         {isRowLocked(txn) && (
-                          <span title="In a closed year" aria-label="In a closed year" className="h-8 w-8 flex items-center justify-center text-muted">
-                            <Lock className="w-4 h-4" strokeWidth={1.5} />
-                          </span>
+                          <Lock className="w-4 h-4 text-muted" strokeWidth={1.5} aria-label="In a closed year" />
                         )}
-                        {canEditRow(txn) && (<>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditTxn(txn)}
-                          title="Edit transaction"
-                          aria-label="Edit transaction"
-                          className={iconButton}
-                        >
-                          <Edit2 className="w-4 h-4" strokeWidth={1.5} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenSplitModal(txn)}
-                          title="Split transaction"
-                          aria-label="Split transaction"
-                          className={iconButton}
-                        >
-                          <Split className="w-4 h-4" strokeWidth={1.5} />
-                        </button>
-                        </>)}
                       </div>
                     </div>
-                  </div>
+                    {!selecting && (
+                      <ChevronRight className="w-5 h-5 mt-0.5 text-muted shrink-0" strokeWidth={1.5} aria-hidden="true" />
+                    )}
+                  </button>
                 </div>
               );
             })
@@ -779,8 +759,8 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
         </div>
         )}
 
-        {/* Desktop table (>= lg) */}
-        {isDesktop && (
+        {/* Table (tablet and desktop, >= md) */}
+        {!isPhone && (
         <div>
           <table className="w-full table-fixed text-left text-sm">
             <thead className="text-xs text-muted border-b border-subtle">
@@ -794,13 +774,13 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                     className={checkboxClass}
                   />
                 </th>
-                <th className="px-2 py-3 w-[92px] font-normal">Date</th>
+                <th className="hidden lg:table-cell px-2 py-3 w-[92px] font-normal">Date</th>
                 <th className="hidden xl:table-cell px-2 py-3 w-[140px] font-normal">Account</th>
                 <th className="px-2 py-3 font-normal">Payee</th>
-                <th className="px-2 py-3 w-[160px] xl:w-[176px] font-normal">Category</th>
+                <th className="px-2 py-3 w-[128px] lg:w-[160px] xl:w-[176px] font-normal">Category</th>
                 <th className="hidden xl:table-cell px-2 py-3 w-[132px] font-normal">Notes</th>
-                <th className="px-2 py-3 w-[100px] xl:w-[112px] text-right font-normal">Amount</th>
-                <th className="px-2 py-3 w-[76px] text-center font-normal">Splits</th>
+                <th className="px-2 py-3 w-[96px] xl:w-[112px] text-right font-normal">Amount</th>
+                <th className="px-2 py-3 w-[88px] text-center font-normal">Splits</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-subtle">
@@ -857,7 +837,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                           className={checkboxClass}
                         />
                       </td>
-                      <td className="px-2 py-2 tabular-nums text-xs text-muted whitespace-nowrap">
+                      <td className="hidden lg:table-cell px-2 py-2 tabular-nums text-xs text-muted whitespace-nowrap">
                         {txn.transaction_date?.split("T")[0]}
                       </td>
                       <td className="hidden xl:table-cell px-2 py-2 text-sub leading-snug whitespace-normal break-words">
@@ -876,6 +856,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                           </div>
                         )}
                         <div className="xl:hidden text-[11px] text-sub whitespace-normal break-words">
+                          <span className="lg:hidden tabular-nums">{txn.transaction_date?.split("T")[0]} · </span>
                           {accountLabel}
                           {txn.notes ? ` · ${txn.notes}` : ""}
                         </div>
@@ -969,7 +950,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1 || isLoading}
-              className="h-8 px-3 rounded-lg border border-default bg-surface bg-surface-hover text-sub text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="h-11 md:h-8 px-4 md:px-3 rounded-lg border border-default bg-surface bg-surface-hover text-sub text-sm md:text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Previous
             </button>
@@ -980,7 +961,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
               type="button"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages || isLoading}
-              className="h-8 px-3 rounded-lg border border-default bg-surface bg-surface-hover text-sub text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="h-11 md:h-8 px-4 md:px-3 rounded-lg border border-default bg-surface bg-surface-hover text-sub text-sm md:text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Next
             </button>
@@ -991,7 +972,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       {/* Split transaction modal */}
       {splitModalTxn && (
         <div className={modalOverlay}>
-          <div className={`max-w-lg space-y-5 ${modalPanel}`}>
+          <div className={`md:max-w-lg space-y-5 ${modalPanel}`}>
             <div className="flex items-start justify-between gap-4 border-b border-subtle pb-4">
               <div>
                 <h3 className="text-base font-medium text-main">Split transaction</h3>
@@ -1051,7 +1032,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
                         setModalSplits(modalSplits.filter((_, i) => i !== idx));
                       }}
                       aria-label="Remove split"
-                      className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-muted hover:text-negative bg-surface-hover transition-colors cursor-pointer"
+                      className={dangerIconButton}
                     >
                       <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                     </button>
@@ -1094,7 +1075,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
       {/* Transaction create / edit modal */}
       {isTxnModalOpen && (
         <div className={modalOverlay}>
-          <form onSubmit={handleSaveTransaction} className={`max-w-md space-y-4 ${modalPanel}`}>
+          <form onSubmit={handleSaveTransaction} className={`md:max-w-md space-y-4 ${modalPanel}`}>
             <div className="flex items-center justify-between border-b border-subtle pb-4">
               <h3 className="text-base font-medium text-main">
                 {editingTxn ? "Edit transaction" : "Add transaction"}
@@ -1228,6 +1209,86 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
         </div>
       )}
 
+      {/* Phone: a transaction's full details and its actions */}
+      {isPhone && sheetTxn && (
+        <ActionSheet
+          open
+          onClose={() => setSheetTxnId(null)}
+          title={sheetTxn.normalized_payee || sheetTxn.raw_payee}
+          subtitle={
+            sheetTxn.normalized_payee && sheetTxn.normalized_payee !== sheetTxn.raw_payee ? (
+              <span className="font-mono break-all">{sheetTxn.raw_payee}</span>
+            ) : undefined
+          }
+          actions={
+            canEditRow(sheetTxn)
+              ? [
+                  { label: "Edit transaction", icon: Edit2, onSelect: () => handleOpenEditTxn(sheetTxn) },
+                  {
+                    label: sheetTxn.splits && sheetTxn.splits.length > 1 ? "Edit splits" : "Split transaction",
+                    icon: Split,
+                    onSelect: () => handleOpenSplitModal(sheetTxn),
+                  },
+                ]
+              : []
+          }
+        >
+          <DetailList
+            items={[
+              [
+                "Amount",
+                <Money
+                  value={sheetTxn.amount}
+                  signed
+                  className={sheetTxn.amount >= 0 ? "text-positive" : "text-main"}
+                />,
+              ],
+              ["Date", <span className="tabular-nums">{sheetTxn.transaction_date?.split("T")[0]}</span>],
+              ["Account", accounts.find((a) => a.id === sheetTxn.account_id)?.name || "Account"],
+              sheetMember ? ["Member", sheetMember.name] : null,
+              !!sheetTxn.notes && ["Notes", sheetTxn.notes],
+              sheetTxn.splits &&
+                sheetTxn.splits.length > 1 && [
+                  "Splits",
+                  <span className="block space-y-0.5">
+                    {sheetTxn.splits.map((sp, i) => (
+                      <span key={i} className="block">
+                        {categories.find((c) => c.id === sp.category_id)?.name || "Uncategorized"}{" "}
+                        <Money value={sp.amount} className="text-sub" />
+                      </span>
+                    ))}
+                  </span>,
+                ],
+              isRowLocked(sheetTxn) && ["Status", "In a closed year"],
+            ]}
+          />
+          {!(sheetTxn.splits && sheetTxn.splits.length > 1) && (
+            <div className="mt-4">
+              <label htmlFor="sheet-category" className={fieldLabel}>
+                Category
+              </label>
+              <div className="flex items-center gap-2">
+                <select
+                  id="sheet-category"
+                  value={sheetTxn.splits?.[0]?.category_id || ""}
+                  onChange={(e) => handleInlineCategoryChange(sheetTxn, e.target.value)}
+                  disabled={!canEditRow(sheetTxn)}
+                  className={inputClass}
+                >
+                  <option value="">Uncategorized</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                {renderConfidenceBadge(sheetTxn)}
+              </div>
+            </div>
+          )}
+        </ActionSheet>
+      )}
+
       {/* Auto-classify uncategorized confirmation modal */}
       {isClosedYearsOpen && (
         <ClosedYearsModal onClose={() => setIsClosedYearsOpen(false)} onChanged={() => onDataModified("all")} />
@@ -1235,7 +1296,7 @@ export const LedgerWorkspace: React.FC<LedgerWorkspaceProps> = ({
 
       {autoClassifyModalOpen && (
         <div className={modalOverlay}>
-          <div className={`max-w-md space-y-4 ${modalPanel}`}>
+          <div className={`md:max-w-md space-y-4 ${modalPanel}`}>
             <div className="flex items-center justify-between border-b border-subtle pb-4">
               <h3 className="text-base font-medium text-main">Auto-classify uncategorized</h3>
               <button type="button" onClick={closeAutoClassify} aria-label="Close" className={iconButton}>

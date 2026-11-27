@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { LedgerWorkspace } from "./LedgerWorkspace";
 import { api } from "../../services/api";
 import type { Account, Category, HouseholdMember, Transaction } from "../../types";
+import { mockViewport } from "../../test/viewport";
 
 const mockMembers: HouseholdMember[] = [
   {
@@ -214,19 +215,16 @@ describe("LedgerWorkspace loading and layout", () => {
     vi.unstubAllGlobals();
   });
 
-  const stubViewport = (desktop: boolean) =>
-    vi.stubGlobal(
-      "matchMedia",
-      vi.fn((query: string) => ({
-        matches: desktop,
-        media: query,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      }))
-    );
+  const mockList = () =>
+    vi.spyOn(api, "getTransactions").mockResolvedValue({
+      items: mockTransactions,
+      total: mockTransactions.length,
+      page: 1,
+      page_size: 50,
+    });
 
   it("renders only the desktop table on wide screens", async () => {
-    stubViewport(true);
+    mockViewport("desktop");
     vi.spyOn(api, "getTransactions").mockResolvedValue({
       items: mockTransactions,
       total: mockTransactions.length,
@@ -242,8 +240,58 @@ describe("LedgerWorkspace loading and layout", () => {
     expect(screen.getByLabelText("Select all transactions")).toBeDefined();
   });
 
-  it("renders only the mobile feed on narrow screens", async () => {
-    stubViewport(false);
+  it("renders the table on tablets, not the phone feed", async () => {
+    mockViewport("tablet");
+    mockList();
+    const { container } = render(
+      <LedgerWorkspace accounts={mockAccounts} categories={mockCategories} onDataModified={vi.fn()} />
+    );
+    await waitFor(() => expect(screen.getAllByText("Hydro One").length).toBe(1));
+    expect(container.querySelector("table")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /details and actions/ })).toBeNull();
+  });
+
+  it("keeps phone rows read-only and moves Edit, Split and category into a sheet", async () => {
+    mockViewport("phone");
+    mockList();
+    const update = vi.spyOn(api, "updateTransaction").mockResolvedValue({} as Transaction);
+    render(<LedgerWorkspace accounts={mockAccounts} categories={mockCategories} onDataModified={vi.fn()} />);
+
+    const row = await screen.findByRole("button", { name: "Hydro One, details and actions" });
+    expect(screen.queryByRole("button", { name: "Edit transaction" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Split/ })).toBeNull();
+    // Only the filter; no category select in the rows.
+    expect(screen.getAllByLabelText("Category").length).toBe(1);
+    expect(screen.queryByRole("checkbox")).toBeNull();
+
+    fireEvent.click(row);
+    const sheet = screen.getByRole("dialog", { name: "Hydro One" });
+    expect(sheet.textContent).toContain("RBC Chequing");
+    expect(screen.getByRole("button", { name: "Edit transaction" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Split transaction" })).toBeDefined();
+
+    fireEvent.change(within(sheet).getByLabelText("Category"), { target: { value: "cat-1" } });
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith("txn-2", { splits: [{ category_id: "cat-1", amount: -120 }] })
+    );
+  });
+
+  it("shows checkboxes on phones only in select mode", async () => {
+    mockViewport("phone");
+    mockList();
+    render(<LedgerWorkspace accounts={mockAccounts} categories={mockCategories} onDataModified={vi.fn()} />);
+    await screen.findByRole("button", { name: "Hydro One, details and actions" });
+    expect(screen.queryByRole("checkbox")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    const boxes = screen.getAllByRole("checkbox", { name: "Select transaction" });
+    expect(boxes.length).toBe(2);
+    fireEvent.click(boxes[0]);
+    expect(screen.getByText("selected")).toBeDefined();
+  });
+
+  it("renders only the phone feed on narrow screens", async () => {
+    mockViewport("phone");
     vi.spyOn(api, "getTransactions").mockResolvedValue({
       items: mockTransactions,
       total: mockTransactions.length,
@@ -259,7 +307,7 @@ describe("LedgerWorkspace loading and layout", () => {
   });
 
   it("aborts a stale search so its late response cannot overwrite a newer one", async () => {
-    stubViewport(true);
+    mockViewport("desktop");
     const signals: AbortSignal[] = [];
     let resolveFirst: (value: { items: Transaction[]; total: number; page: number; page_size: number }) => void = () => {};
     vi.spyOn(api, "getTransactions").mockImplementation((params) => {

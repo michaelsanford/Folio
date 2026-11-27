@@ -23,12 +23,11 @@ import {
   type AccountResolutionDraft,
   DestinationSelect,
   NewAccountFields,
-  compactSelectClass,
 } from "./AccountDraftFields";
+import { checkboxClass, compactSelectClass, inputClass, primaryButton, secondaryButton } from "../common/ui";
 
-const selectClass =
-  "h-9 px-3 rounded-lg border border-default bg-input text-sm text-main focus:outline-none focus:border-[var(--accent-primary)]";
-const checkboxClass = "rounded border-default bg-input text-accent-main focus:ring-accent-main";
+// Width is set where it is used.
+const selectClass = inputClass.replace("w-full ", "");
 const chip = "inline-flex items-center rounded-md px-1.5 py-0.5 text-xs";
 
 interface IngestionWorkspaceProps {
@@ -570,7 +569,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
             value={selectedAccountId}
             onChange={(e) => setSelectedAccountId(e.target.value)}
             disabled={Boolean(preview)}
-            className={`w-full sm:w-auto sm:max-w-[260px] truncate ${selectClass} disabled:opacity-60`}
+            className={`w-full sm:w-auto sm:max-w-[260px] ${selectClass} disabled:opacity-60`}
           >
             <option value="">Auto-detect from file</option>
             {accounts.map((acc) => (
@@ -696,7 +695,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2 min-w-0">
                 <FileText className="w-4 h-4 text-muted shrink-0" strokeWidth={1.5} />
-                <span className="text-sm font-medium text-main truncate max-w-[160px] sm:max-w-xs">
+                <span className="text-sm font-medium text-main break-all md:break-words min-w-0">
                   {preview.filename}
                 </span>
                 <span className={`${chip} bg-surface-subtle text-sub`}>
@@ -739,7 +738,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                   setErrorMessage(null);
                   setPropagationNote(null);
                 }}
-                className="flex-1 sm:flex-none h-9 px-4 rounded-lg border border-default bg-surface bg-surface-hover text-main text-sm font-medium transition-colors cursor-pointer"
+                className={`flex-1 sm:flex-none ${secondaryButton}`}
               >
                 Cancel
               </button>
@@ -747,7 +746,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                 type="button"
                 onClick={handleCommit}
                 disabled={selectedRowKeys.size === 0 || isCommitting}
-                className="flex-1 sm:flex-none h-9 px-4 inline-flex items-center justify-center gap-2 rounded-lg bg-accent-main hover:bg-accent-main disabled:opacity-50 text-accent-contrast text-sm font-medium transition-colors active:scale-[0.98] cursor-pointer"
+                className={`flex-1 sm:flex-none ${primaryButton}`}
               >
                 {isCommitting ? (
                   <>
@@ -830,7 +829,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                       key={det.source_account_key}
                       className="p-3 bg-canvas/40 flex flex-col gap-3"
                     >
-                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                         <div className="flex flex-wrap items-center gap-2 min-w-0">
                           <input
                             type="checkbox"
@@ -894,7 +893,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveAccountFilter("ALL")}
-                className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                className={`h-11 md:h-8 px-3 rounded-lg text-sm md:text-xs font-medium transition-colors cursor-pointer ${
                   activeAccountFilter === "ALL"
                     ? "bg-accent-main text-accent-contrast"
                     : "bg-surface border border-default text-sub hover:text-main"
@@ -914,7 +913,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                     key={det.source_account_key}
                     type="button"
                     onClick={() => setActiveAccountFilter(det.source_account_key)}
-                    className={`min-h-8 py-1.5 px-3 max-w-full whitespace-normal break-words text-left rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                    className={`min-h-11 md:min-h-8 py-1.5 px-3 max-w-full whitespace-normal break-words text-left rounded-lg text-sm md:text-xs font-medium transition-colors cursor-pointer ${
                       activeAccountFilter === det.source_account_key
                         ? "bg-accent-main text-accent-contrast"
                         : "bg-surface border border-default text-sub hover:text-main"
@@ -929,8 +928,8 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
 
           {/* Review container */}
           <div className="rounded-xl border border-subtle bg-surface overflow-hidden">
-            {/* Mobile & tablet cards feed (< lg) */}
-            <div className="block lg:hidden divide-y divide-subtle">
+            {/* Phone cards (< md) */}
+            <div className="block md:hidden divide-y divide-subtle">
               {visibleItems.map(({ item, rowKey }) => {
                 const isChecked = selectedRowKeys.has(rowKey);
                 const assignedCat = getEffectiveCategory(rowKey, item, rowCategories, categories);
@@ -947,7 +946,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                       checked={isChecked}
                       onChange={() => handleToggleRowKey(rowKey)}
                       aria-label="Include transaction"
-                      className={`mt-1 shrink-0 ${checkboxClass}`}
+                      className={`mt-0.5 shrink-0 ${checkboxClass}`}
                     />
 
                     <div className="flex-1 min-w-0">
@@ -992,7 +991,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                           value={assignedCat}
                           onChange={(e) => handleCategoryChange(rowKey, e.target.value)}
                           aria-label="Category"
-                          className={`max-w-[130px] truncate ${compactSelectClass}`}
+                          className={`basis-full min-w-0 ${compactSelectClass}`}
                         >
                           <option value="">Uncategorized</option>
                           {categories.map((c) => (
@@ -1022,8 +1021,9 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
               })}
             </div>
 
-            {/* Desktop flex review list (>= lg) */}
-            <div className="hidden lg:block" data-testid="ingestion-desktop-review">
+            {/* Review list (tablet and desktop, >= md); date and account fold into
+                the payee cell below lg */}
+            <div className="hidden md:block" data-testid="ingestion-desktop-review">
               <div className="flex items-center gap-3 px-3 py-2.5 text-xs text-muted border-b border-subtle">
                 <div className="w-6 shrink-0 flex justify-center">
                   <input
@@ -1034,13 +1034,13 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                     className={checkboxClass}
                   />
                 </div>
-                <div className="w-[84px] shrink-0">Date</div>
+                <div className="hidden lg:block w-[84px] shrink-0">Date</div>
                 {showAccountColumn && (
-                  <div className="w-[16%] min-w-[120px] shrink-0">Account</div>
+                  <div className="hidden lg:block w-[16%] min-w-[120px] shrink-0">Account</div>
                 )}
                 <div className="flex-1 min-w-0">Payee</div>
-                <div className="w-[156px] shrink-0">Category</div>
-                <div className="w-[14%] min-w-[84px] shrink-0">Status</div>
+                <div className="w-[132px] lg:w-[156px] shrink-0">Category</div>
+                <div className="w-[84px] lg:w-[14%] shrink-0">Status</div>
                 <div className="w-[96px] shrink-0 text-right">Amount</div>
               </div>
 
@@ -1073,12 +1073,12 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                         />
                       </div>
 
-                      <div className="w-[84px] shrink-0 tabular-nums text-xs text-muted pt-0.5">
+                      <div className="hidden lg:block w-[84px] shrink-0 tabular-nums text-xs text-muted pt-0.5">
                         {item.transaction_date}
                       </div>
 
                       {showAccountColumn && (
-                        <div className="w-[16%] min-w-[120px] shrink-0 text-xs text-sub leading-snug whitespace-normal break-words">
+                        <div className="hidden lg:block w-[16%] min-w-[120px] shrink-0 text-xs text-sub leading-snug whitespace-normal break-words">
                           {accountLabel}
                         </div>
                       )}
@@ -1087,9 +1087,13 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                         <div className="text-main whitespace-normal break-words">
                           {item.normalized_payee}
                         </div>
+                        <div className="lg:hidden text-xs text-sub whitespace-normal break-words">
+                          <span className="tabular-nums">{item.transaction_date}</span>
+                          {showAccountColumn && <> · {accountLabel}</>}
+                        </div>
                         {showDetailLine && (
                           <div className="text-xs text-muted whitespace-normal break-words">
-                            <span className="font-mono">{item.raw_payee}</span>
+                            <span className="font-mono break-all">{item.raw_payee}</span>
                             {item.notes && (
                               <span className="text-sub"> · {item.notes}</span>
                             )}
@@ -1097,7 +1101,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                         )}
                       </div>
 
-                      <div className="w-[156px] shrink-0">
+                      <div className="w-[132px] lg:w-[156px] shrink-0">
                         <select
                           value={assignedCat}
                           onChange={(e) => handleCategoryChange(rowKey, e.target.value)}
@@ -1113,7 +1117,7 @@ export const IngestionWorkspace: React.FC<IngestionWorkspaceProps> = ({
                         </select>
                       </div>
 
-                      <div className="w-[14%] min-w-[84px] shrink-0">
+                      <div className="w-[84px] lg:w-[14%] shrink-0">
                         {item.in_closed_period ? (
                           <span
                             className="inline-block rounded-md px-1.5 py-0.5 text-xs leading-snug whitespace-normal break-words bg-surface-subtle text-sub"
